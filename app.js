@@ -860,7 +860,7 @@ function nextQuestion() {
   makeChoices(state.current).forEach((flag) => {
     const button = document.createElement("button");
     button.className = "answer-button";
-    button.innerHTML = countryLabelHtml(flag.name);
+    button.textContent = flag.name;
     button.addEventListener("click", () => answer(flag, button));
     els.answers.append(button);
   });
