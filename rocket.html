@@ -434,6 +434,22 @@
       </section>
     </section>
   </main>
+  <dialog class="auth-dialog" id="authDialog">
+    <form method="dialog" class="auth-panel">
+      <button class="close-btn" value="cancel" aria-label="Close">×</button>
+      <span class="eyebrow">Account</span>
+      <h1>Create your hunter</h1>
+      <p>This local prototype stores your character, display name, and runs in this browser. Firebase Auth can replace this without changing the game flow.</p>
+      <label>
+        Display name
+        <input id="displayNameInput" maxlength="18" autocomplete="nickname" placeholder="Explorer">
+      </label>
+      <div class="auth-actions">
+        <button class="primary-btn" id="saveName" value="default">Save Name</button>
+        <button class="secondary-btn" id="guestName" value="default">Continue Guest</button>
+      </div>
+    </form>
+  </dialog>
   <script type="module" src="app.js?v=20260609a"></script>
   <script src="fly-session-guard.js?v=20260609a"></script>
   <script>
