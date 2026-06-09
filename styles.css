@@ -137,7 +137,12 @@ body:has(#rocketView.active) .topbar {
 .profile-chip span {
   display: block;
 }
-
+.nav-btn {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .profile-chip span {
   color: var(--gold);
   font-weight: 800;
