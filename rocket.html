@@ -434,7 +434,7 @@
       </section>
     </section>
   </main>
-
+  <script src="app.js"></script>
   <script src="fly-session-guard.js?v=20260609a"></script>
   <script>
     const cards = Array.from(document.querySelectorAll("[data-rounds]"));
@@ -446,7 +446,7 @@
       20: "20 rounds is a proper training session for map memory.",
       50: "50 rounds is the endurance route for leaderboard attempts."
     };
-
+    
     document.querySelector("#roundGrid").addEventListener("click", (event) => {
       const card = event.target.closest("[data-rounds]");
       if (!card) return;
