@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flag Hunter</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#play" aria-label="Flag Hunter home">
+        <span class="brand-mark">⚑</span>
+        <span>FLAG<br><b>HUNTER</b></span>
+      </a>
+      <nav class="main-nav" aria-label="Main navigation">
+        <button class="nav-btn active" data-view="play">Speed Flags</button>
+        <button class="nav-btn" data-view="rocket">Fly</button>
+        <button class="nav-btn" data-view="runs">Runs</button>
+        <button class="nav-btn" data-view="leaderboard">Leaderboard</button>
+        <button class="nav-btn" data-view="profile">Rules</button>
+      </nav>
+      <button class="profile-chip" id="profileOpen" type="button">
+        <div class="avatar" id="topAvatar" aria-hidden="true">FH</div>
+        <div>
+          <strong id="profileName">Guest</strong>
+          <span><span class="coin">★</span> <span id="profileBest">0</span></span>
+        </div>
+      </button>
+      <button class="menu-button" id="authOpen" aria-label="Open account panel">☰</button>
+    </header>
+
+    <main>
+      <section class="view active" id="playView" aria-label="Play speedrun">
+        <aside class="side-panel left-panel">
+          <p class="mode-label">Mode: <b>Speedrun</b></p>
+          <div class="stat-card">
+            <span>Time Left</span>
+            <strong id="timeLeft">45.0s</strong>
+          </div>
+          <div class="stat-card accent-hot">
+            <span>Combo</span>
+            <strong>x <span id="combo">0</span></strong>
+            <small>Best: x <span id="bestCombo">0</span></small>
+          </div>
+          <div class="stat-card accent-blue">
+            <span>Score</span>
+            <strong id="score">0</strong>
+            <small>Best: <span id="bestScore">0</span></small>
+          </div>
+          <div class="rank-card">
+            <span>Rank Progress</span>
+            <strong><span id="rankPoints">0</span> / <span id="nextRankPoints">3000</span></strong>
+            <div class="progress-track"><span id="rankProgress"></span></div>
+            <div class="rank-row"><small id="rankName">Rookie</small><small id="nextRankName">Explorer</small></div>
+          </div>
+        </aside>
+
+        <section class="game-stage">
+          <canvas class="fireworks-canvas" id="fireworksCanvas" aria-hidden="true"></canvas>
+          <div class="round-meta">
+            <div class="difficulty-bar"><span id="difficultyBar"></span></div>
+            <strong>Round <span id="round">1</span></strong>
+          </div>
+          <div class="flag-card" id="flagCard">
+            <img id="flagImage" src="" alt="Current flag">
+            <div class="feedback-burst" id="feedbackBurst" aria-live="polite"></div>
+          </div>
+          <div class="answer-grid" id="answers" aria-label="Answer choices"></div>
+          <p class="speed-hint">⚡ Answer fast for higher score! ⚡</p>
+        </section>
+
+        <aside class="side-panel right-panel">
+          <section class="activity-card">
+            <h2>Recent</h2>
+            <ul id="recentList"></ul>
+          </section>
+          <section class="activity-card power-card">
+            <h2>Badges</h2>
+            <div class="badge-row">
+              <div class="hex-badge blue">
+                <span class="badge-icon">❄</span>
+                <small>x2</small>
+              </div>
+              <div class="hex-badge purple">
+                <span class="badge-icon">½</span>
+                <small>x1</small>
+              </div>
+              <div class="hex-badge gold">
+                <span class="badge-icon">⏱</span>
+                <small>x1</small>
+              </div>
+            </div>
+            <div class="badge-labels">
+              <span>Freeze</span>
+              <span>50/50</span>
+              <span>Extra Time</span>
+            </div>
+          </section>
+          <section class="activity-card compact">
+            <h2>Rules</h2>
+            <p>Wrong answers cost points but do not end the run. Longer streaks raise difficulty and make time drain faster.</p>
+          </section>
+          <section class="activity-card compact">
+            <h2>Next Backend Step</h2>
+            <p>Use Firebase for identity and Firestore. Keep Netlify for hosting and score verification functions.</p>
+          </section>
+        </aside>
+      </section>
+
+      <section class="view results-view" id="resultsView" aria-label="Run result">
+        <div class="results-panel">
+          <span class="eyebrow">Run Complete</span>
+          <h1 id="resultScore">0</h1>
+          <p id="resultSummary"></p>
+          <div class="result-actions">
+            <button class="primary-btn" id="playAgain">Play Again</button>
+            <button class="secondary-btn" data-view-jump="runs">View Runs</button>
+          </div>
+          <div class="breakdown-grid">
+            <section>
+              <h2>Correct</h2>
+              <ul id="correctBreakdown"></ul>
+            </section>
+            <section>
+              <h2>Mistakes</h2>
+              <ul id="mistakeBreakdown"></ul>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section class="view rocket-view" id="rocketView" aria-label="Rocket map challenge">
+        <aside class="rocket-hud">
+          <details class="rocket-hud-details">
+            <summary>
+              <span>
+                <span class="eyebrow">Airliner Scout</span>
+                <b id="rocketTarget">Flight Route</b>
+              </span>
+              <span class="summary-icon">▾</span>
+            </summary>
+            <div class="rocket-game-nav" aria-label="Rocket navigation">
+              <button type="button" data-rocket-jump="play">Speed Flags</button>
+              <button type="button" data-rocket-jump="runs">Runs</button>
+              <button type="button" data-rocket-jump="leaderboard">Leaderboard</button>
+              <button type="button" data-rocket-jump="profile">Rules</button>
+              <button type="button" id="rocketMenuRestart">Restart Flight</button>
+            </div>
+            <div class="rocket-target-mini" id="rocketTargetMini" hidden>
+              <img id="rocketTargetMiniFlag" src="" alt="">
+              <div>
+                <span>Target</span>
+                <strong id="rocketTargetMiniName">Brazil</strong>
+                <small id="rocketTargetMiniValue">Worth 1,200 + time bonus</small>
+              </div>
+            </div>
+            <label class="radio-select">Radio
+              <select id="rocketRadioSelect">
+                <option value="">Generated ambience</option>
+                <option value="https://ice1.somafm.com/groovesalad-128-mp3">Groove Salad</option>
+                <option value="https://ice1.somafm.com/deepspaceone-128-mp3">Deep Space One</option>
+                <option value="https://ice1.somafm.com/missioncontrol-128-mp3">Mission Control</option>
+                <option value="https://ice1.somafm.com/poptron-128-mp3">PopTron</option>
+                <option value="https://ice1.somafm.com/secretagent-128-mp3">Secret Agent</option>
+                <option value="https://ice1.somafm.com/lush-128-mp3">Lush</option>
+                <option value="https://ice1.somafm.com/folkfwd-128-mp3">Folk Forward</option>
+                <option value="https://ice1.somafm.com/defcon-128-mp3">DEF CON Radio</option>
+                <option value="https://ice1.somafm.com/cliqhop-128-mp3">Cliqhop</option>
+              </select>
+            </label>
+            <audio id="rocketRadio" crossorigin="anonymous"></audio>
+            <div class="rocket-audio-panel" aria-label="Rocket audio controls">
+              <div class="radio-buttons">
+                <button type="button" id="rocketRadioPrev" aria-label="Previous radio station">‹</button>
+                <button type="button" id="rocketRadioPlay">Play Radio</button>
+                <button type="button" id="rocketRadioNext" aria-label="Next radio station">›</button>
+                <button type="button" id="rocketRadioMute">Mute</button>
+              </div>
+              <label>Radio Volume <input id="rocketRadioVolume" type="range" min="0" max="1" step="0.01" value="0.55"></label>
+              <label>Propeller Volume <input id="rocketEngineVolume" type="range" min="0" max="1" step="0.01" value="0.28"></label>
+              <label>Effects Volume <input id="rocketFxVolume" type="range" min="0" max="1" step="0.01" value="0.72"></label>
+            </div>
+            <div class="flight-manual">
+            <strong>Flight rules</strong>
+            <span>Pre-flight: click the engine meter, then drag the brake lever fully down until it clicks.</span>
+            <span>Takeoff: brake off, reach 105 m/s, then climb above 120 m.</span>
+            <span>Main goal: land inside the target country area; distance to center is the main score.</span>
+            <span>Capital beacon: yellow sparkle, fly through it for tech points.</span>
+            <span>Refuel depot: land on the red target. Under 500 m/s and under 1000 m counts; 20 m/s or less earns extra research TP.</span>
+            <span>Control: steer only inside the purple ring. Click the plane to toggle manual/autopilot.</span>
+            </div>
+            <div class="rocket-stat tech-panel">
+            <span>Tech Tree</span>
+            <strong><span id="rocketTech">0</span> TP</strong>
+            <small>Open it from the in-flight button inside the map.</small>
+            </div>
+            <div class="rocket-stat"><span>Time</span><strong id="rocketTime">90.0s</strong></div>
+            <div class="rocket-stat"><span>Fuel</span><strong id="rocketFuel">100%</strong></div>
+            <div class="rocket-stat"><span>Speed</span><strong id="rocketSpeed">0 m/s</strong></div>
+            <div class="rocket-stat"><span>Altitude</span><strong id="rocketAltitude">0 m</strong></div>
+            <div class="rocket-stat"><span>Round</span><strong><span id="rocketRound">1</span> / <span id="rocketRoundGoal">3</span></strong></div>
+            <div class="rocket-stat"><span>Score</span><strong id="rocketScore">0</strong></div>
+            <p id="rocketMessage">Manual control only works near the plane. Click the plane to toggle control; outside the map it keeps flying straight.</p>
+          </details>
+        </aside>
+        <div class="rocket-stage" id="rocketStage">
+          <div class="rocket-exit-nav" aria-label="Rocket mode navigation">
+            <button type="button" data-rocket-jump="play">Speed Flags</button>
+            <button type="button" data-rocket-jump="runs">Runs</button>
+            <button type="button" data-rocket-jump="leaderboard">Leaderboard</button>
+          </div>
+          <button class="tech-menu-button tech-stage-button" id="techTreeOpen" type="button">☰ Tech Tree</button>
+          <div class="rocket-round-setup" id="rocketRoundSetup">
+            <span>Flight Length</span>
+            <strong>Choose rounds</strong>
+            <div>
+              <button type="button" data-rocket-rounds="10">10 Rounds</button>
+              <button type="button" data-rocket-rounds="15">15 Rounds</button>
+              <button type="button" data-rocket-rounds="20">20 Rounds</button>
+              <button type="button" data-rocket-rounds="50">50 Rounds</button>
+            </div>
+          </div>
+          <button class="primary-btn rocket-start-button" id="rocketStart" type="button">Start Flight Run</button>
+          <div class="rocket-target-card" id="rocketTargetCard" hidden>
+            <span>Target</span>
+            <img id="rocketTargetFlag" src="" alt="">
+            <strong id="rocketTargetName">Brazil</strong>
+          </div>
+          <div class="tutorial-overlay" id="rocketTutorialOverlay" hidden>
+            <span class="tutorial-arrow" id="rocketTutorialArrow"></span>
+            <section>
+              <span class="eyebrow" id="rocketTutorialStep">Tutorial</span>
+              <h2 id="rocketTutorialTitle">Fly Tutorial</h2>
+              <p id="rocketTutorialText"></p>
+              <button class="primary-btn" id="rocketTutorialNext" type="button">Next</button>
+            </section>
+          </div>
+          <canvas id="rocketCanvas" width="1200" height="760" aria-label="Rocket world map"></canvas>
+          <div class="rocket-result-overlay" id="rocketResultOverlay" hidden>
+            <section>
+              <span class="eyebrow">Flight Complete</span>
+              <h2 id="rocketResultTitle">Run Complete</h2>
+              <p id="rocketResultSummary"></p>
+              <div class="rocket-result-details" id="rocketResultDetails"></div>
+              <canvas id="rocketResultMap" width="900" height="430" aria-label="Flight route country map"></canvas>
+              <div class="result-actions">
+                <button class="primary-btn" id="rocketResultRestart" type="button">Start New Flight</button>
+              </div>
+            </section>
+          </div>
+          <div class="tech-tree-overlay" id="techTreeOverlay" hidden>
+            <section class="tech-tree-panel">
+              <button class="tech-close" id="techTreeClose" type="button" aria-label="Close tech tree">×</button>
+              <span class="eyebrow">Upgrade Hangar</span>
+              <div class="tech-tree-heading">
+                <h2>Tech Tree</h2>
+                <strong id="techTreeStatus">0 tech points available.</strong>
+              </div>
+              <p>Spend research points to upgrade your plane. Each path specializes in a key performance area.</p>
+              <div class="tech-tree-map">
+                <button class="tech-node fuel-node" type="button" data-tech="fuel" aria-label="Upgrade fuel efficiency">
+                  <i class="tech-shield">◈</i>
+                  <b>Fuel Efficiency</b>
+                  <small>Improve range and depot refuels.</small>
+                  <span id="fuelTechLabel">Lv 0 - Cost 2</span>
+                  <em class="tech-levels" data-levels="fuel"></em>
+                </button>
+                <button class="tech-node speed-node" type="button" data-tech="speed" aria-label="Upgrade speed">
+                  <i class="tech-shield">◉</i>
+                  <b>Speed</b>
+                  <small>Increase acceleration and top speed.</small>
+                  <span id="speedTechLabel">Lv 0 - Cost 2</span>
+                  <em class="tech-levels" data-levels="speed"></em>
+                </button>
+                <button class="tech-node turn-node" type="button" data-tech="turn" aria-label="Upgrade handling">
+                  <i class="tech-shield">↻</i>
+                  <b>Handling</b>
+                  <small>Improve turn rate and response.</small>
+                  <span id="turnTechLabel">Lv 0 - Cost 2</span>
+                  <em class="tech-levels" data-levels="turn"></em>
+                </button>
+              </div>
+              <div class="tech-tree-legend">
+                <span><i class="done"></i> Completed</span>
+                <span><i class="available"></i> Available</span>
+                <span><i class="locked"></i> Locked</span>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section class="view data-view" id="runsView" aria-label="Personal runs">
+        <div class="page-heading">
+          <span class="eyebrow">Personal History</span>
+          <h1>Your Runs</h1>
+        </div>
+        <div class="run-section-heading">
+          <h2>Speed Flags</h2>
+          <span>Sorted by highest score</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Date</th><th>Score</th><th>Rounds</th><th>Correct</th><th>Mistakes</th><th>Combo</th><th>Details</th></tr>
+            </thead>
+            <tbody id="flagRunsTable"></tbody>
+          </table>
+        </div>
+        <div class="run-section-heading">
+          <h2>Fly</h2>
+          <span>Sorted by highest score</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Date</th><th>Score</th><th>Round Class</th><th>Reached</th><th>Missed</th><th>Longest Run</th><th>Details</th></tr>
+            </thead>
+            <tbody id="flyRunsTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="view data-view" id="leaderboardView" aria-label="Leaderboard">
+        <div class="page-heading">
+          <span class="eyebrow">Local Prototype</span>
+          <h1>Leaderboard</h1>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Rank</th><th>Player</th><th>Score</th><th>Title</th><th>Date</th><th>Details</th></tr>
+            </thead>
+            <tbody id="leaderboardTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="view data-view" id="profileView" aria-label="Rules and settings">
+        <div class="manual-dashboard">
+          <header class="manual-hero">
+            <span class="eyebrow">Rules / Settings / Algorithms</span>
+            <h1>Game Manual</h1>
+            <p>This is the practical rules page: how each mode scores, how each control works, and how Fly audio starts.</p>
+          </header>
+
+          <section class="manual-card">
+            <h2>Speed Flags</h2>
+            <p>Identify the shown flag from four answers before the timer reaches zero. A wrong answer does not end the run, but it creates a large score penalty.</p>
+            <ul>
+              <li>Correct score = base country value + combo bonus + fast-answer bonus.</li>
+              <li>Wrong score = at least -280 points or a bigger percentage hit from your current score.</li>
+              <li>Every streak raises the country difficulty pool, so the game becomes less familiar as you keep answering correctly.</li>
+              <li>The timer is the run limit. Your final score is saved into Runs and Leaderboard.</li>
+            </ul>
+          </section>
+
+          <section class="manual-card">
+            <h2>Fly</h2>
+            <p>Fly the plane across the country map, manage fuel, and land in the target country or at a fuel depot. Distance to the landing center is the main score calculation.</p>
+            <ul>
+              <li>Pre-flight starts parked. Click the engine meter, drag the brake lever down until it clicks, then the plane takes off facing east.</li>
+              <li>Takeoff requires speed, altitude, and balance. You cannot twist freely on the runway.</li>
+              <li>Manual steering works near the plane. Click the plane to release manual control; outside the control zone, autopilot holds a straight heading.</li>
+              <li>When speed reaches zero on the ground, you have landed and must run the takeoff loop again.</li>
+              <li>Fuel depots require a landing attempt: under 500 m/s and under 1000 m qualifies; 20 m/s or less is treated as ground speed and earns extra research points.</li>
+              <li>Target countries have no arrow. Use distance, the world map, and your route judgment.</li>
+            </ul>
+          </section>
+
+          <section class="manual-card">
+            <h2>Fly Tech Tree</h2>
+            <p>Research points can be spent on three upgrade branches. Choose whether to fly longer for more opportunities or go faster for time-score pressure.</p>
+            <div class="manual-grid">
+              <div><b>Fuel</b><span>Lower fuel burn, better route fuel return, stronger depot refuels.</span></div>
+              <div><b>Speed</b><span>Higher thrust and top speed, eventually pushing toward sound-speed territory.</span></div>
+              <div><b>Handling</b><span>Better turn response, stronger banking, and cleaner recovery after sharp moves.</span></div>
+            </div>
+          </section>
+
+          <section class="manual-card settings-card">
+            <h2>Fly Audio Settings</h2>
+            <label class="toggle-line">
+              <input id="rocketStartRadio" type="checkbox">
+              <span>Start Fly with radio on</span>
+            </label>
+            <label>Default radio station
+              <select id="profileRocketRadioSelect">
+                <option value="">Generated ambience</option>
+                <option value="https://ice1.somafm.com/groovesalad-128-mp3">Groove Salad</option>
+                <option value="https://ice1.somafm.com/deepspaceone-128-mp3">Deep Space One</option>
+                <option value="https://ice1.somafm.com/missioncontrol-128-mp3">Mission Control</option>
+                <option value="https://ice1.somafm.com/poptron-128-mp3">PopTron</option>
+                <option value="https://ice1.somafm.com/secretagent-128-mp3">Secret Agent</option>
+                <option value="https://ice1.somafm.com/lush-128-mp3">Lush</option>
+                <option value="https://ice1.somafm.com/folkfwd-128-mp3">Folk Forward</option>
+                <option value="https://ice1.somafm.com/defcon-128-mp3">DEF CON Radio</option>
+                <option value="https://ice1.somafm.com/cliqhop-128-mp3">Cliqhop</option>
+              </select>
+            </label>
+            <label>Upload music or audio files
+              <input id="customAudioInput" type="file" accept="audio/*" multiple>
+            </label>
+            <label>Upload a music folder
+              <input id="customAudioFolderInput" type="file" accept="audio/*" multiple webkitdirectory directory>
+            </label>
+            <label>Radio Volume <input id="profileRadioVolume" type="range" min="0" max="1" step="0.01" value="0.55"></label>
+            <label>Propeller Volume <input id="profileEngineVolume" type="range" min="0" max="1" step="0.01" value="0.28"></label>
+            <label>Effects Volume <input id="profileFxVolume" type="range" min="0" max="1" step="0.01" value="0.72"></label>
+            <p class="manual-note">Uploaded audio is usable in this browser session. The browser will not permanently remember the private file path after refresh.</p>
+          </section>
+
+          <section class="manual-card">
+            <h2>Round Levels</h2>
+            <p>Fly sessions can be short or long. Longer sessions reward better route planning because fuel, speed, and landing discipline matter more over time.</p>
+            <div class="manual-grid">
+              <div><b>Level 1</b><span>Short route practice.</span></div>
+              <div><b>Level 10</b><span>More countries, more refuel decisions.</span></div>
+              <div><b>Level 25+</b><span>Endurance route planning with tech-tree pressure.</span></div>
+              <div><b>Level 100+</b><span>Leaderboard-style marathon where fuel and upgrades decide the run.</span></div>
+            </div>
+          </section>
+        </div>
+
+        <div class="legacy-avatar-editor" aria-hidden="true">
+          <h1 id="profileTitle">Guest</h1>
+          <div id="avatarScene"><div id="layeredAvatar"></div><canvas id="avatarCanvas" width="520" height="640"></canvas><div id="rpgAvatar"></div></div>
+          <div id="variationGrid"></div>
+          <input id="characterNameInput">
+          <select id="classSelect"><option value="small">Small</option><option value="round">Round</option><option value="tall">Tall</option><option value="chubby">Chubby</option><option value="heroic">Heroic</option></select>
+          <select id="armorSelect"><option value="pastel">Pastel</option><option value="neon">Neon</option><option value="earthy">Earthy</option><option value="dark">Dark</option><option value="arcade">Arcade</option></select>
+          <select id="weaponSelect"><option value="cute">Cute</option><option value="serious">Serious</option><option value="sleepy">Sleepy</option><option value="mischievous">Mischievous</option><option value="robotic">Robotic</option></select>
+          <select id="outfitSelect"><option value="explorer">Explorer</option><option value="farmer">Pixel Farmer</option><option value="space">Space Suit</option><option value="streetwear">Streetwear</option><option value="animal-onesie">Animal Onesie</option><option value="fantasy">Fantasy Traveler</option></select>
+          <select id="headgearSelect"><option value="none">None</option><option value="cap">Cap</option><option value="helmet">Helmet</option><option value="hood">Hood</option><option value="mask">Mask</option></select>
+          <select id="accessorySelect"><option value="glasses">Glasses</option><option value="backpack">Backpack</option><option value="flag-pin">Flag Pin</option><option value="headphones">Headphones</option><option value="scarf">Scarf</option></select>
+          <select id="poseSelect"><option value="wave">Wave</option><option value="idle">Idle</option><option value="hero">Hero</option><option value="thinking">Thinking</option><option value="peace">Peace</option></select>
+          <input id="heightInput" type="range" min="1" max="3" step="0.01" value="1.75"><b id="heightValue">1.75 m</b>
+          <input id="skinColorInput" type="color" value="#f0b084"><input id="eyeColorInput" type="color" value="#45c7ff"><input id="hairColorInput" type="color" value="#17141f"><input id="shirtColorInput" type="color" value="#ffffff"><input id="jacketColorInput" type="color" value="#5c47c8"><input id="nailColorInput" type="color" value="#111111">
+          <input id="armsInput" type="range" min="0.7" max="1.4" step="0.01" value="1"><b id="armsValue">1.00</b>
+          <input id="legsInput" type="range" min="0.7" max="1.4" step="0.01" value="1"><b id="legsValue">1.00</b>
+          <input id="feetInput" type="range" min="0.7" max="1.5" step="0.01" value="1"><b id="feetValue">1.00</b>
+          <input id="hipsInput" type="range" min="0.7" max="1.5" step="0.01" value="1"><b id="hipsValue">1.00</b>
+          <input id="torsoInput" type="range" min="0.75" max="1.45" step="0.01" value="1"><b id="torsoValue">1.00</b>
+          <input id="neckInput" type="range" min="0.7" max="1.4" step="0.01" value="1"><b id="neckValue">1.00</b>
+          <input id="earsInput" type="range" min="0.5" max="1.6" step="0.01" value="1"><b id="earsValue">1.00</b>
+          <input id="mouthInput" type="range" min="0.6" max="1.6" step="0.01" value="1"><b id="mouthValue">1.00</b>
+          <button id="saveProfileButton" type="button">Save Character</button><button id="randomProfileButton" type="button">Randomize</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog class="auth-dialog" id="authDialog">
+    <form method="dialog" class="auth-panel">
+      <button class="close-btn" value="cancel" aria-label="Close">×</button>
+      <span class="eyebrow">Account</span>
+      <h1>Create your hunter</h1>
+      <p>This local prototype stores your character, display name, and runs in this browser. Firebase Auth can replace this without changing the game flow.</p>
+      <label>
+        Display name
+        <input id="displayNameInput" maxlength="18" autocomplete="nickname" placeholder="Explorer">
+      </label>
+      <div class="auth-actions">
+        <button class="primary-btn" id="saveName" value="default">Save Name</button>
+        <button class="secondary-btn" id="guestName" value="default">Continue Guest</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="fly-session-guard.js?v=20260609a"></script>
+  <script type="module" src="app.js?v=20260609a"></script>
+</body>
+</html>

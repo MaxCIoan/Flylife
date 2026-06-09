@@ -1,0 +1,4 @@
+/api/fly/run/start /.netlify/functions/fly-run-start 200
+/api/fly/run/finish /.netlify/functions/fly-run-finish 200
+/api/fly/leaderboard /.netlify/functions/fly-leaderboard 200
+/* /index.html 200

@@ -1,0 +1,12 @@
+{
+  "name": "flaggame",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check fly-session-guard.js && node --check app.js && node --check lib/fly-scoring.js && node --check netlify/functions/fly-run-start.js && node --check netlify/functions/fly-run-finish.js && node --check netlify/functions/fly-leaderboard.js"
+  },
+  "dependencies": {
+    "@netlify/database": "^1.0.0"
+  }
+}
