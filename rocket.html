@@ -342,26 +342,26 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="index.html#play" aria-label="Flag Hunter home">
-      <span class="brand-mark">⚑</span>
-      <span>FLAG<br><b>HUNTER</b></span>
-    </a>
-    <nav class="main-nav" aria-label="Main navigation">
-      <a class="nav-btn" href="index.html#play">Speed Flags</a>
-      <a class="nav-btn active" href="rocket.html">Fly</a>
-      <a class="nav-btn" href="index.html#runs">Runs</a>
-      <a class="nav-btn" href="index.html#leaderboard">Leaderboard</a>
-      <a class="nav-btn" href="index.html#rules">Rules</a>
-    </nav>
-    <button class="profile-chip" type="button">
-      <span class="avatar">ZM</span>
-      <span>
-        <strong>Zero Marshal</strong>
-        <span>★ 13,781</span>
-      </span>
-    </button>
-    
-  </header>
+      <a class="brand" href="#play" aria-label="Flag Hunter home">
+        <span class="brand-mark">⚑</span>
+        <span>FLAG<br><b>HUNTER</b></span>
+      </a>
+      <nav class="main-nav" aria-label="Main navigation">
+        <button class="nav-btn" onclick="location.href='index.html#play'">Speed Flags</button>
+        <button class="nav-btn active" onclick="location.href='rocket.html'">Fly</button>
+        <button class="nav-btn" data-view="runs">Runs</button>
+        <button class="nav-btn" data-view="leaderboard">Leaderboard</button>
+        <button class="nav-btn" data-view="profile">Rules</button>
+      </nav>
+      <button class="profile-chip" id="profileOpen" type="button">
+        <div class="avatar" id="topAvatar" aria-hidden="true">FH</div>
+        <div>
+          <strong id="profileName">Guest</strong>
+          <span><span class="coin">★</span> <span id="profileBest">0</span></span>
+        </div>
+      </button>
+      <button class="menu-button" id="authOpen" aria-label="Open account panel">☰</button>
+    </header>
 
   <main>
     <div class="heading">
