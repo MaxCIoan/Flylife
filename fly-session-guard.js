@@ -119,11 +119,14 @@
 
   function sanitizeProfile(profile) {
     return {
-      ...(profile && typeof profile === "object" ? profile : {}),
-      runs: [],
-      rocketRuns: [],
-      tampered: true,
-      tamperReason
+      id: crypto.randomUUID?.() || String(Date.now()),
+      score: 0,
+      rounds: 0,
+      completedRounds: 0,
+      longestRun: 0,
+      status: "cheated",
+      reason: tamperReason,
+      createdAt: new Date().toISOString()
     };
   }
 
@@ -329,7 +332,7 @@
     if (chord && event.shiftKey && ["i", "j", "c", "k"].includes(key)) blockEvent(event, "developer tools shortcut was used");
     if (chord && ["u", "s"].includes(key)) blockEvent(event, "protected source/storage shortcut was used");
   }, true);
-  document.addEventListener("contextmenu", (event) => blockEvent(event, "context menu was used"), true);
+  
   document.addEventListener("drop", (event) => blockEvent(event, "drop editing was attempted"), true);
 
   window.FlagGuard = Object.freeze({
