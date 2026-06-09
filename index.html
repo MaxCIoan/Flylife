@@ -141,11 +141,8 @@
               <span class="summary-icon">▾</span>
             </summary>
             <div class="rocket-game-nav" aria-label="Rocket navigation">
-              <button type="button" data-rocket-jump="play">Speed Flags</button>
-              <button type="button" data-rocket-jump="runs">Runs</button>
-              <button type="button" data-rocket-jump="leaderboard">Leaderboard</button>
-              <button type="button" data-rocket-jump="profile">Rules</button>
-              <button type="button" id="rocketMenuRestart">Restart Flight</button>
+              <button type="button" id="rocketMenuEndRun">End Run</button>
+              <button type="button" id="rocketMenuMain">Back To Main Menu</button>
             </div>
             <div class="rocket-target-mini" id="rocketTargetMini" hidden>
               <img id="rocketTargetMiniFlag" src="" alt="">
@@ -205,11 +202,6 @@
           </details>
         </aside>
         <div class="rocket-stage" id="rocketStage">
-          <div class="rocket-exit-nav" aria-label="Rocket mode navigation">
-            <button type="button" data-rocket-jump="play">Speed Flags</button>
-            <button type="button" data-rocket-jump="runs">Runs</button>
-            <button type="button" data-rocket-jump="leaderboard">Leaderboard</button>
-          </div>
           <button class="tech-menu-button tech-stage-button" id="techTreeOpen" type="button">☰ Tech Tree</button>
           <div class="rocket-round-setup" id="rocketRoundSetup">
             <span>Flight Length</span>
@@ -303,7 +295,7 @@
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>Date</th><th>Score</th><th>Rounds</th><th>Correct</th><th>Mistakes</th><th>Combo</th><th>Details</th></tr>
+              <tr><th>Player</th><th>Score</th><th>Errors</th><th>Penalty</th><th>Time</th><th>Correct</th><th>Combo</th></tr>
             </thead>
             <tbody id="flagRunsTable"></tbody>
           </table>
@@ -330,7 +322,7 @@
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>Rank</th><th>Player</th><th>Score</th><th>Title</th><th>Date</th><th>Details</th></tr>
+              <tr><th>Rank</th><th>Player</th><th>Score</th><th>Errors</th><th>Penalty</th><th>Time</th></tr>
             </thead>
             <tbody id="leaderboardTable"></tbody>
           </table>

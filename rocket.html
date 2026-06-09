@@ -465,18 +465,10 @@
       </aside>
 
       <section class="setup-card">
-        <h2>Tutorial Test</h2>
-        <p>Run one guided route with pauses, arrows, and stage-by-stage controls.</p>
-        <button class="round-card tutorial-card selected" type="button" data-rounds="1" data-tutorial="true">
-          <span class="round-number">1</span>
-          <small>Guided Round</small>
-          <span class="reward">Tutorial</span>
-        </button>
-
         <h2>Round Count</h2>
         <p>Choose how many route targets you want to fly</p>
         <div class="round-grid" id="roundGrid">
-          <button class="round-card" type="button" data-rounds="10">
+          <button class="round-card selected" type="button" data-rounds="10">
             <span class="round-number">10</span>
             <small>Rounds</small>
             <span class="reward">★ 100</span>
@@ -517,33 +509,26 @@
   <script>
     const cards = Array.from(document.querySelectorAll("[data-rounds]"));
     const recommendText = document.querySelector("#recommendText");
-    let selectedRounds = 1;
-    let tutorialMode = true;
+    let selectedRounds = 10;
     const messages = {
-      1: "The tutorial pauses the flight and points to each control stage.",
       10: "10 rounds is good for a quick route warmup.",
       15: "15 rounds is a focused route run without becoming a grind.",
       20: "20 rounds is a proper training session for map memory.",
       50: "50 rounds is the endurance route for leaderboard attempts."
     };
 
-    cards.forEach((card) => {
-      card.addEventListener("click", () => {
-        selectedRounds = Number(card.dataset.rounds);
-        tutorialMode = card.dataset.tutorial === "true";
-        cards.forEach((item) => item.classList.toggle("selected", item === card));
-        recommendText.textContent = messages[selectedRounds];
-      });
+    document.querySelector("#roundGrid").addEventListener("click", (event) => {
+      const card = event.target.closest("[data-rounds]");
+      if (!card) return;
+      selectedRounds = Number(card.dataset.rounds);
+      cards.forEach((item) => item.classList.toggle("selected", item === card));
+      recommendText.textContent = messages[selectedRounds];
     });
 
     document.querySelector("#startGame").addEventListener("click", () => {
       localStorage.setItem("flagHunterRocketRounds", String(selectedRounds));
       sessionStorage.setItem("flagHunterLaunchRocket", "1");
-      if (tutorialMode) {
-        sessionStorage.setItem("flagHunterRocketTutorial", "1");
-      } else {
-        sessionStorage.removeItem("flagHunterRocketTutorial");
-      }
+      sessionStorage.removeItem("flagHunterRocketTutorial");
       window.location.href = "index.html#rocket";
     });
   </script>

@@ -169,7 +169,6 @@ const els = {
   rocketTutorialTitle: document.querySelector("#rocketTutorialTitle"),
   rocketTutorialText: document.querySelector("#rocketTutorialText"),
   rocketTutorialNext: document.querySelector("#rocketTutorialNext"),
-  rocketMenuRestart: document.querySelector("#rocketMenuRestart"),
   rocketTime: document.querySelector("#rocketTime"),
   rocketFuel: document.querySelector("#rocketFuel"),
   rocketSpeed: document.querySelector("#rocketSpeed"),
@@ -186,6 +185,8 @@ const els = {
   techTreeStatus: document.querySelector("#techTreeStatus"),
   rocketMessage: document.querySelector("#rocketMessage"),
   rocketStart: document.querySelector("#rocketStart"),
+  rocketMenuEndRun: document.querySelector("#rocketMenuEndRun"),
+  rocketMenuMain: document.querySelector("#rocketMenuMain"),
   rocketResultOverlay: document.querySelector("#rocketResultOverlay"),
   rocketResultTitle: document.querySelector("#rocketResultTitle"),
   rocketResultSummary: document.querySelector("#rocketResultSummary"),
@@ -859,7 +860,7 @@ function nextQuestion() {
   makeChoices(state.current).forEach((flag) => {
     const button = document.createElement("button");
     button.className = "answer-button";
-    button.textContent = flag.name;
+    button.innerHTML = countryLabelHtml(flag.name);
     button.addEventListener("click", () => answer(flag, button));
     els.answers.append(button);
   });
@@ -1020,6 +1021,7 @@ function endRun() {
     character: { ...(profile.character || {}) },
     createdAt: new Date().toISOString(),
     score: Math.round(state.score),
+    elapsedMs: Math.max(0, Date.now() - state.startedAt),
     rounds: state.round - 1,
     correct: state.correct,
     mistakes: state.mistakes,
@@ -1108,7 +1110,7 @@ function renderResult(run) {
   els.resultScore.textContent = formatScore(run.score);
   els.resultSummary.textContent = `${run.correct.length} correct, ${run.mistakes.length} mistakes, max combo x${run.maxCombo}.`;
   renderBreakdown(els.correctBreakdown, run.correct, (item) => `+${formatScore(item.points)}`);
-  renderBreakdown(els.mistakeBreakdown, run.mistakes, (item) => `${item.picked} (${formatScore(item.points)})`);
+  renderBreakdown(els.mistakeBreakdown, run.mistakes, (item) => `${countryLabelHtml(item.picked)} (${formatScore(item.points)})`);
 }
 
 function renderBreakdown(target, items, meta) {
@@ -1119,7 +1121,7 @@ function renderBreakdown(target, items, meta) {
   }
   items.slice(0, 12).forEach((item) => {
     const li = document.createElement("li");
-    li.innerHTML = `<span class="flag-mini"><img src="${getFlagUrl(item.code)}" alt="">${item.name}</span><span>${meta(item)}</span>`;
+    li.innerHTML = `${countryLabelHtml(item.name)}<span>${meta(item)}</span>`;
     target.append(li);
   });
 }
@@ -1127,7 +1129,7 @@ function renderBreakdown(target, items, meta) {
 function renderTables() {
   const runs = (profile.runs || [])
     .slice()
-    .sort((a, b) => (b.score || 0) - (a.score || 0) || new Date(b.createdAt) - new Date(a.createdAt));
+    .sort(compareFlagRuns);
   const rocketRuns = (profile.rocketRuns || [])
     .slice()
     .sort((a, b) => (b.score || 0) - (a.score || 0) || (b.longestRun || 0) - (a.longestRun || 0) || new Date(b.createdAt) - new Date(a.createdAt));
@@ -1137,24 +1139,15 @@ function renderTables() {
   if (flagTable) flagTable.innerHTML = runs.length ? "" : `<tr><td colspan="7">No Speed Flags runs yet.</td></tr>`;
   runs.forEach((run) => {
     const row = document.createElement("tr");
-    row.className = "clickable-row";
-    row.tabIndex = 0;
     row.innerHTML = `
-      <td>${new Date(run.createdAt).toLocaleString()}</td>
+      <td>${escapeHtml(run.displayName || "Guest")}</td>
       <td>${formatScore(run.score)}</td>
-      <td>${run.rounds}</td>
-      <td>${run.correct.length}</td>
       <td>${run.mistakes.length}</td>
+      <td>${formatScore(getRunPenalty(run))}</td>
+      <td>${formatDuration(run.elapsedMs)}</td>
+      <td>${run.correct.length}</td>
       <td>x${run.maxCombo}</td>
-      <td><button class="mini-btn" type="button">Open</button></td>
     `;
-    row.addEventListener("click", () => toggleRunDetails(row, run, 7, "run"));
-    row.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        toggleRunDetails(row, run, 7, "run");
-      }
-    });
     flagTable?.append(row);
   });
 
@@ -1186,23 +1179,14 @@ function renderTables() {
   els.leaderboardTable.innerHTML = leaderboardPlayers.length ? "" : `<tr><td colspan="6">No local scores yet.</td></tr>`;
   leaderboardPlayers.forEach((player, index) => {
     const row = document.createElement("tr");
-    row.className = "clickable-row";
-    row.tabIndex = 0;
     row.innerHTML = `
       <td>#${index + 1}</td>
       <td>${escapeHtml(player.displayName || "Guest")}</td>
       <td>${formatScore(player.bestScore)}</td>
-      <td>${player.rank.name}</td>
-      <td>${new Date(player.lastPlayed).toLocaleDateString()}</td>
-      <td><button class="mini-btn" type="button">Open</button></td>
+      <td>${player.bestRun?.mistakes?.length || 0}</td>
+      <td>${formatScore(getRunPenalty(player.bestRun))}</td>
+      <td>${formatDuration(player.bestRun?.elapsedMs)}</td>
     `;
-    row.addEventListener("click", () => toggleRunDetails(row, player, 6, "leaderboard"));
-    row.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        toggleRunDetails(row, player, 6, "leaderboard");
-      }
-    });
     els.leaderboardTable.append(row);
   });
 }
@@ -1291,11 +1275,15 @@ function buildLeaderboardPlayers(runs) {
       displayName: key,
       runs: [],
       bestScore: 0,
+      bestRun: null,
       lastPlayed: run.createdAt,
       character: sanitizeCharacter(run.character || profile.character)
     };
     current.runs.push(run);
-    current.bestScore = Math.max(current.bestScore, run.score || 0);
+    if (!current.bestRun || compareFlagRuns(run, current.bestRun) < 0) {
+      current.bestRun = run;
+      current.bestScore = run.score || 0;
+    }
     current.lastPlayed = new Date(run.createdAt) > new Date(current.lastPlayed) ? run.createdAt : current.lastPlayed;
     current.character = sanitizeCharacter(run.character || current.character);
     players.set(key, current);
@@ -1306,7 +1294,32 @@ function buildLeaderboardPlayers(runs) {
       rank: getRank(player.bestScore),
       bestCountry: getBestCountry(player.runs)
     }))
-    .sort((a, b) => b.bestScore - a.bestScore);
+    .sort((a, b) => compareFlagRuns(a.bestRun, b.bestRun));
+}
+
+function compareFlagRuns(a, b) {
+  return (b.score || 0) - (a.score || 0)
+    || (a.mistakes?.length || 0) - (b.mistakes?.length || 0)
+    || getRunPenalty(a) - getRunPenalty(b)
+    || (a.elapsedMs || Number.MAX_SAFE_INTEGER) - (b.elapsedMs || Number.MAX_SAFE_INTEGER)
+    || new Date(b.createdAt) - new Date(a.createdAt);
+}
+
+function getRunPenalty(run = {}) {
+  return Math.abs((run.mistakes || []).reduce((sum, item) => sum + (item.points || 0), 0));
+}
+
+function formatDuration(ms) {
+  const seconds = Math.max(0, Math.round((Number(ms) || runTime * 1000) / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return `${minutes}:${String(rest).padStart(2, "0")}`;
+}
+
+function countryLabelHtml(name) {
+  const country = flags.find((flag) => flag.name === name);
+  const flag = country ? `<img src="${getFlagUrl(country.code)}" alt="">` : "";
+  return `<span class="flag-mini">${flag}${escapeHtml(name)}</span>`;
 }
 
 function renderPlayerDetails(player) {
@@ -2990,6 +3003,10 @@ function prepareRocketBriefing(rounds) {
     els.rocketStart.hidden = false;
     els.rocketStart.textContent = "Begin Takeoff";
   }
+  window.FlagGuard?.startRun?.({
+    displayName: profile.displayName || "Guest",
+    rounds
+  });
   rocketFeedback(`${rounds} rounds selected`, "#45f875", "success");
 }
 
@@ -5370,6 +5387,17 @@ function showRocketResult(title, summary, action = "restart") {
   els.rocketResultOverlay.hidden = false;
 }
 
+function endRocketRun(title = "Run Ended", summary = "Flight run ended.", action = "setup") {
+  if (!rocketState || rocketState.sessionSaved) return;
+  rocketState.active = false;
+  stopPropellerSound();
+  if (!["setup", "briefing", "preflight"].includes(rocketState.phase)) {
+    recordRocketRound(false, "ended by player");
+  }
+  showRocketResult(title, `${summary} Score ${formatScore(rocketState.score)}.`, action);
+  renderRocketHud();
+}
+
 function renderRocketResultDetails() {
   if (!els.rocketResultDetails || !rocketState) return;
   const logs = rocketState.roundLogs || [];
@@ -5774,6 +5802,14 @@ document.querySelectorAll(".nav-btn").forEach((button) => {
       return;
     }
     if (button.dataset.view === "rocket") {
+      if (rocketState && !rocketState.sessionSaved) {
+        if (!["setup", "briefing", "preflight"].includes(rocketState.phase)) {
+          rocketState.active = true;
+          rocketState.last = performance.now();
+        }
+        showView("rocket");
+        return;
+      }
       window.location.href = "rocket.html";
       return;
     }
@@ -5870,7 +5906,14 @@ els.rocketStart.addEventListener("click", () => {
   }
   startRocketRun();
 });
-els.rocketMenuRestart?.addEventListener("click", startRocketRun);
+els.rocketMenuEndRun?.addEventListener("click", () => endRocketRun("Run Ended", "Flight run ended from Airliner Scout.", "setup"));
+els.rocketMenuMain?.addEventListener("click", () => {
+  if (rocketState?.active) rocketState.active = false;
+  stopPropellerSound();
+  if (els.techTreeOverlay) els.techTreeOverlay.hidden = true;
+  if (els.rocketResultOverlay) els.rocketResultOverlay.hidden = true;
+  showView("play");
+});
 els.rocketResultRestart.addEventListener("click", () => {
   if (rocketState?.resultAction === "setup") {
     window.location.href = "rocket.html";

@@ -7,6 +7,7 @@
   const ROCKET_ROUNDS_KEY = "flagHunterRocketRounds";
   const SERVER_RUN_KEY = "flagHunterServerRunV1";
   const ALLOWED_ROUNDS = [10, 15, 20, 50];
+  const LEGACY_HISTORY_ROUNDS = [1, 10, 15, 20, 25, 50, 100, 200];
   const ROUND_OPTIONS = [1, ...ALLOWED_ROUNDS];
   const MAX_SCORE_PER_ROUND = 80000;
   const MIN_MS_PER_ROUND = 2500;
@@ -102,7 +103,7 @@
       const rounds = Math.trunc(Number(run.rounds ?? run.selectedRounds) || 0);
       const score = Math.round(Number(run.score) || 0);
       const completedRounds = Math.trunc(Number(run.completedRounds) || 0);
-      if (!ALLOWED_ROUNDS.includes(rounds) && rounds !== 1) return `stored fly run has invalid round count ${rounds}`;
+      if (!LEGACY_HISTORY_ROUNDS.includes(rounds)) return `stored fly run has invalid round count ${rounds}`;
       if (score < 0 || score > Math.max(1, rounds) * MAX_SCORE_PER_ROUND) return "stored fly run score is impossible";
       if (completedRounds < 0 || completedRounds > Math.max(1, rounds)) return "stored fly run completion count is invalid";
     }

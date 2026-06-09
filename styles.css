@@ -439,6 +439,16 @@ body:has(#rocketView.active) .topbar {
   transform: translateY(-1px);
 }
 
+.answer-button .flag-mini {
+  justify-content: center;
+  color: inherit;
+}
+
+.answer-button .flag-mini img {
+  width: 2rem;
+  height: 1.28rem;
+}
+
 .answer-button.correct {
   border-color: var(--green);
   background: rgba(69, 248, 117, 0.16);
@@ -894,7 +904,6 @@ body:has(#rocketView.active) .topbar {
 }
 
 .rocket-game-nav button:first-child {
-  grid-column: 1 / -1;
   border-color: rgba(255, 211, 61, 0.44);
   background: linear-gradient(135deg, rgba(69, 248, 117, 0.74), rgba(15, 93, 53, 0.88));
   color: #ffffff;
