@@ -353,6 +353,7 @@
             <p>Fly the plane across the country map, manage fuel, and land in the target country or at a fuel depot. Distance to the landing center is the main score calculation.</p>
             <ul>
               <li>Pre-flight starts parked. Click the engine meter, drag the brake lever down until it clicks, then the plane takes off facing east.</li>
+              <li>Once your engine is on you can move the mouse and this will increse your speed towards where you are pointing space to decelerate at constant 30m/s and or you can move muse closer to plane nose to decelerate fastr.</li>
               <li>Takeoff requires speed, altitude, and balance. You cannot twist freely on the runway.</li>
               <li>Manual steering works near the plane. Click the plane to release manual control; outside the control zone, autopilot holds a straight heading.</li>
               <li>When speed reaches zero on the ground, you have landed and must run the takeoff loop again.</li>
@@ -391,16 +392,11 @@
                 <option value="https://ice1.somafm.com/cliqhop-128-mp3">Cliqhop</option>
               </select>
             </label>
-            <label>Upload music or audio files
-              <input id="customAudioInput" type="file" accept="audio/*" multiple>
-            </label>
-            <label>Upload a music folder
-              <input id="customAudioFolderInput" type="file" accept="audio/*" multiple webkitdirectory directory>
-            </label>
+           
             <label>Radio Volume <input id="profileRadioVolume" type="range" min="0" max="1" step="0.01" value="0.55"></label>
             <label>Propeller Volume <input id="profileEngineVolume" type="range" min="0" max="1" step="0.01" value="0.28"></label>
             <label>Effects Volume <input id="profileFxVolume" type="range" min="0" max="1" step="0.01" value="0.72"></label>
-            <p class="manual-note">Uploaded audio is usable in this browser session. The browser will not permanently remember the private file path after refresh.</p>
+            
           </section>
 
           <section class="manual-card">
