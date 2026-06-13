@@ -48,3 +48,4 @@
 - Added a private itch status badge that shows only `yes` or `no` when launched with the itch status flag.
 - Changed itch-context leaderboard requests to use the production Fly API origin and added CORS/preflight headers to Fly API functions.
 - Forced Netlify production builds to install npm dependencies before publishing so the database package is available to functions.
+- Converted Fly API functions from Lambda compatibility handlers to the current Netlify Request/Response function API so Netlify Database can inject its production connection automatically.

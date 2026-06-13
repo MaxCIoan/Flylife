@@ -1,20 +1,41 @@
+const corsHeaders = {
+  "content-type": "application/json; charset=utf-8",
+  "cache-control": "no-store",
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "access-control-allow-headers": "content-type"
+};
+
 export function json(statusCode, data) {
   return {
     statusCode,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      "access-control-allow-origin": "*",
-      "access-control-allow-methods": "GET, POST, OPTIONS",
-      "access-control-allow-headers": "content-type"
-    },
+    headers: corsHeaders,
     body: JSON.stringify(data)
   };
+}
+
+export function jsonResponse(status, data) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: corsHeaders
+  });
+}
+
+export function emptyResponse(status = 204) {
+  return new Response(null, {
+    status,
+    headers: corsHeaders
+  });
 }
 
 export async function readJson(event) {
   if (!event.body) return {};
   return JSON.parse(event.body);
+}
+
+export async function readRequestJson(request) {
+  const text = await request.text();
+  return text ? JSON.parse(text) : {};
 }
 
 export function cleanDisplayName(value) {
