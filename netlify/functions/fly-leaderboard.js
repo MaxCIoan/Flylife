@@ -9,6 +9,9 @@ export default async (request) => {
     const { rows: leaders } = await query(
       `select display_name as "displayName",
               rounds,
+              coalesce((payload->>'selectedRounds')::int, rounds) as "selectedRounds",
+              coalesce((payload->>'completedRounds')::int, 0) as "completedRounds",
+              coalesce(payload->>'planeClass', '') as "planeClass",
               final_score as "finalScore",
               elapsed_ms as "elapsedMs",
               finished_at as "finishedAt"

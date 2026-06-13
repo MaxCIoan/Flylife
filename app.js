@@ -1238,8 +1238,8 @@ function renderTables() {
     flyTable?.append(row);
   });
 
-  const leaderboardEntries = buildLocalLeaderboardEntries(runs, rocketRuns, officialFlyLeaders);
-  els.leaderboardTable.innerHTML = leaderboardEntries.length ? "" : `<tr><td colspan="7">No local scores yet.</td></tr>`;
+  const leaderboardEntries = buildOfficialLeaderboardEntries(officialFlyLeaders);
+  els.leaderboardTable.innerHTML = leaderboardEntries.length ? "" : `<tr><td colspan="7">No official Fly scores yet.</td></tr>`;
   leaderboardEntries.forEach((entry, index) => {
     const row = document.createElement("tr");
     if (entry.type === "fly") {
@@ -1299,6 +1299,21 @@ function buildLocalLeaderboardEntries(flagRuns, flyRuns, officialFlyRuns = []) {
   }));
   return [...officialFlyEntries, ...flagEntries, ...flyEntries]
     .sort((a, b) => (b.score || 0) - (a.score || 0) || String(a.mode).localeCompare(String(b.mode)))
+    .slice(0, 50);
+}
+
+function buildOfficialLeaderboardEntries(officialFlyRuns = []) {
+  return (officialFlyRuns || [])
+    .map((run) => ({
+      type: "official-fly",
+      mode: "Fly",
+      displayName: run.displayName || "Guest",
+      score: run.finalScore || 0,
+      plane: escapeHtml(run.planeClass || ""),
+      result: `${run.completedRounds || 0}/${run.selectedRounds || run.rounds || 0} reached`,
+      details: run.elapsedMs ? formatDuration(run.elapsedMs) : "Submitted"
+    }))
+    .sort((a, b) => (b.score || 0) - (a.score || 0))
     .slice(0, 50);
 }
 
