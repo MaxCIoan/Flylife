@@ -136,6 +136,7 @@ const els = {
   flagRunsTable: document.querySelector("#flagRunsTable"),
   flyRunsTable: document.querySelector("#flyRunsTable"),
   leaderboardTable: document.querySelector("#leaderboardTable"),
+  privateApiStatus: document.querySelector("#privateApiStatus"),
   rocketStage: document.querySelector("#rocketStage"),
   rocketCanvas: document.querySelector("#rocketCanvas"),
   rocketTarget: document.querySelector("#rocketTarget"),
@@ -230,6 +231,11 @@ let rocketCatalog = null;
 let rocketCatalogLoading = false;
 let officialFlyLeaders = [];
 let officialFlyLeadersLoaded = false;
+const productionFlyApiOrigin = "https://flylifeforlife.netlify.app";
+const isItchContext = /(^|\.)itch\.io$/i.test(window.location.hostname)
+  || /itch\.io/i.test(document.referrer || "")
+  || new URLSearchParams(window.location.search).has("itchStatus");
+const flyApiBase = /(^|\.)itch\.io$/i.test(window.location.hostname) ? productionFlyApiOrigin : "";
 const blockedRocketCountries = new Set(["Fiji", "Antarctica"]);
 const rocketRadioStations = [
   "",
@@ -1295,17 +1301,25 @@ function buildLocalLeaderboardEntries(flagRuns, flyRuns, officialFlyRuns = []) {
     .slice(0, 50);
 }
 
+function setPrivateApiStatus(isOnline) {
+  if (!els.privateApiStatus || !isItchContext) return;
+  els.privateApiStatus.textContent = isOnline ? "yes" : "no";
+  els.privateApiStatus.classList.add("visible");
+}
+
 function loadOfficialFlyLeaderboard() {
   if (officialFlyLeadersLoaded) return;
   officialFlyLeadersLoaded = true;
-  fetch("/api/fly/leaderboard")
+  fetch(`${flyApiBase}/api/fly/leaderboard`)
     .then((response) => response.ok ? response.json() : Promise.reject(new Error("official fly leaderboard unavailable")))
     .then((data) => {
       officialFlyLeaders = Array.isArray(data.leaders) ? data.leaders : [];
+      setPrivateApiStatus(true);
       renderTables();
     })
     .catch(() => {
       officialFlyLeaders = [];
+      setPrivateApiStatus(false);
     });
 }
 

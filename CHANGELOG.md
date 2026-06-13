@@ -44,3 +44,7 @@
 - Fixed agent simulation target selection so agents no longer repeat one nearby destination, and lowered simulated score ranges.
 - Reran the agent simulation; corrected scores are documented in `SIMULATION_TEST_RESULTS.md`.
 - Prepared `flaggame-live-deploy-20260613.zip` packaging with the current single-page app, Netlify live leaderboard functions, database migration, account/profile tracking code, and deployment config.
+- Added an itch.io launcher package that redirects to the Netlify production game so official Fly leaderboards use the same live API/database as the browser deployment.
+- Added a private itch status badge that shows only `yes` or `no` when launched with the itch status flag.
+- Changed itch-context leaderboard requests to use the production Fly API origin and added CORS/preflight headers to Fly API functions.
+- Forced Netlify production builds to install npm dependencies before publishing so the database package is available to functions.

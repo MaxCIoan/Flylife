@@ -2,6 +2,7 @@ import { query } from "../../db/index.js";
 import { json } from "./_shared.js";
 
 export const handler = async (event) => {
+  if (event.httpMethod === "OPTIONS") return json(204, {});
   if (event.httpMethod !== "GET") return json(405, { error: "method not allowed" });
 
   try {

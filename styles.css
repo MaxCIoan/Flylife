@@ -29,6 +29,30 @@ body {
   color: var(--text);
 }
 
+.private-api-status {
+  position: fixed;
+  top: 0.45rem;
+  right: 0.55rem;
+  z-index: 6000;
+  display: none;
+  min-width: 2.1rem;
+  padding: 0.12rem 0.35rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(3, 10, 18, 0.82);
+  color: rgba(247, 251, 255, 0.86);
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+  text-transform: lowercase;
+  pointer-events: none;
+}
+
+.private-api-status.visible {
+  display: block;
+}
+
 button,
 input,
 select {

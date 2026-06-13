@@ -3,6 +3,7 @@ import { ALLOWED_ROUNDS } from "../../lib/fly-scoring.js";
 import { cleanDisplayName, json, readJson } from "./_shared.js";
 
 export const handler = async (event) => {
+  if (event.httpMethod === "OPTIONS") return json(204, {});
   if (event.httpMethod !== "POST") return json(405, { error: "method not allowed" });
 
   try {
