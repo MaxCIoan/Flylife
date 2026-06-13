@@ -1,0 +1,46 @@
+# Flaggame Change Log
+
+## 2026-06-13
+
+- Kept work inside `C:\Users\maxco\Desktop\Flaggame`.
+- Removed the separate `rocket.html` launch flow from app navigation; Fly now starts from the `index.html` Fly view.
+- Changed first load behavior so the app opens to Speed Flags setup instead of the Rules/Profile page or an auto-started run.
+- Removed the repetitive Fly preflight engine switch and brake lever requirement. `Begin Takeoff` now starts the takeoff roll directly.
+- Removed Fly screen flash feedback so red/green full-screen light effects no longer interrupt the flight.
+- Reworked the Fly setup panel in `index.html` with clearer round choices and visible scoring notes.
+- Updated Fly instructions to describe the implemented scoring math instead of unfinished or inaccurate mechanics.
+- Changed the leaderboard table to include both Speed Flags and Fly local scores.
+- Added deployed Fly leaderboard loading from `/api/fly/leaderboard` when the Netlify API is available.
+- Added Speed Flags round setup and removed timer-based run endings; timer now only tracks answer speed.
+- Added a Fly pause menu on Escape with Resume, End Run, Speed Flags, Runs, Leaderboard, rank list, and tech upgrades.
+- Changed new Fly runs to reset tech points and tech upgrades.
+- Changed Fly result/game-over states to hard-stop simulation and pending round transitions.
+- Removed flag images from Speed Flags answer buttons; answer cards now render country names only.
+- Removed the Fly HUD dropdown and on-screen pause button. Escape is now the only pause control.
+- Moved Fly radio/audio controls and target mini-card into the Escape pause menu.
+- Changed Fly round selection to show a neutral setup background and ignore plane controls until a route length is selected.
+- Reduced Airliner Scout to a compact nonblocking mission log and hid it during Fly setup.
+- Removed duplicated Fly HUD panels for speed, altitude, fuel, time, tech, and route target.
+- Added stable numeric values under the Fly speed, altitude, and fuel dials.
+- Removed the large duplicate Route Target overlay and neutralized red/green checkpoint status styling.
+- Added Fly result details that show target landing points and route-completion bonus separately, so the final score no longer appears fictitious.
+- Deleted `rocket.html`; the single entry point is now `index.html`.
+- Removed country labels from the Fly map and saved route map so players must identify destinations from map knowledge.
+- Removed the visible destination marker, target checkpoint panel, and free destination distance guidance during Fly routes.
+- Added a pause-menu destination scan that costs 10 tech points and shows distance for 5 seconds only.
+- Increased Fly takeoff acceleration and top-speed scaling so planes leave the runway faster.
+- Added Fly plane classes from Propeller Trainer through Military Fighter Jet, calculated from speed, acceleration, braking, handling, and upgrades.
+- Added plane class display to the Fly dashboard, pause status, local Fly runs, leaderboard rows, result details, and rank progress.
+- Updated Fly manual/tutorial text to describe no-label navigation and the paid scan mechanic.
+- Added Speed Flags, Runs, Leaderboard, and Manual buttons to the Fly setup screen.
+- Replaced the all-at-once Fly saved route map with an interactive route inspector. Round buttons or route clicks isolate one flight and show destination, fuel, score, time, and depot details.
+- Changed right-click handling so it silently blocks the context menu without marking the session as tampered or locking the game.
+- Bumped the Fly guard script version so the silent right-click behavior is not held back by browser cache.
+- Changed depot landing audio so the refuel sound no longer stops the propeller engine loop.
+- Added `MULTI_USER_FLY_PLAYERS.md` with the new, conservative, and pro Fly player simulation plan.
+- Added `window.FlagAgentSim.run()` and the `?simulateAgents=1` test trigger for separate New, Conservative, and Pro Fly agent runs.
+- Ran the agent simulation once in Chrome and saved results to `SIMULATION_TEST_RESULTS.md`.
+- Changed profile star score and best plane progress to ignore `agent-simulation` Fly runs.
+- Fixed agent simulation target selection so agents no longer repeat one nearby destination, and lowered simulated score ranges.
+- Reran the agent simulation; corrected scores are documented in `SIMULATION_TEST_RESULTS.md`.
+- Prepared `flaggame-live-deploy-20260613.zip` packaging with the current single-page app, Netlify live leaderboard functions, database migration, account/profile tracking code, and deployment config.

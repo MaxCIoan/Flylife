@@ -73,6 +73,8 @@ const els = {
   score: document.querySelector("#score"),
   bestScore: document.querySelector("#bestScore"),
   round: document.querySelector("#round"),
+  flagRoundGoal: document.querySelector("#flagRoundGoal"),
+  flagRoundSetup: document.querySelector("#flagRoundSetup"),
   flagImage: document.querySelector("#flagImage"),
   answers: document.querySelector("#answers"),
   recentList: document.querySelector("#recentList"),
@@ -140,7 +142,6 @@ const els = {
   rocketTargetCard: document.querySelector("#rocketTargetCard"),
   rocketTargetFlag: document.querySelector("#rocketTargetFlag"),
   rocketTargetName: document.querySelector("#rocketTargetName"),
-  rocketHudDetails: document.querySelector(".rocket-hud-details"),
   rocketTargetMini: document.querySelector("#rocketTargetMini"),
   rocketTargetMiniFlag: document.querySelector("#rocketTargetMiniFlag"),
   rocketTargetMiniName: document.querySelector("#rocketTargetMiniName"),
@@ -179,14 +180,16 @@ const els = {
   fuelTechLabel: document.querySelector("#fuelTechLabel"),
   speedTechLabel: document.querySelector("#speedTechLabel"),
   turnTechLabel: document.querySelector("#turnTechLabel"),
-  techTreeOpen: document.querySelector("#techTreeOpen"),
   techTreeClose: document.querySelector("#techTreeClose"),
   techTreeOverlay: document.querySelector("#techTreeOverlay"),
   techTreeStatus: document.querySelector("#techTreeStatus"),
+  pauseResume: document.querySelector("#pauseResume"),
+  pauseEndRun: document.querySelector("#pauseEndRun"),
+  pauseScanTarget: document.querySelector("#pauseScanTarget"),
+  pauseRankList: document.querySelector("#pauseRankList"),
+  manualRankList: document.querySelector("#manualRankList"),
   rocketMessage: document.querySelector("#rocketMessage"),
   rocketStart: document.querySelector("#rocketStart"),
-  rocketMenuEndRun: document.querySelector("#rocketMenuEndRun"),
-  rocketMenuMain: document.querySelector("#rocketMenuMain"),
   rocketResultOverlay: document.querySelector("#rocketResultOverlay"),
   rocketResultTitle: document.querySelector("#rocketResultTitle"),
   rocketResultSummary: document.querySelector("#rocketResultSummary"),
@@ -201,8 +204,11 @@ const storeKey = "flagHunterLocalProfile";
 const audioDbName = "flagHunterAudio";
 const audioStoreName = "tracks";
 const runTime = 45;
+const defaultFlagRounds = 10;
+const allowedGameRounds = [10, 15, 20, 50];
 let state;
 let timer;
+let flagQuestionTimeout;
 let audioContext;
 let fxGain;
 let engineGain;
@@ -222,6 +228,8 @@ let rocketWorldFeatures = null;
 let rocketWorldLoading = false;
 let rocketCatalog = null;
 let rocketCatalogLoading = false;
+let officialFlyLeaders = [];
+let officialFlyLeadersLoaded = false;
 const blockedRocketCountries = new Set(["Fiji", "Antarctica"]);
 const rocketRadioStations = [
   "",
@@ -269,6 +277,16 @@ const rocketTechSteps = {
     ["Apex Handling", "max turn path"]
   ]
 };
+
+const planeClasses = [
+  { name: "Propeller Trainer", threshold: 0 },
+  { name: "WW2 Warbird", threshold: 5 },
+  { name: "1980s Airliner", threshold: 10 },
+  { name: "Advanced Airliner", threshold: 15 },
+  { name: "AIRBUS Class", threshold: 20 },
+  { name: "Private Jet", threshold: 25 },
+  { name: "Military Fighter Jet", threshold: 31 }
+];
 
 const rocketTargets = [
   rocketTarget("Brazil", -52, -10, 1),
@@ -812,10 +830,38 @@ function makeChoices(correct) {
   return shuffle([correct, ...wrong]);
 }
 
-function startRun() {
+function showFlagSetup() {
   clearInterval(timer);
+  clearTimeout(flagQuestionTimeout);
+  state = null;
+  showView("play");
+  if (els.flagRoundSetup) els.flagRoundSetup.hidden = false;
+  if (els.answers) els.answers.innerHTML = "";
+  els.flagCard?.classList.remove("is-correct", "is-wrong");
+  if (els.feedbackBurst) {
+    els.feedbackBurst.textContent = "";
+    els.feedbackBurst.className = "feedback-burst";
+  }
+  if (els.flagImage) {
+    els.flagImage.removeAttribute("src");
+    els.flagImage.alt = "Current flag";
+  }
+  if (els.round) els.round.textContent = "0";
+  if (els.timeLeft) els.timeLeft.textContent = "0.0s";
+  if (els.score) els.score.textContent = "0";
+  if (els.combo) els.combo.textContent = "0";
+  if (els.flagRoundGoal) els.flagRoundGoal.textContent = defaultFlagRounds;
+  renderProfile();
+  renderRankLists();
+}
+
+function startRun(rounds = defaultFlagRounds) {
+  clearInterval(timer);
+  clearTimeout(flagQuestionTimeout);
+  const desiredRounds = allowedGameRounds.includes(Number(rounds)) ? Number(rounds) : defaultFlagRounds;
   state = {
-    time: runTime,
+    time: 0,
+    desiredRounds,
     score: 0,
     combo: 0,
     maxCombo: 0,
@@ -830,24 +876,20 @@ function startRun() {
     startedAt: Date.now()
   };
   showView("play");
+  if (els.flagRoundSetup) els.flagRoundSetup.hidden = true;
   nextQuestion();
   timer = setInterval(tick, 100);
 }
 
 function tick() {
-  const speed = 1 + Math.min(1.25, state.streak * 0.045);
-  state.time -= 0.1 * speed;
-  if (state.time <= 0) {
-    state.time = 0;
-    renderStats();
-    endRun();
-    return;
-  }
+  if (!state?.accepting) return;
+  state.time = (Date.now() - state.questionStartedAt) / 1000;
   renderStats();
 }
 
 function nextQuestion() {
   state.accepting = true;
+  state.time = 0;
   state.current = pickFlag();
   state.round += 1;
   state.questionStartedAt = Date.now();
@@ -902,7 +944,11 @@ function answer(choice, button) {
   state.recent = state.recent.slice(0, 5);
   renderStats();
   renderRecent();
-  setTimeout(nextQuestion, 520);
+  if (state.round >= state.desiredRounds) {
+    flagQuestionTimeout = setTimeout(endRun, 520);
+  } else {
+    flagQuestionTimeout = setTimeout(nextQuestion, 520);
+  }
 }
 
 function launchFireworks() {
@@ -1015,6 +1061,9 @@ function hexToRgba(hex, alpha) {
 
 function endRun() {
   clearInterval(timer);
+  clearTimeout(flagQuestionTimeout);
+  if (!state) return;
+  state.accepting = false;
   const run = {
     id: crypto.randomUUID(),
     displayName: profile.displayName || "Guest",
@@ -1022,7 +1071,7 @@ function endRun() {
     createdAt: new Date().toISOString(),
     score: Math.round(state.score),
     elapsedMs: Math.max(0, Date.now() - state.startedAt),
-    rounds: state.round - 1,
+    rounds: state.round,
     correct: state.correct,
     mistakes: state.mistakes,
     maxCombo: state.maxCombo,
@@ -1040,6 +1089,7 @@ function saveRocketSessionResult(title, summary) {
   if (!rocketState || rocketState.sessionSaved) return null;
   rocketState.sessionSaved = true;
   const completedRounds = rocketState.roundLogs.filter((log) => log.success).length;
+  const planeClass = getPlaneClass({ tech: rocketState.tech, telemetry: rocketState.telemetry }).name;
   const session = {
     id: crypto.randomUUID(),
     mode: "rocket",
@@ -1054,6 +1104,9 @@ function saveRocketSessionResult(title, summary) {
     longestRun: rocketState.roundLogs.length,
     fuel: rocketState.fuel,
     techPoints: rocketState.techPoints,
+    tech: { ...rocketState.tech },
+    telemetry: { ...(rocketState.telemetry || {}) },
+    planeClass,
     logs: rocketState.roundLogs.map((log) => ({
       ...log,
       trace: (log.trace || []).slice(-260),
@@ -1074,10 +1127,12 @@ function saveRocketSessionResult(title, summary) {
 }
 
 function renderStats() {
+  if (!state) return;
   const best = getBestRun();
-  const rank = getRank(best?.score || state?.score || 0);
+  const rankScore = Math.max(getBestOverallScore(), state?.score || 0);
+  const rank = getRank(rankScore);
   const next = ranks[Math.min(ranks.length - 1, rank.index + 1)];
-  const points = best?.score || state?.score || 0;
+  const points = rankScore;
   const progress = next.points === rank.points ? 100 : ((points - rank.points) / (next.points - rank.points)) * 100;
 
   els.timeLeft.textContent = `${state.time.toFixed(1)}s`;
@@ -1086,6 +1141,7 @@ function renderStats() {
   els.score.textContent = formatScore(state.score);
   els.bestScore.textContent = formatScore(best?.score || 0);
   els.round.textContent = state.round;
+  if (els.flagRoundGoal) els.flagRoundGoal.textContent = state.desiredRounds || defaultFlagRounds;
   els.difficultyBar.style.width = `${Math.min(100, 20 + state.streak * 8)}%`;
   els.rankPoints.textContent = formatScore(points);
   els.nextRankPoints.textContent = formatScore(next.points);
@@ -1159,10 +1215,10 @@ function renderTables() {
     row.innerHTML = `
       <td>${new Date(run.createdAt).toLocaleString()}</td>
       <td>${formatScore(run.score)}</td>
+      <td>${escapeHtml(run.planeClass || getPlaneClass(run).name)}</td>
       <td>${run.selectedRounds || run.rounds} rounds</td>
       <td>${run.completedRounds || 0} reached</td>
       <td>${Math.max(0, (run.longestRun || 0) - (run.completedRounds || 0))} missed</td>
-      <td>${run.longestRun || 0}/${run.selectedRounds || run.rounds}</td>
       <td><button class="mini-btn" type="button">Open</button></td>
     `;
     row.addEventListener("click", () => toggleRunDetails(row, run, 7, "rocket-run"));
@@ -1175,20 +1231,82 @@ function renderTables() {
     flyTable?.append(row);
   });
 
-  const leaderboardPlayers = buildLeaderboardPlayers(runs);
-  els.leaderboardTable.innerHTML = leaderboardPlayers.length ? "" : `<tr><td colspan="6">No local scores yet.</td></tr>`;
-  leaderboardPlayers.forEach((player, index) => {
+  const leaderboardEntries = buildLocalLeaderboardEntries(runs, rocketRuns, officialFlyLeaders);
+  els.leaderboardTable.innerHTML = leaderboardEntries.length ? "" : `<tr><td colspan="7">No local scores yet.</td></tr>`;
+  leaderboardEntries.forEach((entry, index) => {
     const row = document.createElement("tr");
+    if (entry.type === "fly") {
+      row.className = "clickable-row";
+      row.tabIndex = 0;
+    }
     row.innerHTML = `
       <td>#${index + 1}</td>
-      <td>${escapeHtml(player.displayName || "Guest")}</td>
-      <td>${formatScore(player.bestScore)}</td>
-      <td>${player.bestRun?.mistakes?.length || 0}</td>
-      <td>${formatScore(getRunPenalty(player.bestRun))}</td>
-      <td>${formatDuration(player.bestRun?.elapsedMs)}</td>
+      <td>${entry.mode}</td>
+      <td>${escapeHtml(entry.displayName || "Guest")}</td>
+      <td>${formatScore(entry.score)}</td>
+      <td>${entry.plane || ""}</td>
+      <td>${entry.result}</td>
+      <td>${entry.details}</td>
     `;
+    if (entry.type === "fly") {
+      row.addEventListener("click", () => toggleRunDetails(row, entry.run, 7, "rocket-run"));
+      row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          toggleRunDetails(row, entry.run, 7, "rocket-run");
+        }
+      });
+    }
     els.leaderboardTable.append(row);
   });
+}
+
+function buildLocalLeaderboardEntries(flagRuns, flyRuns, officialFlyRuns = []) {
+  const flagEntries = buildLeaderboardPlayers(flagRuns).map((player) => ({
+    type: "flag",
+    mode: "Speed Flags",
+    displayName: player.displayName,
+    score: player.bestScore,
+    plane: "",
+    result: `${player.bestRun?.correct?.length || 0} correct, ${player.bestRun?.mistakes?.length || 0} errors`,
+    details: `Penalty ${formatScore(getRunPenalty(player.bestRun))} / ${formatDuration(player.bestRun?.elapsedMs)}`
+  }));
+  const flyEntries = (flyRuns || []).map((run) => ({
+    type: "fly",
+    mode: "Fly",
+    displayName: run.displayName || "Guest",
+    score: run.score || 0,
+    plane: escapeHtml(run.planeClass || getPlaneClass(run).name),
+    result: `${run.completedRounds || 0}/${run.selectedRounds || run.rounds || 0} reached`,
+    details: `<button class="mini-btn" type="button">Open</button>`,
+    run
+  }));
+  const officialFlyEntries = (officialFlyRuns || []).map((run) => ({
+    type: "official-fly",
+    mode: "Official Fly",
+    displayName: run.displayName || "Guest",
+    score: run.finalScore || 0,
+    plane: "",
+    result: `${run.rounds || 0} rounds`,
+    details: run.elapsedMs ? formatDuration(run.elapsedMs) : "Submitted"
+  }));
+  return [...officialFlyEntries, ...flagEntries, ...flyEntries]
+    .sort((a, b) => (b.score || 0) - (a.score || 0) || String(a.mode).localeCompare(String(b.mode)))
+    .slice(0, 50);
+}
+
+function loadOfficialFlyLeaderboard() {
+  if (officialFlyLeadersLoaded) return;
+  officialFlyLeadersLoaded = true;
+  fetch("/api/fly/leaderboard")
+    .then((response) => response.ok ? response.json() : Promise.reject(new Error("official fly leaderboard unavailable")))
+    .then((data) => {
+      officialFlyLeaders = Array.isArray(data.leaders) ? data.leaders : [];
+      renderTables();
+    })
+    .catch(() => {
+      officialFlyLeaders = [];
+    });
 }
 
 function toggleRunDetails(row, data, columns, type = "run") {
@@ -1206,14 +1324,14 @@ function toggleRunDetails(row, data, columns, type = "run") {
   row.classList.add("expanded");
   row.after(detail);
   if (type === "rocket-run") {
-    const canvas = detail.querySelector("canvas[data-rocket-session-map]");
-    if (canvas) drawRocketSessionMap(canvas, data);
+    setupRocketRouteInspector(detail, data);
   }
 }
 
 function renderRocketRunDetails(run) {
   const bestRound = (run.logs || []).filter((log) => log.success).sort((a, b) => b.score - a.score)[0];
   const failed = (run.logs || []).filter((log) => !log.success).length;
+  const logs = run.logs || [];
   return `
     <div class="run-detail-grid">
       <section>
@@ -1224,15 +1342,22 @@ function renderRocketRunDetails(run) {
       <section>
         <span>Final Score</span>
         <strong>${formatScore(run.score || 0)}</strong>
-        <small>Class: ${run.selectedRounds || run.rounds} rounds. Fuel left: ${(run.fuel || 0).toFixed(0)}%.</small>
+        <small>Plane: ${escapeHtml(run.planeClass || getPlaneClass(run).name)}. Class: ${run.selectedRounds || run.rounds} rounds. Fuel left: ${(run.fuel || 0).toFixed(0)}%.</small>
       </section>
       <section>
-        <span>Best Target</span>
-        <strong>${bestRound ? escapeHtml(bestRound.target) : "No target reached"}</strong>
-        <small>${bestRound ? `${Math.max(0, bestRound.time).toFixed(1)}s left` : "Reach a country target to set a best target."}</small>
+        <span>Best Destination</span>
+        <strong>${bestRound ? escapeHtml(bestRound.target) : "No destination reached"}</strong>
+        <small>${bestRound ? `${Math.max(0, bestRound.time).toFixed(1)}s left` : "Reach a destination country to set a best result."}</small>
       </section>
     </div>
-    <canvas class="rocket-session-map" data-rocket-session-map width="900" height="340" aria-label="Saved rocket route map"></canvas>
+    <div class="rocket-route-inspector" data-rocket-route-inspector>
+      <div class="rocket-route-toolbar" data-rocket-route-buttons>
+        <button type="button" class="selected" data-route-index="all">All Routes</button>
+        ${logs.map((log, index) => `<button type="button" data-route-index="${index}">R${log.round}</button>`).join("")}
+      </div>
+      <canvas class="rocket-session-map" data-rocket-session-map width="900" height="340" aria-label="Saved rocket route map"></canvas>
+      <div class="rocket-route-meta" data-rocket-route-meta></div>
+    </div>
   `;
 }
 
@@ -1407,21 +1532,263 @@ function formatSeconds(ms) {
 function renderProfile() {
   const best = getBestRun();
   els.profileName.textContent = profile.displayName || "Guest";
-  els.profileBest.textContent = formatScore(best?.score || 0);
+  els.profileBest.textContent = formatScore(getBestOverallScore());
   els.profileTitle.textContent = profile.displayName || "Guest";
   els.topAvatar.textContent = getInitials(profile.displayName || "Guest");
   els.displayNameInput.value = profile.displayName === "Guest" ? "" : profile.displayName;
   syncProfileControls();
   applyCharacterPreview();
+  renderRankLists();
 }
 
 function getBestRun() {
   return [...(profile.runs || [])].sort((a, b) => b.score - a.score)[0];
 }
 
+function getBestOverallScore() {
+  const flagBest = Math.max(0, ...(profile.runs || []).map((run) => Number(run.score) || 0));
+  const flyBest = Math.max(0, ...(profile.rocketRuns || [])
+    .filter((run) => run.source !== "agent-simulation")
+    .map((run) => Number(run.score) || 0));
+  return Math.max(flagBest, flyBest);
+}
+
+function getPlaneClass(input = {}) {
+  const tech = input.tech || {};
+  const peakSpeed = Number(input.peakSpeed ?? input.telemetry?.peakSpeed ?? 0);
+  const peakAccel = Number(input.peakAccel ?? input.telemetry?.peakAccel ?? 0);
+  const peakDecel = Number(input.peakDecel ?? input.telemetry?.peakDecel ?? 0);
+  const peakTurn = Number(input.peakTurn ?? input.telemetry?.peakTurn ?? 0);
+  const turn = Number(tech.turn || 0);
+  const speed = Number(tech.speed || 0);
+  const fuel = Number(tech.fuel || 0);
+  const score = speed * 4 + turn * 2.2 + fuel * 1.2 + peakSpeed / 240 + peakAccel / 500 + peakDecel / 520 + peakTurn * 0.9;
+  return [...planeClasses].reverse().find((plane) => score >= plane.threshold) || planeClasses[0];
+}
+
+function getBestPlaneClass() {
+  return (profile.rocketRuns || [])
+    .filter((run) => run.source !== "agent-simulation")
+    .map((run) => run.planeClass || getPlaneClass(run).name)
+    .sort((a, b) => Math.max(0, planeClasses.findIndex((plane) => plane.name === b)) - Math.max(0, planeClasses.findIndex((plane) => plane.name === a)))[0] || planeClasses[0].name;
+}
+
+function seededRandom(seed) {
+  let value = seed >>> 0;
+  return () => {
+    value += 0x6D2B79F5;
+    let next = value;
+    next = Math.imul(next ^ (next >>> 15), next | 1);
+    next ^= next + Math.imul(next ^ (next >>> 7), next | 61);
+    return ((next ^ (next >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function makeSimulationStart(target, rand) {
+  let start = { x: 0, y: 0 };
+  let guard = 0;
+  do {
+    guard += 1;
+    start = {
+      x: 320 + rand() * 7560,
+      y: 260 + rand() * 3680
+    };
+  } while (guard < 80 && Math.hypot(start.x - target.x, start.y - target.y) < 2100);
+  return start;
+}
+
+function makeSimulationWaypoint(start, target, rand, style) {
+  const distance = Math.hypot(start.x - target.x, start.y - target.y);
+  if (style === "new" || rand() < 0.38) {
+    return {
+      x: 320 + rand() * 7560,
+      y: 260 + rand() * 3680
+    };
+  }
+  const mid = {
+    x: start.x + (target.x - start.x) * (0.42 + rand() * 0.24),
+    y: start.y + (target.y - start.y) * (0.42 + rand() * 0.24)
+  };
+  const offset = (style === "pro" ? 0.18 : 0.34) * distance;
+  return {
+    x: Math.max(180, Math.min(8020, mid.x + (rand() - 0.5) * offset)),
+    y: Math.max(180, Math.min(4020, mid.y + (rand() - 0.5) * offset))
+  };
+}
+
+function makeSimulatedTrace(start, target, rand, style) {
+  const trace = [];
+  const points = style === "new" ? 46 : style === "pro" ? 34 : 40;
+  const wander = style === "new" ? 760 : style === "pro" ? 260 : 430;
+  const waypoint = makeSimulationWaypoint(start, target, rand, style);
+  for (let index = 0; index < points; index += 1) {
+    const t = index / Math.max(1, points - 1);
+    const legT = t < 0.55 ? t / 0.55 : (t - 0.55) / 0.45;
+    const from = t < 0.55 ? start : waypoint;
+    const to = t < 0.55 ? waypoint : target;
+    const curve = Math.sin(t * Math.PI * (style === "new" ? 3.2 : style === "pro" ? 1.3 : 1.8));
+    trace.push({
+      x: Math.max(0, Math.min(8200, from.x + (to.x - from.x) * legT + curve * wander + (rand() - 0.5) * wander * 0.28)),
+      y: Math.max(0, Math.min(4200, from.y + (to.y - from.y) * legT + Math.cos(t * Math.PI * 2) * wander * 0.34 + (rand() - 0.5) * wander * 0.22))
+    });
+  }
+  return trace;
+}
+
+function makeSimulatedFlyAgentRuns() {
+  const rand = seededRandom(20260613);
+  const personas = [
+    {
+      name: "Agent New Pilot",
+      style: "new",
+      rounds: 10,
+      completed: 4,
+      missedReasons: ["forgot destination", "landed outside country", "ran low on fuel"],
+      tech: { fuel: 0, speed: 1, turn: 0 },
+      telemetry: { peakSpeed: 430, peakAccel: 530, peakDecel: 360, peakTurn: 1.2 },
+      scoreRange: [1900, 3800]
+    },
+    {
+      name: "Agent Conservative",
+      style: "conservative",
+      rounds: 10,
+      completed: 7,
+      missedReasons: ["hard location missed", "too slow for timer", "uncertain destination"],
+      tech: { fuel: 2, speed: 1, turn: 2 },
+      telemetry: { peakSpeed: 590, peakAccel: 640, peakDecel: 420, peakTurn: 2.4 },
+      scoreRange: [4300, 7100]
+    },
+    {
+      name: "Agent Pro Pilot",
+      style: "pro",
+      rounds: 10,
+      completed: 10,
+      missedReasons: [],
+      tech: { fuel: 2, speed: 5, turn: 4 },
+      telemetry: { peakSpeed: 1190, peakAccel: 980, peakDecel: 760, peakTurn: 4.8 },
+      scoreRange: [7600, 11200]
+    }
+  ];
+  const sourceTargets = getRocketPool(4);
+  const createdAtBase = Date.now();
+  return personas.map((persona, personaIndex) => {
+    let score = 0;
+    const logs = Array.from({ length: persona.rounds }, (_, index) => {
+      const target = sourceTargets[(personaIndex * 7 + index * 5) % sourceTargets.length];
+      const start = makeSimulationStart(target, rand);
+      const success = index < persona.completed;
+      const roundScore = success
+        ? Math.round(persona.scoreRange[0] + rand() * (persona.scoreRange[1] - persona.scoreRange[0]))
+        : -850;
+      score = Math.max(0, score + roundScore);
+      const fuel = Math.max(0, Math.min(100, 92 - index * (persona.style === "new" ? 8.5 : persona.style === "pro" ? 3.2 : 5.4) + (success ? 10 : -8)));
+      const depotStop = success && (persona.style === "pro" ? index % 2 === 1 : persona.style === "conservative" ? index % 3 === 2 : index === 2);
+      return {
+        round: index + 1,
+        target: target.name,
+        flag: target.flag || "",
+        targetX: target.x,
+        targetY: target.y,
+        success,
+        reason: success ? "simulation destination reached" : persona.missedReasons[index % Math.max(1, persona.missedReasons.length)] || "missed",
+        score: Math.max(0, score),
+        scoreEvents: success ? [
+          { round: index + 1, type: "Simulated destination landing", points: Math.max(80, Math.round(roundScore * 0.58)), detail: "persona route model" },
+          { round: index + 1, type: "Route bonus", points: Math.max(120, Math.round(roundScore * 0.42)), detail: "simulated timer + fuel + difficulty" }
+        ] : [],
+        fuel,
+        time: success ? (persona.style === "pro" ? 28 + rand() * 20 : persona.style === "conservative" ? 12 + rand() * 18 : 4 + rand() * 12) : 0,
+        trace: makeSimulatedTrace(start, target, rand, persona.style),
+        landings: depotStop ? [{
+          depot: `Sim Depot ${index + 1}`,
+          km: Math.round(20 + rand() * 180),
+          dist: 8 + rand() * 44,
+          speed: persona.style === "pro" ? 360 + rand() * 170 : persona.style === "conservative" ? 160 + rand() * 160 : 90 + rand() * 180,
+          altitude: persona.style === "pro" ? 120 + rand() * 420 : 80 + rand() * 760,
+          points: persona.style === "pro" ? 1600 + Math.round(rand() * 900) : 700 + Math.round(rand() * 800),
+          success: true
+        }] : []
+      };
+    });
+    const completedScore = Math.max(0, Math.round(logs[logs.length - 1]?.score || 0));
+    return {
+      id: crypto.randomUUID(),
+      mode: "rocket",
+      source: "agent-simulation",
+      batchId: "agent-test-2026-06-13",
+      displayName: persona.name,
+      createdAt: new Date(createdAtBase + personaIndex * 1000).toISOString(),
+      title: `${persona.name} Simulation`,
+      summary: `${persona.completed}/${persona.rounds} destinations reached by ${persona.style} route logic.`,
+      score: completedScore,
+      selectedRounds: persona.rounds,
+      rounds: persona.rounds,
+      completedRounds: persona.completed,
+      longestRun: persona.rounds,
+      fuel: logs[logs.length - 1]?.fuel || 0,
+      techPoints: persona.style === "pro" ? 4 : persona.style === "conservative" ? 2 : 0,
+      tech: persona.tech,
+      telemetry: persona.telemetry,
+      planeClass: getPlaneClass({ tech: persona.tech, telemetry: persona.telemetry }).name,
+      logs
+    };
+  });
+}
+
+function runAgentFlySimulationTest() {
+  const simulatedRuns = makeSimulatedFlyAgentRuns();
+  const existingHumanAndManualRuns = (profile.rocketRuns || []).filter((run) => run.source !== "agent-simulation");
+  profile.rocketRuns = [...simulatedRuns, ...existingHumanAndManualRuns].slice(0, 40);
+  profile.agentSimulationReport = {
+    createdAt: new Date().toISOString(),
+    runs: simulatedRuns.map((run) => ({
+      displayName: run.displayName,
+      score: run.score,
+      planeClass: run.planeClass,
+      completedRounds: run.completedRounds,
+      rounds: run.rounds,
+      fuel: run.fuel,
+      status: run.completedRounds === run.rounds ? "succeeded" : "partial"
+    }))
+  };
+  saveProfile();
+  renderProfile();
+  renderTables();
+  return profile.agentSimulationReport;
+}
+
+window.FlagAgentSim = Object.freeze({
+  run: runAgentFlySimulationTest,
+  preview: makeSimulatedFlyAgentRuns
+});
+
 function getRank(points) {
   const index = ranks.findLastIndex((rank) => points >= rank.points);
   return { ...ranks[Math.max(0, index)], index: Math.max(0, index) };
+}
+
+function renderRankLists() {
+  const points = getBestOverallScore();
+  const current = getRank(points);
+  const bestPlane = getBestPlaneClass();
+  const markup = ranks.map((rank, index) => {
+    const unlocked = points >= rank.points;
+    const nextPoints = ranks[index + 1]?.points;
+    const progress = nextPoints
+      ? Math.max(0, Math.min(100, ((points - rank.points) / (nextPoints - rank.points)) * 100))
+      : 100;
+    return `
+      <div class="rank-list-row ${unlocked ? "unlocked" : ""}">
+        <b>${escapeHtml(rank.name)}</b>
+        <span>${formatScore(rank.points)} pts required</span>
+        <em>${unlocked ? (index === current.index ? `${formatScore(points)} pts now` : "Unlocked") : `${formatScore(rank.points - points)} pts away`}</em>
+        ${index === current.index ? `<span>Best plane: ${escapeHtml(bestPlane)}</span>` : ""}
+        <i><u style="width:${unlocked ? progress : 0}%"></u></i>
+      </div>
+    `;
+  }).join("");
+  if (els.pauseRankList) els.pauseRankList.innerHTML = markup;
+  if (els.manualRankList) els.manualRankList.innerHTML = markup;
 }
 
 function showView(name, updateHash = true) {
@@ -1436,7 +1803,10 @@ function showView(name, updateHash = true) {
     profile: "profileView"
   };
   document.querySelector(`#${viewMap[name]}`).classList.add("active");
-  if (name !== "play") clearInterval(timer);
+  if (name !== "play") {
+    clearInterval(timer);
+    clearTimeout(flagQuestionTimeout);
+  }
   if (updateHash && location.hash !== `#${name}`) {
     history.replaceState(null, "", `#${name}`);
   }
@@ -2902,12 +3272,12 @@ function startRocketRun() {
   clearInterval(timer);
   stopPropellerSound();
   if (els.rocketResultOverlay) els.rocketResultOverlay.hidden = true;
+  if (els.techTreeOverlay) els.techTreeOverlay.hidden = true;
   const start = randomRocketStart();
-  const tech = rocketState?.tech || { fuel: 0, speed: 0, turn: 0 };
-  const storedRounds = Number(localStorage.getItem("flagHunterRocketRounds") || 0);
+  const tech = { fuel: 0, speed: 0, turn: 0 };
   const tutorialMode = sessionStorage.getItem("flagHunterRocketTutorial") === "1";
   if (tutorialMode) sessionStorage.removeItem("flagHunterRocketTutorial");
-  const externalRounds = tutorialMode ? 1 : [10, 15, 20, 50].includes(storedRounds) ? storedRounds : 0;
+  const externalRounds = tutorialMode ? 1 : 0;
   const desiredRounds = externalRounds || rocketState?.desiredRounds || 10;
   rocketState = {
     active: false,
@@ -2924,7 +3294,6 @@ function startRocketRun() {
     parkingHold: 0,
     parked: false,
     restartTakeoffOnReentry: false,
-    preflight: { engineOn: false, brakeUnlocked: false, draggingLever: false, lever: 0, armed: false },
     landingHold: { time: 0, ready: false, entrySpeed: 0, entryAltitude: 0 },
     objectiveZone: null,
     accel: 0,
@@ -2933,8 +3302,10 @@ function startRocketRun() {
     round: 1,
     wins: 0,
     score: 0,
-    techPoints: rocketState?.techPoints || 0,
+    techPoints: 0,
     tech,
+    telemetry: { peakSpeed: 0, peakAccel: 0, peakDecel: 0, peakTurn: 0 },
+    targetScanUntil: 0,
     fuel: Math.min(100, 76 + tech.fuel * 9),
     time: 90,
     roundTimeLimit: 90,
@@ -2947,12 +3318,15 @@ function startRocketRun() {
     routeTrail: [],
     roundLogs: [],
     landingLogs: [],
+    scoreEvents: [],
     roundLogged: false,
     pendingNextRound: null,
     targetHistory: rocketState?.targetHistory || [],
     lastObjectiveDistance: null,
     distanceTrend: null,
     resultAction: "restart",
+    paused: false,
+    pausedWasActive: false,
     tutorial: tutorialMode ? { active: true, step: 0, seen: new Set(), forcePause: true } : null,
     feedback: [],
     flash: null,
@@ -2972,7 +3346,7 @@ function startRocketRun() {
   updateRocketTargetCard(Boolean(externalRounds));
   updateRocketRoundSetup(!externalRounds);
   if (externalRounds) {
-    els.rocketMessage.textContent = tutorialMode ? "Tutorial loaded. Read the first card, then follow the arrows." : `${externalRounds} route rounds loaded from setup. Check the target flag, then begin takeoff.`;
+    els.rocketMessage.textContent = tutorialMode ? "Tutorial loaded. Read the destination card, then follow the arrows." : `${externalRounds} route rounds loaded from setup. Check the destination flag, then begin takeoff.`;
     if (els.rocketStart) {
       els.rocketStart.hidden = false;
       els.rocketStart.textContent = "Begin Takeoff";
@@ -2997,8 +3371,9 @@ function prepareRocketBriefing(rounds) {
   rocketState.round = 1;
   rocketState.wins = 0;
   updateRocketRoundSetup(false);
+  updateRocketRoundButtons(rounds);
   updateRocketTargetCard(true);
-  els.rocketMessage.textContent = "Target announced. Check the flag, point value, and route. Begin takeoff when ready.";
+  els.rocketMessage.textContent = "Destination assigned. Check the flag and country, then begin takeoff when ready.";
   if (els.rocketStart) {
     els.rocketStart.hidden = false;
     els.rocketStart.textContent = "Begin Takeoff";
@@ -3012,6 +3387,13 @@ function prepareRocketBriefing(rounds) {
 
 function updateRocketRoundSetup(show) {
   if (els.rocketRoundSetup) els.rocketRoundSetup.hidden = !show;
+  updateRocketRoundButtons(rocketState?.desiredRounds || 10);
+}
+
+function updateRocketRoundButtons(rounds) {
+  document.querySelectorAll("[data-rocket-rounds]").forEach((button) => {
+    button.classList.toggle("selected", Number(button.dataset.rocketRounds) === Number(rounds));
+  });
 }
 
 const rocketTutorialSteps = [
@@ -3022,27 +3404,15 @@ const rocketTutorialSteps = [
     arrow: "top"
   },
   {
-    phase: "preflight",
-    title: "Start The Engine",
-    text: "Click the engine meter in the bottom-right cockpit panel. Watch for the green engine light before touching the brake lever.",
-    arrow: "bottom-right"
-  },
-  {
-    phase: "preflight-engine",
-    title: "Aim, Then Release Brake",
-    text: "Use WASD or the arrow keys to point the plane at your takeoff heading. Then drag the brake lever all the way down until it clicks.",
-    arrow: "bottom-right"
-  },
-  {
     phase: "takeoff",
     title: "Takeoff Roll",
-    text: "The plane is locked east on the runway. Build speed to 105 m/s, then climb above 120 m. Watch speed, altitude, and time.",
+    text: "The plane starts moving immediately. Build speed to 105 m/s, then climb above 120 m. Watch speed, altitude, and time.",
     arrow: "center"
   },
   {
     phase: "cruise",
     title: "Find The Country",
-    text: "There is no arrow to the destination. Use the target flag, distance readout, minimap outline, and country labels to navigate.",
+    text: "There is no arrow, marker, or country label. Use the briefing flag, map shape, minimap outline, and optional 10 TP scan to navigate.",
     arrow: "right"
   },
   {
@@ -3068,7 +3438,6 @@ function updateRocketTutorial(force = false) {
     return;
   }
   const matches = step.phase === rocketState.phase
-    || (step.phase === "preflight-engine" && rocketState.phase === "preflight" && rocketState.preflight.engineOn)
     || (step.phase === "landing" && rocketState.phase === "cruise")
     || (step.phase === "tech" && rocketState.phase === "briefing" && rocketState.round > 1);
   if (!matches && !force) return;
@@ -3089,7 +3458,7 @@ function continueRocketTutorial() {
   const tutorial = rocketState.tutorial;
   const current = rocketTutorialSteps[tutorial.step];
   if (els.rocketTutorialOverlay) els.rocketTutorialOverlay.hidden = true;
-  if (tutorial.forcePause && current?.phase !== "briefing" && current?.phase !== "preflight" && current?.phase !== "preflight-engine") {
+  if (tutorial.forcePause && current?.phase !== "briefing") {
     rocketState.active = true;
     rocketState.last = performance.now();
   }
@@ -3104,7 +3473,8 @@ function continueRocketTutorial() {
 function finishRocketTutorial() {
   if (rocketState?.tutorial) rocketState.tutorial.active = false;
   if (els.rocketTutorialOverlay) els.rocketTutorialOverlay.hidden = true;
-  window.location.href = "rocket.html";
+  showView("rocket");
+  startRocketRun();
 }
 
 function beginRocketTakeoff() {
@@ -3114,9 +3484,8 @@ function beginRocketTakeoff() {
   }
   if (rocketState.phase !== "briefing" || rocketState.active) return;
   const rect = els.rocketCanvas.getBoundingClientRect();
-  rocketState.active = false;
-  rocketState.phase = "preflight";
-  rocketState.preflight = { engineOn: false, brakeUnlocked: false, draggingLever: false, lever: 0, armed: false };
+  rocketState.active = true;
+  rocketState.phase = "takeoff";
   rocketState.targetCardUntil = performance.now() + 4200;
   rocketState.last = performance.now();
   rocketState.mouse = { x: rect.width / 2, y: rect.height / 2 };
@@ -3124,21 +3493,23 @@ function beginRocketTakeoff() {
   rocketState.manualControl = false;
   rocketState.manualReleased = false;
   rocketState.trail = [];
-  els.rocketMessage.textContent = "Pre-flight: click the engine meter, use WASD/arrows to aim your takeoff heading, then drag the brake lever fully down until it clicks.";
+  rocketState.ship.vx = Math.cos(rocketState.ship.angle) * 8;
+  rocketState.ship.vy = Math.sin(rocketState.ship.angle) * 8;
+  els.rocketMessage.textContent = "Takeoff started. Build speed, then climb above 120 m.";
   if (els.rocketStart) els.rocketStart.textContent = "Restart Flight Run";
-  rocketFeedback("Start engine", "#ffd33d", "info");
+  playTakeoffSound();
+  startPropellerSound();
   startRocketDefaultRadio();
 }
 
 function engageRocketTakeoff() {
-  if (!rocketState || rocketState.phase !== "preflight" || !rocketState.preflight.engineOn || !rocketState.preflight.brakeUnlocked) return;
+  if (!rocketState || rocketState.phase !== "briefing") return;
   rocketState.active = true;
   rocketState.phase = "takeoff";
   rocketState.ship.vx = Math.cos(rocketState.ship.angle) * 8;
   rocketState.ship.vy = Math.sin(rocketState.ship.angle) * 8;
   rocketState.last = performance.now();
-  els.rocketMessage.textContent = "Brake released. Hold your chosen runway heading, build 105 m/s, then climb above 120 m.";
-  rocketFeedback("Brake released", "#45f875", "success");
+  els.rocketMessage.textContent = "Takeoff started. Build speed, then climb above 120 m.";
   playTakeoffSound();
 }
 
@@ -3147,7 +3518,7 @@ function enterRocketRefuelStop(message) {
   rocketState.parkingHold = 0;
   rocketState.parked = false;
   rocketState.restartTakeoffOnReentry = false;
-  els.rocketMessage.textContent = `${message} Keep flying toward the route target.`;
+  els.rocketMessage.textContent = `${message} Continue toward the destination country.`;
   rocketState.phase = "cruise";
   rocketState.active = true;
 }
@@ -3391,6 +3762,7 @@ function recordRocketRound(success, reason = "route") {
     success,
     reason,
     score: rocketState.score,
+    scoreEvents: (rocketState.scoreEvents || []).filter((event) => event.round === rocketState.round),
     fuel: rocketState.fuel,
     time: rocketState.time,
     trace,
@@ -3415,7 +3787,14 @@ function nextRocketRound(success) {
     const timeBonus = Math.round(rocketState.time * 120);
     const difficultyBonus = rocketState.difficulty * 700;
     const fuelBonus = Math.round(rocketState.fuel * 18);
-    rocketState.score += 1200 + timeBonus + difficultyBonus + fuelBonus;
+    const routeBonus = 1200 + timeBonus + difficultyBonus + fuelBonus;
+    rocketState.score += routeBonus;
+    rocketState.scoreEvents.push({
+      round: rocketState.round,
+      type: "Route bonus",
+      points: routeBonus,
+      detail: `1,200 base + ${formatScore(timeBonus)} timer + ${formatScore(difficultyBonus)} difficulty + ${formatScore(fuelBonus)} fuel`
+    });
     rocketState.techPoints += 2 + Math.floor(rocketState.difficulty / 2);
     rocketState.fuel = Math.min(100, rocketState.fuel + 10 + rocketState.tech.fuel * 3);
     rocketFeedback("Route reached", "#45f875", "success");
@@ -3460,6 +3839,7 @@ function nextRocketRound(success) {
   rocketState.trail = [];
   rocketState.routeTrail = [];
   rocketState.landingLogs = [];
+  rocketState.scoreEvents = rocketState.scoreEvents.filter((event) => event.round !== rocketState.round);
   rocketState.roundLogged = false;
   rocketState.pendingNextRound = null;
   rocketState.parkingHold = 0;
@@ -3467,6 +3847,7 @@ function nextRocketRound(success) {
   rocketState.objectiveZone = null;
   rocketState.lastObjectiveDistance = null;
   rocketState.distanceTrend = null;
+  rocketState.targetScanUntil = 0;
   rocketState.restartTakeoffOnReentry = false;
   rocketState.active = false;
   rocketState.phase = "briefing";
@@ -3485,9 +3866,10 @@ function tickRocket(now) {
   }
   const dt = Math.min(0.033, (now - rocketState.last) / 1000 || 0.016);
   rocketState.last = now;
-  updateRocketPendingNextRound(dt);
-  updateRocketPreflightHeading(dt);
-  if (rocketState.active) updateRocket(dt);
+  if (!rocketState.paused && rocketState.phase !== "result") {
+    updateRocketPendingNextRound(dt);
+    if (rocketState.active) updateRocket(dt);
+  }
   updateRocketTutorial();
   updatePropellerSound();
   drawRocket();
@@ -3501,21 +3883,6 @@ function updateRocketPendingNextRound(dt) {
   const pending = rocketState.pendingNextRound;
   rocketState.pendingNextRound = null;
   nextRocketRound(pending.success);
-}
-
-function updateRocketPreflightHeading(dt) {
-  if (!rocketState || rocketState.phase !== "preflight" || !rocketState.preflight.engineOn || rocketState.preflight.brakeUnlocked) return;
-  const keys = rocketState.keys || {};
-  const x = (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
-  const y = (keys.ArrowDown || keys.KeyS ? 1 : 0) - (keys.ArrowUp || keys.KeyW ? 1 : 0);
-  if (!x && !y) return;
-  const desired = Math.atan2(y, x);
-  let turn = desired - rocketState.ship.angle;
-  while (turn > Math.PI) turn -= Math.PI * 2;
-  while (turn < -Math.PI) turn += Math.PI * 2;
-  rocketState.ship.angle += turn * Math.min(1, dt * 6);
-  rocketState.ship.bank += (Math.max(-1, Math.min(1, turn * 1.8)) - rocketState.ship.bank) * Math.min(1, dt * 8);
-  els.rocketMessage.textContent = "Heading selected. Release the brake when the nose points down your chosen runway angle.";
 }
 
 function updateRocket(dt) {
@@ -3571,10 +3938,10 @@ function updateRocket(dt) {
   const noseDecel = control.manual && pointerAlongHeading >= 0 && control.distance < 115;
   const parkingBrake = rocketState.parked || rocketState.parkingHold > 0;
   const manualPull = control.manual ? Math.max(0, pointerAlongHeading) / 360 : 0;
-  const intent = parkingBrake || spaceBrake || noseDecel ? 0 : control.manual ? Math.min(1, manualPull) : 0.64;
-  rocketState.ship.throttle += (intent - rocketState.ship.throttle) * Math.min(1, dt * (parkingBrake || spaceBrake || noseDecel ? 2.4 : 1.25));
+  const intent = parkingBrake || spaceBrake || noseDecel ? 0 : control.manual ? Math.min(1, manualPull) : 0.82;
+  rocketState.ship.throttle += (intent - rocketState.ship.throttle) * Math.min(1, dt * (parkingBrake || spaceBrake || noseDecel ? 3.2 : 2.15));
   const cloudDrag = 1;
-  const thrust = (310 + rocketState.tech.speed * 70) * cloudDrag;
+  const thrust = (720 + rocketState.tech.speed * 180 + rocketState.tech.turn * 28) * cloudDrag;
   rocketState.ship.vx += Math.cos(rocketState.ship.angle) * thrust * rocketState.ship.throttle * dt;
   rocketState.ship.vy += Math.sin(rocketState.ship.angle) * thrust * rocketState.ship.throttle * dt;
   const brake = parkingBrake ? 0.048 + rocketState.tech.speed * 0.006 : spaceBrake ? 0.034 : noseDecel ? 0.018 : 0;
@@ -3586,7 +3953,7 @@ function updateRocket(dt) {
     rocketState.ship.vy = rocketState.ship.vy / currentSpeed * 30;
     currentSpeed = 30;
   }
-  const maxSpeed = (310 + rocketState.tech.speed * 70 + rocketState.difficulty * 18) * cloudDrag;
+  const maxSpeed = (520 + rocketState.tech.speed * 145 + rocketState.tech.turn * 20 + rocketState.difficulty * 24) * cloudDrag;
   if (currentSpeed > maxSpeed) {
     rocketState.ship.vx = rocketState.ship.vx / currentSpeed * maxSpeed;
     rocketState.ship.vy = rocketState.ship.vy / currentSpeed * maxSpeed;
@@ -3600,6 +3967,12 @@ function updateRocket(dt) {
   }
   rocketState.accel = (currentSpeed - (rocketState.lastSpeed || 0)) / Math.max(0.001, dt);
   rocketState.lastSpeed = currentSpeed;
+  if (rocketState.telemetry) {
+    rocketState.telemetry.peakSpeed = Math.max(rocketState.telemetry.peakSpeed || 0, currentSpeed);
+    rocketState.telemetry.peakAccel = Math.max(rocketState.telemetry.peakAccel || 0, rocketState.accel || 0);
+    rocketState.telemetry.peakDecel = Math.max(rocketState.telemetry.peakDecel || 0, -(rocketState.accel || 0));
+    rocketState.telemetry.peakTurn = Math.max(rocketState.telemetry.peakTurn || 0, Math.abs(turn) * turnRate);
+  }
   const liftSpeed = 105;
   const climbIntent = Math.max(-0.35, Math.min(1, -dy / 220));
   const verticalUpgrade = 1 + rocketState.tech.turn * 0.16 + rocketState.tech.speed * 0.05;
@@ -3612,7 +3985,7 @@ function updateRocket(dt) {
   rocketState.ship.altitude = Math.max(0, Math.min(3200, rocketState.ship.altitude));
   if (rocketState.phase === "takeoff" && rocketState.ship.altitude > 120) {
     rocketState.phase = "cruise";
-    els.rocketMessage.textContent = `Airborne. Follow the target distance from the briefing flag. Optional beacon: ${rocketState.sideQuest.capital}, ${rocketState.sideQuest.name}.`;
+    els.rocketMessage.textContent = `Airborne. Navigate by country shape and the briefing flag. Optional beacon: ${rocketState.sideQuest.capital}, ${rocketState.sideQuest.name}.`;
     rocketFeedback("Cruise unlocked", "#45f875", "success");
   }
   rocketState.ship.x += rocketState.ship.vx * dt;
@@ -3815,7 +4188,7 @@ function completeRocketDepotLanding(depot, dist, landingSnapshot = {}) {
     fuel: rocketState.fuel
   });
   rocketFeedback(`${landingName} +${landing.points} pts +${researchEarned} TP`, landing.perfect ? "#ffffff" : landing.good ? "#45f875" : "#22d9f2", "success");
-  playLandingSound(true);
+  playLandingSound(true, false);
   if (landing.good) playPowerUp();
   enterRocketRefuelStop(`REFUELED: entry ${approachSpeed.toFixed(0)} m/s, ${approachAltitude.toFixed(0)} m, dropped ${descentDrop.toFixed(0)} m in ${descentTime.toFixed(1)}s. +${landing.points} pts, +${researchEarned} research TP, fuel ${rocketState.fuel.toFixed(0)}%.`);
 }
@@ -3830,6 +4203,12 @@ function completeRocketTargetLanding(dist, landingSnapshot = {}) {
   const descentBonus = getRocketTargetDescentBonus(descentDrop, descentTime);
   const landingPoints = Math.max(80, Math.round(1040 - dist * 3.6 + speedBonus + altitudeBonus + descentBonus));
   rocketState.score += landingPoints;
+  rocketState.scoreEvents.push({
+    round: rocketState.round,
+    type: "Target landing",
+    points: landingPoints,
+    detail: `${formatScore(Math.round(1040 - dist * 3.6))} distance + ${formatScore(speedBonus)} speed + ${formatScore(altitudeBonus)} altitude + ${formatScore(descentBonus)} descent`
+  });
   els.rocketMessage.textContent = `Target completed in ${rocketState.target.name}. Entry ${approachSpeed.toFixed(0)} m/s, ${approachAltitude.toFixed(0)} m, dropped ${descentDrop.toFixed(0)} m in ${descentTime.toFixed(1)}s. +${landingPoints} pts.`;
   showRocketMissionPopup({
     title: `${rocketState.target.name} Mission Success`,
@@ -3842,7 +4221,7 @@ function completeRocketTargetLanding(dist, landingSnapshot = {}) {
     dist
   });
   rocketFeedback("Country reached", "#45f875", "success");
-  playLandingSound(true);
+  playLandingSound(true, true);
   rocketState.active = false;
   rocketState.pendingNextRound = { success: true, delay: 1.55 };
 }
@@ -3878,45 +4257,6 @@ function getTargetLandingStatus() {
     stoppedOk: dist < ROCKET_TARGET_RADIUS,
     scoreCenter: dist < Math.max(30, ROCKET_TARGET_RADIUS * 0.45)
   };
-}
-
-function drawRocketTargetLandingPanel(ctx, rect) {
-  const status = getTargetLandingStatus();
-  if (!status) return;
-  const x = Math.max(18, rect.width - 360);
-  const y = Math.max(124, rect.height - 430);
-  const rows = [
-    ["Inside target", status.distanceOk, `${status.km.toLocaleString()} km from center`],
-    ["Sample window", status.distanceOk, `${ROCKET_OBJECTIVE_SAMPLE_SECONDS.toFixed(0)}s after entry`],
-    ["Entry speed", status.speedOk, `${(status.entrySpeed ?? status.speed).toFixed(0)} m/s`],
-    ["Entry altitude", status.entryAltitude != null, status.entryAltitude == null ? "enter circle to record" : `${status.entryAltitude.toFixed(0)} m`],
-    ["Best score center", status.scoreCenter, `${status.km.toLocaleString()} km, closer is better`]
-  ];
-  ctx.save();
-  ctx.fillStyle = "rgba(3, 8, 14, .82)";
-  ctx.strokeStyle = status.distanceOk && status.altitudeOk ? "rgba(69,248,117,.78)" : "rgba(255,104,72,.72)";
-  ctx.lineWidth = 2;
-  roundRect(ctx, x, y, 342, 178, 14);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "950 15px system-ui";
-  ctx.textAlign = "left";
-  ctx.fillText(`REACH ${rocketState.target.name}`, x + 16, y + 26);
-  rows.forEach(([label, ok, value], index) => {
-    const rowY = y + 52 + index * 25;
-    ctx.fillStyle = ok ? "#45f875" : "#ff6848";
-    ctx.font = "950 14px system-ui";
-    ctx.fillText(ok ? "✓" : "×", x + 16, rowY);
-    ctx.fillStyle = "#dfe8f5";
-    ctx.font = "850 12px system-ui";
-    ctx.fillText(label, x + 38, rowY);
-    ctx.fillStyle = ok ? "#9df8b4" : "#ffb199";
-    ctx.textAlign = "right";
-    ctx.fillText(value, x + 326, rowY);
-    ctx.textAlign = "left";
-  });
-  ctx.restore();
 }
 
 function getRocketControlVector(rect) {
@@ -3981,12 +4321,15 @@ function drawRocket() {
   const ctx = canvas.getContext("2d");
   const rect = canvas.getBoundingClientRect();
   ctx.clearRect(0, 0, rect.width, rect.height);
+  if (rocketState.phase === "setup") {
+    drawRocketSetupBackground(ctx, rect);
+    return;
+  }
   const camX = rocketState.ship.x - rect.width / 2;
   const camY = rocketState.ship.y - rect.height / 2;
   drawRocketMap(ctx, rect, camX, camY);
   drawRocketAtmosphere(ctx, rect);
   drawRocketTrail(ctx, camX, camY);
-  drawRocketTargetMarker(ctx, camX, camY);
   drawRocketDistanceLines(ctx, rect, camX, camY);
   drawRocketDepots(ctx, camX, camY);
   drawRocketSideQuest(ctx, camX, camY);
@@ -3995,15 +4338,39 @@ function drawRocket() {
   drawRocketShip(ctx, rect.width / 2, rect.height / 2, rocketState.ship.angle);
   drawRocketPointerTrace(ctx, rect);
   drawRocketDashboard(ctx, rect);
-  drawRocketMissionOverlay(ctx, rect);
   drawRocketMiniMap(ctx, rect);
   drawRocketTimerBanner(ctx, rect);
-  drawRocketPreflightControls(ctx, rect);
+  drawRocketScanBanner(ctx, rect);
   drawRocketLandingPanel(ctx, rect);
-  drawRocketTargetLandingPanel(ctx, rect);
-  drawRocketFlightCue(ctx, rect);
   drawRocketLandingNotice(ctx, rect);
   drawRocketFeedback(ctx, rect);
+}
+
+function drawRocketSetupBackground(ctx, rect) {
+  const grad = ctx.createLinearGradient(0, 0, rect.width, rect.height);
+  grad.addColorStop(0, "#071827");
+  grad.addColorStop(0.5, "#092132");
+  grad.addColorStop(1, "#050b12");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, rect.width, rect.height);
+  ctx.strokeStyle = "rgba(134,213,255,.08)";
+  ctx.lineWidth = 1;
+  for (let x = 0; x < rect.width; x += 44) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, rect.height);
+    ctx.stroke();
+  }
+  for (let y = 0; y < rect.height; y += 44) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(rect.width, y);
+    ctx.stroke();
+  }
+  ctx.fillStyle = "rgba(255,255,255,.06)";
+  ctx.font = "900 12px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText("SELECT ROUTE LENGTH", rect.width / 2, Math.max(80, rect.height * 0.28));
 }
 
 function drawRocketMap(ctx, rect, camX, camY) {
@@ -4037,7 +4404,6 @@ function drawRocketMap(ctx, rect, camX, camY) {
     ctx.stroke();
   }
 
-  const labelBoxes = [];
   if (rocketWorldFeatures) {
     rocketWorldFeatures.forEach((country) => {
       const visible = country.bounds.maxX > camX - 160 && country.bounds.minX < camX + rect.width + 160 && country.bounds.maxY > camY - 160 && country.bounds.minY < camY + rect.height + 160;
@@ -4062,21 +4428,6 @@ function drawRocketMap(ctx, rect, camX, camY) {
       ctx.lineWidth = 1.35;
       ctx.stroke();
 
-      const width = country.bounds.maxX - country.bounds.minX;
-      const height = country.bounds.maxY - country.bounds.minY;
-      const canLabel = width > 110 && height > 55 && country.label.x > camX + 45 && country.label.x < camX + rect.width - 45 && country.label.y > camY + 40 && country.label.y < camY + rect.height - 40;
-      const labelScreen = { x: country.label.x - camX, y: country.label.y - camY };
-      const label = rocketShortLabel(country.name);
-      if (canLabel && !rocketLabelCovered(labelScreen.x, labelScreen.y, rect) && !rocketLabelCollides(labelBoxes, labelScreen.x, labelScreen.y, label)) {
-        ctx.font = "800 15px system-ui";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.lineWidth = 4;
-        ctx.strokeStyle = "rgba(0,0,0,.68)";
-        ctx.strokeText(label, country.label.x, country.label.y);
-        ctx.fillStyle = "rgba(255,255,255,.92)";
-        ctx.fillText(label, country.label.x, country.label.y);
-      }
     });
   } else {
     mapCountries.forEach((country) => {
@@ -4101,21 +4452,6 @@ function drawRocketMap(ctx, rect, camX, camY) {
       ctx.lineWidth = 2.5;
       ctx.stroke();
 
-      const center = points.reduce((sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }), { x: 0, y: 0 });
-      center.x /= points.length;
-      center.y /= points.length;
-      const labelScreen = { x: center.x - camX, y: center.y - camY };
-      const label = rocketShortLabel(country.name);
-      if (center.x > camX + 40 && center.x < camX + rect.width - 40 && center.y > camY + 40 && center.y < camY + rect.height - 40 && !rocketLabelCovered(labelScreen.x, labelScreen.y, rect) && !rocketLabelCollides(labelBoxes, labelScreen.x, labelScreen.y, label)) {
-        ctx.font = "800 16px system-ui";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.lineWidth = 5;
-        ctx.strokeStyle = "rgba(0,0,0,.62)";
-        ctx.strokeText(label, center.x, center.y);
-        ctx.fillStyle = "rgba(255,255,255,.92)";
-        ctx.fillText(label, center.x, center.y);
-      }
     });
   }
 
@@ -4235,10 +4571,10 @@ function drawRocketTrail(ctx, camX, camY) {
 }
 
 function getRocketNavigationObjective() {
-  if (!rocketState || rocketState.phase === "setup" || rocketState.phase === "briefing" || rocketState.phase === "preflight") return null;
-  const target = rocketState.target ? {
+  if (!rocketState || rocketState.phase === "setup" || rocketState.phase === "briefing") return null;
+  const target = rocketScanActive() && rocketState.target ? {
     key: `target-${rocketState.target.name}`,
-    label: "TARGET",
+    label: "SCAN",
     point: rocketState.target,
     distance: Math.hypot(rocketState.ship.x - rocketState.target.x, rocketState.ship.y - rocketState.target.y)
   } : null;
@@ -4251,6 +4587,20 @@ function getRocketNavigationObjective() {
   } : null;
   if (depotObjective && (!target || depotObjective.distance < target.distance || depotObjective.distance < 700)) return depotObjective;
   return target || depotObjective;
+}
+
+function rocketScanActive() {
+  return Boolean(rocketState?.targetScanUntil && performance.now() < rocketState.targetScanUntil);
+}
+
+function getRocketTargetScan() {
+  if (!rocketScanActive() || !rocketState?.target) return null;
+  const distance = Math.hypot(rocketState.ship.x - rocketState.target.x, rocketState.ship.y - rocketState.target.y);
+  return {
+    distance,
+    km: Math.max(1, Math.round(distance * 4.9)),
+    seconds: Math.max(0, (rocketState.targetScanUntil - performance.now()) / 1000)
+  };
 }
 
 function updateRocketDistanceTrend() {
@@ -4323,106 +4673,6 @@ function drawRocketPointerTrace(ctx, rect) {
     ctx.font = "950 12px system-ui";
     ctx.fillText(text, tx, ty);
   }
-  ctx.restore();
-}
-
-function rocketLabelCovered(x, y, rect) {
-  const overlayX = rect.width > 920 ? 374 : 18;
-  const missionW = Math.max(280, Math.min(620, rect.width - overlayX - 250));
-  const boxes = [
-    { x: rect.width / 2 - Math.min(620, rect.width - 24) / 2 - 12, y: 8, w: Math.min(620, rect.width - 24) + 24, h: 104 },
-    { x: overlayX - 8, y: 104, w: missionW + 16, h: 124 },
-    { x: rect.width - 226, y: 8, w: 216, h: 126 },
-    { x: rect.width - 170, y: 240, w: 158, h: 82 },
-    { x: overlayX - 8, y: rect.height - 132, w: 390, h: 124 }
-  ];
-  return boxes.some((box) => x > box.x && x < box.x + box.w && y > box.y && y < box.y + box.h);
-}
-
-function rocketShortLabel(name) {
-  const clean = String(name).replace(/\b(the|of|and|republic|democratic|people's|federation)\b/gi, "").trim();
-  if (clean.length <= 10) return clean;
-  const words = clean.split(/\s+/).filter(Boolean);
-  if (words.length > 1) {
-    return words.map((word) => word[0]).join("").slice(0, 4).toUpperCase();
-  }
-  return clean.slice(0, 4).toUpperCase();
-}
-
-function rocketLabelCollides(boxes, x, y, label) {
-  const w = Math.max(34, label.length * 10);
-  const h = 22;
-  const box = { x: x - w / 2 - 8, y: y - h / 2 - 5, w: w + 16, h: h + 10 };
-  const collides = boxes.some((item) => (
-    box.x < item.x + item.w &&
-    box.x + box.w > item.x &&
-    box.y < item.y + item.h &&
-    box.y + box.h > item.y
-  ));
-  if (!collides) boxes.push(box);
-  return collides;
-}
-
-function drawRocketPin(ctx, x, y, label) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.fillStyle = "#ff3d5a";
-  ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(18, -54);
-  ctx.lineTo(-18, -54);
-  ctx.closePath();
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(0, -58, 28, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "#fff";
-  ctx.font = "700 14px system-ui";
-  ctx.textAlign = "center";
-  ctx.fillText(label, 0, -84);
-  ctx.restore();
-}
-
-function drawRocketTargetMarker(ctx, camX, camY) {
-  if (!rocketState?.target || rocketState.phase === "setup" || rocketState.phase === "briefing" || rocketState.phase === "preflight") return;
-  const x = rocketState.target.x - camX;
-  const y = rocketState.target.y - camY;
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.strokeStyle = "rgba(179, 92, 255, 0.72)";
-  ctx.lineWidth = 3;
-  ctx.setLineDash([14, 12]);
-  ctx.beginPath();
-  ctx.arc(0, 0, ROCKET_TARGET_RADIUS, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.strokeStyle = "rgba(255, 211, 61, 0.55)";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(0, 0, Math.max(30, ROCKET_TARGET_RADIUS * 0.45), 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.fillStyle = "#ff3d5a";
-  ctx.beginPath();
-  ctx.arc(0, 0, 11, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.arc(0, 0, 22, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(-34, 0);
-  ctx.lineTo(34, 0);
-  ctx.moveTo(0, -34);
-  ctx.lineTo(0, 34);
-  ctx.stroke();
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "950 13px system-ui";
-  ctx.textAlign = "center";
-  ctx.lineWidth = 5;
-  ctx.strokeStyle = "rgba(0,0,0,.78)";
-  ctx.strokeText("TARGET CHECKPOINT", 0, -42);
-  ctx.fillText("TARGET CHECKPOINT", 0, -42);
   ctx.restore();
 }
 
@@ -4767,35 +5017,36 @@ function drawRocketShip(ctx, x, y, angle) {
 
 function drawRocketDashboard(ctx, rect) {
   const speed = Math.hypot(rocketState.ship.vx, rocketState.ship.vy);
+  const plane = getPlaneClass({ tech: rocketState.tech, telemetry: rocketState.telemetry }).name;
   const x = 18;
-  const y = rect.height - 118;
+  const y = rect.height - 132;
   ctx.save();
   ctx.fillStyle = "rgba(3,9,15,.78)";
   ctx.strokeStyle = "rgba(255,255,255,.18)";
   ctx.lineWidth = 1;
-  ctx.fillRect(x, y, 360, 94);
-  ctx.strokeRect(x, y, 360, 94);
-  drawGauge(ctx, x + 54, y + 52, "SPD", speed, 760, "#22d9f2");
-  drawGauge(ctx, x + 146, y + 52, "ALT", rocketState.ship.altitude, 3200, "#b35cff");
-  drawGauge(ctx, x + 238, y + 52, "FUEL", rocketState.fuel, 100, "#45f875");
-  ctx.fillStyle = rocketState.accel >= 0 ? "#45f875" : "#ff6848";
-  ctx.font = "900 12px system-ui";
-  ctx.textAlign = "left";
-  ctx.fillText(rocketState.accel >= 0 ? `SPEEDING UP ${formatRocketAccel()}` : `SLOWING ${formatRocketAccel()}`, x + 16, y + 16);
-  ctx.fillStyle = rocketState.phase === "preflight" || rocketState.phase === "takeoff" ? "#ffd33d" : "#45f875";
+  ctx.fillRect(x, y, 360, 110);
+  ctx.strokeRect(x, y, 360, 110);
+  drawGauge(ctx, x + 54, y + 50, "SPD", speed, 1400, "#22d9f2", `${speed.toFixed(0)} m/s`);
+  drawGauge(ctx, x + 146, y + 50, "ALT", rocketState.ship.altitude, 3200, "#b35cff", `${rocketState.ship.altitude.toFixed(0)} m`);
+  drawGauge(ctx, x + 238, y + 50, "FUEL", rocketState.fuel, 100, "#ffd33d", `${rocketState.fuel.toFixed(0)}%`);
+  ctx.fillStyle = "#d9e6f3";
   ctx.font = "800 13px system-ui";
+  ctx.textAlign = "left";
   ctx.fillText(rocketState.phase.toUpperCase(), x + 292, y + 56);
   const takeoffReady = speed >= 105 && rocketState.ship.altitude < 120;
   if (rocketState.phase === "briefing") {
-    ctx.fillStyle = "#b35cff";
+    ctx.fillStyle = "#d9e6f3";
     ctx.fillText("READY", x + 292, y + 76);
-  } else if (rocketState.phase === "preflight") {
-    ctx.fillStyle = rocketState.preflight.brakeUnlocked ? "#45f875" : "#ffd33d";
-    ctx.fillText(rocketState.preflight.brakeUnlocked ? "BRAKE OFF" : "COCKPIT", x + 292, y + 76);
   } else if (rocketState.phase === "takeoff") {
-    ctx.fillStyle = takeoffReady ? "#45f875" : "#ffd33d";
+    ctx.fillStyle = "#d9e6f3";
     ctx.fillText(takeoffReady ? "PULL UP" : "BUILD SPEED", x + 292, y + 76);
   }
+  ctx.fillStyle = "#9aa8b8";
+  ctx.font = "750 11px system-ui";
+  ctx.fillText(`Accel ${formatRocketAccel()}`, x + 292, y + 95);
+  ctx.fillStyle = "#d9e6f3";
+  ctx.font = "800 10px system-ui";
+  ctx.fillText(plane, x + 18, y + 98);
   ctx.restore();
 }
 
@@ -4822,82 +5073,6 @@ function getRocketLandingStatus() {
     }
   }
   return { depot, speed, altitude, alignDeg, text, subtext, status };
-}
-
-function drawRocketFlightCue(ctx, rect) {
-  if (rocketState.phase === "preflight") return;
-  const speed = Math.hypot(rocketState.ship.vx, rocketState.ship.vy);
-  const altitude = rocketState.ship.altitude;
-  let text = "";
-  let subtext = "";
-  let color = "#ffd33d";
-  if (rocketState.phase === "setup") {
-    text = "CHOOSE ROUND COUNT";
-    subtext = "Timer remaining becomes your biggest score bonus";
-    color = "#ffd33d";
-  } else if (rocketState.phase === "briefing") {
-    text = "PRE-FLIGHT BRIEFING";
-    subtext = "Begin Takeoff in the center. Use the purple ring for manual control";
-    color = "#b35cff";
-  } else if (rocketState.phase === "preflight") {
-    text = rocketState.preflight.engineOn ? "SET HEADING, THEN BRAKE" : "FLIP ENGINE SWITCH";
-    subtext = rocketState.preflight.engineOn ? "Use WASD/arrows to point the runway heading, then drag the brake lever until it clicks" : "Bottom-right cockpit: engine light must turn green first";
-    color = rocketState.preflight.engineOn ? "#ffd33d" : "#ff6848";
-  } else if (rocketState.phase === "takeoff") {
-    if (speed < 105) {
-      text = `BUILD SPEED ${speed.toFixed(0)} / 105 m/s`;
-      subtext = rocketState.manualControl ? "Manual: far ahead pulls; close to nose decels. Space brakes to 30 m/s" : "Autopilot: move into the purple ring to steer";
-      color = "#ffd33d";
-    } else if (altitude < 120) {
-      text = `PULL UP ${altitude.toFixed(0)} / 120 m`;
-      subtext = rocketState.manualControl ? "Manual: close nose line decels; Space slows only to 30 m/s" : "Move into the purple ring for manual climb";
-      color = "#b35cff";
-    } else {
-      text = "CRUISE READY";
-      subtext = "Find the route target";
-      color = "#45f875";
-    }
-  } else {
-    const landing = getRocketLandingStatus();
-    const targetLanding = getRocketTargetLandingStatus();
-    if (targetLanding) {
-      text = targetLanding.ok ? "SAMPLING DESCENT" : "TARGET CHECKPOINT";
-      subtext = targetLanding.ok ? targetLanding.reasons.join(" | ") : targetLanding.reasons.join(" | ");
-      color = targetLanding.ok ? "#45f875" : "#ff6848";
-    } else if (landing && landing.depot.distance < 700) {
-      text = landing.text;
-      subtext = landing.subtext;
-      color = landing.status === "success" ? "#45f875" : "#ffd33d";
-    } else {
-      text = `TARGET ${formatRocketDistance(rocketState.target)}`;
-      subtext = `${rocketState.manualControl ? "MANUAL" : "AUTOPILOT"}  SPD ${speed.toFixed(0)} m/s  ${formatRocketAccel()}  ALT ${altitude.toFixed(0)} m`;
-      color = "#b35cff";
-    }
-  }
-
-  ctx.save();
-  const w = Math.max(220, Math.min(410, rect.width - 24));
-  const x = Math.max(18, rect.width - w - 18);
-  const y = Math.max(140, rect.height - 212);
-  ctx.fillStyle = "rgba(3, 8, 14, .72)";
-  ctx.strokeStyle = color === "#ffd33d" ? "rgba(255,211,61,.7)" : "rgba(179,92,255,.72)";
-  ctx.lineWidth = 2;
-  roundRect(ctx, x, y, w, 78, 15);
-  ctx.fill();
-  ctx.stroke();
-  ctx.textAlign = "center";
-  ctx.lineWidth = 6;
-  ctx.strokeStyle = "rgba(0,0,0,.82)";
-  ctx.font = `950 ${text.length > 22 ? 23 : 29}px system-ui`;
-  ctx.strokeText(text, x + w / 2, y + 37);
-  ctx.fillStyle = color;
-  ctx.fillText(text, x + w / 2, y + 37);
-  ctx.font = `850 ${subtext.length > 62 ? 11 : 13}px system-ui`;
-  ctx.lineWidth = 4;
-  ctx.strokeText(subtext, x + w / 2, y + 60);
-  ctx.fillStyle = "#ffffff";
-  ctx.fillText(subtext, x + w / 2, y + 60);
-  ctx.restore();
 }
 
 function drawRocketLandingNotice(ctx, rect) {
@@ -4963,156 +5138,42 @@ function drawRocketTimerBanner(ctx, rect) {
   ctx.restore();
 }
 
-function rocketPreflightPanel(rect) {
-  const w = 330;
-  const h = 236;
-  const x = Math.max(18, rect.width - w - 18);
-  const y = Math.max(120, rect.height - h - 18);
-  return {
-    x, y, w, h,
-    engine: { x: x + 78, y: y + 86, r: 48 },
-    lever: { x: x + 235, y: y + 104, r: 54, top: y + 48, bottom: y + 178, knobR: 20 }
-  };
-}
-
-function drawRocketPreflightControls(ctx, rect) {
-  if (!rocketState || rocketState.phase !== "preflight") return;
-  const p = rocketPreflightPanel(rect);
-  const engineOn = rocketState.preflight.engineOn;
-  const lever = rocketState.preflight.lever;
+function drawRocketScanBanner(ctx, rect) {
+  const scan = getRocketTargetScan();
+  if (!scan) return;
+  const x = rect.width / 2;
+  const y = 92;
+  const w = Math.min(390, rect.width - 36);
   ctx.save();
-  ctx.fillStyle = "rgba(3, 9, 15, .86)";
-  ctx.strokeStyle = "rgba(255, 211, 61, .46)";
-  ctx.lineWidth = 2;
-  roundRect(ctx, p.x, p.y, p.w, p.h, 16);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "950 15px system-ui";
-  ctx.fillText("PREFLIGHT COCKPIT", p.x + 18, p.y + 26);
-  ctx.font = "800 11px system-ui";
-  ctx.fillStyle = "#9aa8b8";
-  ctx.fillText("ENGINE SWITCH", p.x + 30, p.y + 48);
-  ctx.fillText("BRAKE CRANK", p.x + 197, p.y + 48);
-
-  ctx.fillStyle = "rgba(8, 16, 25, .94)";
-  roundRect(ctx, p.engine.x - 50, p.engine.y - 30, 100, 60, 30);
-  ctx.fill();
-  ctx.strokeStyle = engineOn ? "rgba(69,248,117,.75)" : "rgba(255,104,72,.55)";
-  ctx.lineWidth = 3;
-  ctx.stroke();
-  const knobX = engineOn ? p.engine.x + 23 : p.engine.x - 23;
-  const knobGrad = ctx.createRadialGradient(knobX - 8, p.engine.y - 10, 4, knobX, p.engine.y, 28);
-  knobGrad.addColorStop(0, engineOn ? "#f8ffe8" : "#edf3f8");
-  knobGrad.addColorStop(1, engineOn ? "#45f875" : "#708090");
-  ctx.fillStyle = knobGrad;
-  ctx.beginPath();
-  ctx.arc(knobX, p.engine.y, 25, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(255,255,255,.32)";
-  ctx.stroke();
   ctx.textAlign = "center";
-  ctx.fillStyle = engineOn ? "#45f875" : "#ff6848";
-  ctx.font = "950 11px system-ui";
-  ctx.fillText(engineOn ? "ON" : "OFF", p.engine.x, p.engine.y + 54);
-  ctx.beginPath();
-  ctx.arc(p.engine.x + 58, p.engine.y - 36, 8, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.textAlign = "left";
-  const crankAngle = -Math.PI * 0.7 + lever * Math.PI * 1.4;
-  ctx.strokeStyle = "rgba(255,255,255,.22)";
-  ctx.lineWidth = 5;
-  ctx.beginPath();
-  ctx.arc(p.lever.x, p.lever.y, p.lever.r, -Math.PI * 0.75, Math.PI * 0.75);
-  ctx.stroke();
-  ctx.strokeStyle = "#ff3d5a";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.arc(p.lever.x, p.lever.y, p.lever.r, Math.PI * 0.58, Math.PI * 0.75);
-  ctx.stroke();
-  ctx.strokeStyle = engineOn ? "#ffd33d" : "#5f6b78";
-  ctx.lineWidth = 9;
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.moveTo(p.lever.x, p.lever.y);
-  ctx.lineTo(p.lever.x + Math.cos(crankAngle) * p.lever.r, p.lever.y + Math.sin(crankAngle) * p.lever.r);
-  ctx.stroke();
-  const handleX = p.lever.x + Math.cos(crankAngle) * p.lever.r;
-  const handleY = p.lever.y + Math.sin(crankAngle) * p.lever.r;
-  ctx.fillStyle = engineOn ? "#ffd33d" : "#5f6b78";
-  ctx.beginPath();
-  ctx.arc(handleX, handleY, p.lever.knobR, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = rocketState.preflight.brakeUnlocked ? "#45f875" : "#ffffff";
-  ctx.lineWidth = 3;
-  ctx.stroke();
-  ctx.lineCap = "butt";
-  ctx.strokeStyle = "rgba(255,255,255,.22)";
+  ctx.fillStyle = "rgba(3, 8, 14, .82)";
+  ctx.strokeStyle = "rgba(34,217,242,.78)";
   ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(p.lever.x - 54, p.lever.y + 70);
-  ctx.lineTo(p.lever.x + 54, p.lever.y + 70);
+  roundRect(ctx, x - w / 2, y, w, 54, 14);
+  ctx.fill();
   ctx.stroke();
-  ctx.textAlign = "left";
-  ctx.fillStyle = rocketState.preflight.brakeUnlocked ? "#45f875" : "#d9e6f3";
-  ctx.font = "900 13px system-ui";
-  ctx.fillText(engineOn ? rocketState.preflight.brakeUnlocked ? "BRAKE CLICKED OFF" : "CRANK DOWN TO RELEASE" : "SWITCH ENGINE ON FIRST", p.x + 18, p.y + 190);
-  ctx.fillStyle = "#9aa8b8";
-  ctx.font = "750 11px system-ui";
-  ctx.fillText("Drag the yellow handle clockwise to the red lock mark.", p.x + 18, p.y + 212);
+  ctx.fillStyle = "#22d9f2";
+  ctx.font = "950 12px system-ui";
+  ctx.fillText("DESTINATION SCAN", x, y + 18);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "1000 22px system-ui";
+  ctx.fillText(`${scan.km.toLocaleString()} km | ${scan.seconds.toFixed(1)}s`, x, y + 42);
   ctx.restore();
 }
 
-function getRocketTargetLandingStatus() {
-  if (!rocketState?.target) return null;
-  const dist = Math.hypot(rocketState.ship.x - rocketState.target.x, rocketState.ship.y - rocketState.target.y);
-  if (dist > 360 || rocketState.phase !== "cruise") return null;
-  const speed = Math.hypot(rocketState.ship.vx, rocketState.ship.vy);
-  const altitude = rocketState.ship.altitude;
-  const km = Math.round(dist * 4.9);
-  const zone = rocketState.objectiveZone?.type === "target" ? rocketState.objectiveZone : null;
-  const entrySpeed = zone?.entrySpeed ?? speed;
-  const entryAltitude = zone?.entryAltitude ?? altitude;
-  const descentTime = zone ? Math.max(0.1, zone.entryTime - rocketState.time) : 0;
-  const descentDrop = zone ? Math.max(0, zone.entryAltitude - altitude) : 0;
-  const dropRate = descentTime ? descentDrop / descentTime : 0;
-  const speedBonus = entrySpeed >= 420 ? 720 : entrySpeed >= 300 ? 520 : entrySpeed >= 180 ? 320 : 120;
-  const altitudeBonus = Math.min(520, Math.max(0, Math.round(entryAltitude * 0.16)));
-  const descentBonus = dropRate >= 420 ? 780 : dropRate >= 240 ? 520 : dropRate >= 100 ? 260 : 90;
-  const pointEstimate = Math.max(80, Math.round(1040 - dist * 3.6 + speedBonus + altitudeBonus + descentBonus));
-  const reasons = [];
-  if (dist > ROCKET_TARGET_RADIUS) reasons.push(`${km} km from checkpoint`);
-  if (dist <= ROCKET_TARGET_RADIUS && zone) reasons.push(`sampling ${descentTime.toFixed(1)} / ${ROCKET_OBJECTIVE_SAMPLE_SECONDS.toFixed(0)}s, dropped ${descentDrop.toFixed(0)} m`);
-  if (dist <= ROCKET_TARGET_RADIUS && !zone) reasons.push(`entry will record ${entrySpeed.toFixed(0)} m/s, ${entryAltitude.toFixed(0)} m`);
-  return {
-    title: `TARGET CHECKPOINT: ${rocketState.target.name}`,
-    speed,
-    altitude,
-    entrySpeed,
-    entryAltitude,
-    descentTime,
-    km,
-    points: pointEstimate,
-    ok: dist < ROCKET_TARGET_RADIUS && Boolean(zone),
-    reasons
-  };
-}
-
 function drawRocketLandingPanel(ctx, rect) {
-  if (!rocketState || rocketState.phase === "setup" || rocketState.phase === "briefing" || rocketState.phase === "preflight") return;
-  const targetLanding = getRocketTargetLandingStatus();
+  if (!rocketState || rocketState.phase === "setup" || rocketState.phase === "briefing") return;
   const depotStatus = getRocketLandingStatus();
   const depotClose = depotStatus && depotStatus.depot.distance < 520;
-  if (!targetLanding && !depotClose) return;
-  const speed = targetLanding?.speed ?? depotStatus.speed;
-  const altitude = targetLanding?.altitude ?? depotStatus.altitude;
-  const displaySpeed = targetLanding?.entrySpeed ?? speed;
-  const displayAltitude = targetLanding?.entryAltitude ?? altitude;
-  const title = targetLanding?.title ?? "FUEL DEPOT CHECKPOINT";
-  const km = targetLanding?.km ?? Math.round(depotStatus.depot.distance * 4.9);
+  if (!depotClose) return;
+  const speed = depotStatus.speed;
+  const altitude = depotStatus.altitude;
+  const displaySpeed = speed;
+  const displayAltitude = altitude;
+  const title = "FUEL DEPOT CHECKPOINT";
+  const km = Math.round(depotStatus.depot.distance * 4.9);
   const depotZone = rocketState.objectiveZone?.type === "depot" ? rocketState.objectiveZone : null;
-  const depotLanding = depotStatus ? evaluateRocketLanding(
+  const depotLanding = evaluateRocketLanding(
     depotStatus.depot,
     depotStatus.depot.distance,
     depotZone?.entrySpeed ?? speed,
@@ -5120,19 +5181,16 @@ function drawRocketLandingPanel(ctx, rect) {
     depotStatus.alignDeg,
     depotZone ? Math.max(0.1, depotZone.entryTime - rocketState.time) : 0,
     depotZone ? Math.max(0, depotZone.entryAltitude - altitude) : 0
-  ) : null;
-  const points = targetLanding?.points ?? depotLanding.points;
-  const research = targetLanding ? 0 : depotLanding.perfect ? 5 : depotLanding.groundSpeed ? 3 : 2;
-  const ok = targetLanding ? targetLanding.ok : depotStatus.status === "success";
-  const reason = targetLanding
-    ? (targetLanding.ok ? `GREEN: ${targetLanding.reasons.join(", ")}` : `RED: ${targetLanding.reasons.join(", ")}`)
-    : (depotStatus.status === "success" ? `GREEN: sampling descent, refuel +${research} research TP` : `RED: ${depotStatus.subtext}`);
+  );
+  const points = depotLanding.points;
+  const research = depotLanding.perfect ? 5 : depotLanding.groundSpeed ? 3 : 2;
+  const reason = depotStatus.status === "success" ? `Sampling descent, refuel +${research} research TP` : depotStatus.subtext;
   const w = Math.min(620, rect.width - 36);
   const x = rect.width / 2 - w / 2;
   const y = 90;
   ctx.save();
-  ctx.fillStyle = ok ? "rgba(9, 55, 35, .84)" : "rgba(58, 10, 22, .84)";
-  ctx.strokeStyle = ok ? "rgba(69,248,117,.82)" : "rgba(255,61,90,.82)";
+  ctx.fillStyle = "rgba(3,9,15,.84)";
+  ctx.strokeStyle = "rgba(151,176,210,.32)";
   ctx.lineWidth = 2;
   roundRect(ctx, x, y, w, 104, 16);
   ctx.fill();
@@ -5142,59 +5200,15 @@ function drawRocketLandingPanel(ctx, rect) {
   ctx.font = "950 17px system-ui";
   ctx.fillText(title, x + 18, y + 28);
   const columns = [
-    ["ENTRY SPD", `${displaySpeed.toFixed(0)} m/s`, displaySpeed >= 300 ? "#45f875" : displaySpeed >= 180 ? "#ffd33d" : "#ff6848"],
-    ["ENTRY ALT", `${displayAltitude.toFixed(0)} m`, displayAltitude >= 300 ? "#45f875" : "#ffd33d"],
-    ["DIST", `${km} km`, km < 590 ? "#45f875" : "#ffd33d"],
-    [targetLanding ? "PTS" : "EARN", targetLanding ? `+${points}` : `+${points} / +${research}TP`, "#ffd33d"]
+    ["ENTRY SPD", `${displaySpeed.toFixed(0)} m/s`, "#d9e6f3"],
+    ["ENTRY ALT", `${displayAltitude.toFixed(0)} m`, "#d9e6f3"],
+    ["DIST", `${km} km`, "#d9e6f3"],
+    ["EARN", `+${points} / +${research}TP`, "#ffd33d"]
   ];
   columns.forEach((item, index) => drawHudChip(ctx, x + 18 + index * 98, y + 42, item[0], item[1], item[2]));
-  ctx.fillStyle = ok ? "#45f875" : "#ff6848";
+  ctx.fillStyle = "#c7d3e0";
   ctx.font = "900 13px system-ui";
   ctx.fillText(reason, x + 18, y + 91);
-  ctx.restore();
-}
-
-function drawRocketMissionOverlay(ctx, rect) {
-  const speed = Math.hypot(rocketState.ship.vx, rocketState.ship.vy);
-  const panelW = Math.min(360, rect.width - 36);
-  const x = 18;
-  const y = Math.max(210, rect.height - 360);
-  ctx.save();
-  ctx.fillStyle = "rgba(3,9,15,.8)";
-  ctx.strokeStyle = "rgba(255,255,255,.18)";
-  ctx.lineWidth = 1;
-  roundRect(ctx, x, y, panelW, 158, 12);
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "900 16px system-ui";
-  ctx.textAlign = "left";
-  ctx.fillText("Route Target", x + 16, y + 26);
-  ctx.fillStyle = rocketState.phase === "briefing" ? "#b35cff" : rocketState.phase === "takeoff" ? "#ffd33d" : "#45f875";
-  ctx.font = "800 12px system-ui";
-  ctx.fillText(rocketState.phase === "briefing" ? "BRIEFING: timer paused until takeoff" : rocketState.phase === "takeoff" ? "TAKEOFF: 105 m/s then climb over 120 m" : "CRUISE: enter the country area", x + 16, y + 47);
-  ctx.fillStyle = "#d9e6f3";
-  ctx.font = "800 11px system-ui";
-  const beaconDistance = rocketState.sideQuest?.done ? "done" : formatRocketDistance(rocketState.sideQuest);
-  ctx.fillText(`Target ${formatRocketDistance(rocketState.target)}`, x + 16, y + 64);
-  ctx.fillText(`Capital beacon ${beaconDistance}`, x + 176, y + 64);
-
-  const chips = [
-    ["TIME", `${Math.max(0, rocketState.time).toFixed(1)}s`, "#22d9f2"],
-    ["SPD", `${speed.toFixed(0)} m/s`, rocketState.accel >= 0 ? "#45f875" : "#ff6848"],
-    ["ACC", formatRocketAccel(), rocketState.accel >= 0 ? "#45f875" : "#ff6848"],
-    ["ALT", `${rocketState.ship.altitude.toFixed(0)} m`, "#b35cff"],
-    ["FUEL", `${Math.max(0, rocketState.fuel).toFixed(0)}%`, "#45f875"]
-  ];
-  chips.forEach((chip, index) => {
-    drawHudChip(ctx, x + 16 + (index % 3) * 86, y + 78 + Math.floor(index / 3) * 34, chip[0], chip[1], chip[2]);
-  });
-
-  const techText = `TECH ${rocketState.techPoints} TP | ${rocketTechOverlay("fuel")} | ${rocketTechOverlay("speed")} | ${rocketTechOverlay("turn")}`;
-  ctx.fillStyle = "#ffd33d";
-  ctx.font = "800 11px system-ui";
-  ctx.fillText(techText, x + 16, y + 150);
   ctx.restore();
 }
 
@@ -5202,7 +5216,6 @@ function rocketFeedback(text, color = "#ffffff", tone = "info") {
   if (!rocketState) return;
   rocketState.feedback.push({ text, color, tone, life: 1.35, maxLife: 1.35 });
   rocketState.feedback = rocketState.feedback.slice(-4);
-  rocketState.flash = { color, life: tone === "error" ? 0.42 : 0.34, maxLife: tone === "error" ? 0.42 : 0.34 };
 }
 
 function drawRocketFeedback(ctx, rect) {
@@ -5230,13 +5243,6 @@ function drawRocketFeedback(ctx, rect) {
   });
 }
 
-function rocketTechOverlay(kind) {
-  const level = rocketState.tech[kind];
-  if (level >= rocketTechMax) return `${kind[0].toUpperCase()}${kind.slice(1)} MAX`;
-  const cost = 2 + level * 2;
-  return `${kind[0].toUpperCase()}${kind.slice(1)} L${level}/${rocketTechMax} ${rocketState.techPoints >= cost ? `BUY ${cost}` : `LOCK ${cost}`}`;
-}
-
 function drawHudChip(ctx, x, y, label, value, color) {
   ctx.fillStyle = "rgba(255,255,255,.06)";
   roundRect(ctx, x, y, 84, 30, 8);
@@ -5250,7 +5256,7 @@ function drawHudChip(ctx, x, y, label, value, color) {
   ctx.fillText(value, x + 8, y + 25);
 }
 
-function drawGauge(ctx, x, y, label, value, max, color) {
+function drawGauge(ctx, x, y, label, value, max, color, valueText = "") {
   const start = Math.PI * 0.8;
   const end = Math.PI * 2.2;
   const amount = Math.max(0, Math.min(1, value / max));
@@ -5267,6 +5273,9 @@ function drawGauge(ctx, x, y, label, value, max, color) {
   ctx.font = "800 11px system-ui";
   ctx.textAlign = "center";
   ctx.fillText(label, x, y + 4);
+  ctx.fillStyle = "#d9e6f3";
+  ctx.font = "850 11px system-ui";
+  ctx.fillText(valueText, x, y + 47);
 }
 
 function drawRocketMiniMap(ctx, rect) {
@@ -5322,15 +5331,17 @@ function drawRocketMiniMap(ctx, rect) {
 
 function renderRocketHud() {
   if (!rocketState) return;
-  els.rocketTarget.textContent = "Flight Route";
-  els.rocketTime.textContent = `${Math.max(0, rocketState.time).toFixed(1)}s`;
-  els.rocketFuel.textContent = `${Math.max(0, rocketState.fuel).toFixed(0)}%`;
-  els.rocketSpeed.textContent = `${Math.hypot(rocketState.ship.vx, rocketState.ship.vy).toFixed(0)} m/s`;
-  els.rocketAltitude.textContent = `${rocketState.ship.altitude.toFixed(0)} m`;
-  els.rocketRound.textContent = rocketState.round;
+  const rocketView = document.querySelector("#rocketView");
+  if (rocketView) rocketView.dataset.phase = rocketState.phase;
+  if (els.rocketTarget) els.rocketTarget.textContent = "Flight Route";
+  if (els.rocketTime) els.rocketTime.textContent = `${Math.max(0, rocketState.time).toFixed(1)}s`;
+  if (els.rocketFuel) els.rocketFuel.textContent = `${Math.max(0, rocketState.fuel).toFixed(0)}%`;
+  if (els.rocketSpeed) els.rocketSpeed.textContent = `${Math.hypot(rocketState.ship.vx, rocketState.ship.vy).toFixed(0)} m/s`;
+  if (els.rocketAltitude) els.rocketAltitude.textContent = `${rocketState.ship.altitude.toFixed(0)} m`;
+  if (els.rocketRound) els.rocketRound.textContent = rocketState.round;
   if (els.rocketRoundGoal) els.rocketRoundGoal.textContent = rocketState.desiredRounds;
-  els.rocketScore.textContent = formatScore(rocketState.score);
-  els.rocketTech.textContent = rocketState.techPoints;
+  if (els.rocketScore) els.rocketScore.textContent = formatScore(rocketState.score);
+  if (els.rocketTech) els.rocketTech.textContent = rocketState.techPoints;
   if (els.rocketStart) {
     const briefing = rocketState.phase === "briefing" && !rocketState.active;
     els.rocketStart.hidden = !briefing;
@@ -5369,12 +5380,78 @@ function updateRocketTechLabels() {
     }
   });
   if (els.techTreeStatus) {
-    els.techTreeStatus.textContent = `✦ ${rocketState.techPoints} tech points`;
+    const plane = getPlaneClass({ tech: rocketState.tech, telemetry: rocketState.telemetry }).name;
+    els.techTreeStatus.textContent = `${plane} | ${rocketState.techPoints} tech points`;
   }
+  if (els.pauseScanTarget) {
+    const blocked = !rocketState || ["setup", "briefing", "result"].includes(rocketState.phase);
+    const active = rocketScanActive();
+    els.pauseScanTarget.textContent = active ? "Scan Active" : "Scan Destination -10 TP";
+    els.pauseScanTarget.disabled = blocked || active || rocketState.techPoints < 10;
+  }
+  renderRankLists();
+}
+
+function buyRocketTargetScan() {
+  if (!rocketState || ["setup", "briefing", "result"].includes(rocketState.phase)) return;
+  const cost = 10;
+  if (rocketState.techPoints < cost) {
+    els.rocketMessage.textContent = `Need ${cost} tech points for a 5 second destination scan.`;
+    updateRocketTechLabels();
+    return;
+  }
+  rocketState.techPoints -= cost;
+  rocketState.targetScanUntil = performance.now() + 5000;
+  rocketState.distanceTrend = null;
+  rocketState.lastObjectiveDistance = null;
+  els.rocketMessage.textContent = "Destination scan active for 5 seconds.";
+  rocketFeedback("Scan active", "#22d9f2", "info");
+  closeRocketPause();
+  renderRocketHud();
+}
+
+function openRocketPause() {
+  if (!rocketState || rocketState.phase === "result") return;
+  rocketState.pausedWasActive = Boolean(rocketState.active);
+  rocketState.active = false;
+  rocketState.paused = true;
+  stopPropellerSound();
+  updateRocketTechLabels();
+  if (els.techTreeOverlay) els.techTreeOverlay.hidden = false;
+}
+
+function closeRocketPause() {
+  if (!rocketState) return;
+  if (els.techTreeOverlay) els.techTreeOverlay.hidden = true;
+  const shouldResume = rocketState.paused && rocketState.pausedWasActive && !["setup", "briefing", "result"].includes(rocketState.phase);
+  rocketState.paused = false;
+  rocketState.pausedWasActive = false;
+  if (shouldResume) {
+    rocketState.active = true;
+    rocketState.last = performance.now();
+    startPropellerSound();
+  }
+}
+
+function toggleRocketPause() {
+  if (!rocketState || !document.querySelector("#rocketView")?.classList.contains("active")) return;
+  if (rocketState.phase === "result") return;
+  if (rocketState.paused || !els.techTreeOverlay?.hidden) closeRocketPause();
+  else openRocketPause();
 }
 
 function showRocketResult(title, summary, action = "restart") {
   if (!els.rocketResultOverlay) return;
+  rocketState.active = false;
+  rocketState.paused = false;
+  rocketState.pausedWasActive = false;
+  rocketState.pendingNextRound = null;
+  rocketState.phase = "result";
+  rocketState.ship.vx = 0;
+  rocketState.ship.vy = 0;
+  rocketState.ship.throttle = 0;
+  if (els.techTreeOverlay) els.techTreeOverlay.hidden = true;
+  stopPropellerSound();
   rocketState.resultAction = action;
   saveRocketSessionResult(title, summary);
   els.rocketResultTitle.textContent = title;
@@ -5391,7 +5468,7 @@ function endRocketRun(title = "Run Ended", summary = "Flight run ended.", action
   if (!rocketState || rocketState.sessionSaved) return;
   rocketState.active = false;
   stopPropellerSound();
-  if (!["setup", "briefing", "preflight"].includes(rocketState.phase)) {
+  if (!["setup", "briefing"].includes(rocketState.phase)) {
     recordRocketRound(false, "ended by player");
   }
   showRocketResult(title, `${summary} Score ${formatScore(rocketState.score)}.`, action);
@@ -5411,10 +5488,14 @@ function renderRocketResultDetails() {
     const landingText = log.landings.length
       ? log.landings.map((landing) => `${landing.success ? "refueled" : "penalty"} ${landing.depot}: ${landing.km} km, ${landing.speed.toFixed(0)} m/s, ${landing.altitude.toFixed(0)} m`).join(" | ")
       : "no fuel depot checkpoint";
+    const scoreText = (log.scoreEvents || []).length
+      ? log.scoreEvents.map((event) => `${event.type}: +${formatScore(event.points)} (${event.detail})`).join(" | ")
+      : "no score events recorded";
     row.className = `rocket-result-row ${status}`;
     row.innerHTML = `
       <strong>Round ${log.round}: ${log.flag ? `<img src="${log.flag}" alt="">` : ""}${log.target}</strong>
       <span>${status.toUpperCase()} - ${log.reason} - ${Math.max(0, log.time).toFixed(1)}s left - fuel ${log.fuel.toFixed(0)}%</span>
+      <small>${scoreText}</small>
       <small>${landingText}</small>
     `;
     return row;
@@ -5424,14 +5505,121 @@ function renderRocketResultDetails() {
 function drawRocketResultMap() {
   const canvas = els.rocketResultMap;
   if (!canvas || !rocketState) return;
-  drawRocketLogMap(canvas, rocketState.roundLogs || [], rocketState.mapW, rocketState.mapH);
+  const inspector = canvas.closest("[data-rocket-route-inspector]");
+  if (inspector) {
+    setupRocketRouteInspector(inspector, {
+      logs: rocketState.roundLogs || [],
+      mapW: rocketState.mapW,
+      mapH: rocketState.mapH
+    });
+  } else {
+    drawRocketLogMap(canvas, rocketState.roundLogs || [], rocketState.mapW, rocketState.mapH);
+  }
 }
 
-function drawRocketSessionMap(canvas, run) {
-  drawRocketLogMap(canvas, run.logs || [], 8200, 4200);
+function setupRocketRouteInspector(root, run) {
+  const canvas = root.querySelector("[data-rocket-session-map], #rocketResultMap");
+  const toolbar = root.querySelector("[data-rocket-route-buttons]");
+  const meta = root.querySelector("[data-rocket-route-meta]");
+  const logs = run.logs || [];
+  const mapW = run.mapW || 8200;
+  const mapH = run.mapH || 4200;
+  if (!canvas) return;
+  let selected = "all";
+
+  function selectRoute(value) {
+    selected = value === "all" ? "all" : Number(value);
+    toolbar?.querySelectorAll("[data-route-index]").forEach((button) => {
+      button.classList.toggle("selected", button.dataset.routeIndex === String(selected));
+    });
+    drawRocketLogMap(canvas, logs, mapW, mapH, selected);
+    renderRocketRouteMeta(meta, logs, selected);
+  }
+
+  if (toolbar) {
+    toolbar.innerHTML = `
+      <button type="button" class="selected" data-route-index="all">All Routes</button>
+      ${logs.map((log, index) => `<button type="button" data-route-index="${index}">R${log.round}</button>`).join("")}
+    `;
+  }
+  toolbar?.querySelectorAll("[data-route-index]").forEach((button) => {
+    button.addEventListener("click", () => selectRoute(button.dataset.routeIndex));
+  });
+  canvas.onclick = (event) => {
+    const index = pickRocketRouteFromCanvas(canvas, logs, mapW, mapH, event);
+    if (index != null) selectRoute(index);
+  };
+  selectRoute("all");
 }
 
-function drawRocketLogMap(canvas, logs, mapW, mapH) {
+function renderRocketRouteMeta(meta, logs, selected) {
+  if (!meta) return;
+  if (!logs.length) {
+    meta.textContent = "No route trace recorded.";
+    return;
+  }
+  if (selected === "all") {
+    const reached = logs.filter((log) => log.success).length;
+    const fuel = logs.length ? logs[logs.length - 1].fuel : 0;
+    meta.innerHTML = `
+      <strong>All routes</strong>
+      <span>${reached}/${logs.length} reached</span>
+      <span>Final fuel ${Number(fuel || 0).toFixed(0)}%</span>
+      <span>Click a route color or round button to isolate one flight.</span>
+    `;
+    return;
+  }
+  const log = logs[selected];
+  if (!log) return;
+  const events = (log.scoreEvents || []).map((event) => `${event.type} +${formatScore(event.points)}`).join(" | ") || "No score event";
+  const landings = (log.landings || []).length
+    ? log.landings.map((landing) => `${landing.depot}: ${landing.km} km, ${landing.speed.toFixed(0)} m/s`).join(" | ")
+    : "No depot stop";
+  meta.innerHTML = `
+    <strong>Round ${log.round}: ${escapeHtml(log.target || "Unknown")}</strong>
+    <span>${log.success ? "Reached" : "Missed"} | ${escapeHtml(log.reason || "route")} | ${Math.max(0, log.time || 0).toFixed(1)}s left</span>
+    <span>Fuel ${Number(log.fuel || 0).toFixed(0)}% | Score ${formatScore(log.score || 0)}</span>
+    <span>${escapeHtml(events)}</span>
+    <span>${escapeHtml(landings)}</span>
+  `;
+}
+
+function pickRocketRouteFromCanvas(canvas, logs, mapW, mapH, event) {
+  const rect = canvas.getBoundingClientRect();
+  const x = (event.clientX - rect.left) * (canvas.width / rect.width);
+  const y = (event.clientY - rect.top) * (canvas.height / rect.height);
+  const scaleX = canvas.width / mapW;
+  const scaleY = canvas.height / mapH;
+  let best = { index: null, distance: Infinity };
+  (logs || []).forEach((log, index) => {
+    const distance = getRouteHitDistance(log.trace || [], x, y, scaleX, scaleY);
+    if (distance < best.distance) best = { index, distance };
+  });
+  return best.distance <= 14 ? best.index : null;
+}
+
+function getRouteHitDistance(trace, x, y, scaleX, scaleY) {
+  let best = Infinity;
+  let previous = null;
+  trace.forEach((point) => {
+    const current = { x: point.x * scaleX, y: point.y * scaleY };
+    if (previous && !point.wrap) {
+      best = Math.min(best, pointToSegmentDistance(x, y, previous.x, previous.y, current.x, current.y));
+    }
+    previous = point.wrap ? null : current;
+  });
+  return best;
+}
+
+function pointToSegmentDistance(px, py, ax, ay, bx, by) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  if (!dx && !dy) return Math.hypot(px - ax, py - ay);
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
+  return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+}
+
+function drawRocketLogMap(canvas, logs, mapW, mapH, selected = "all") {
   const ctx = canvas.getContext("2d");
   const w = canvas.width;
   const h = canvas.height;
@@ -5469,16 +5657,6 @@ function drawRocketLogMap(canvas, logs, mapW, mapH) {
     ctx.lineWidth = 0.75;
     ctx.stroke();
   });
-  mapCountries.forEach((country) => {
-    const points = country.poly.map(([lon, lat]) => worldPoint(lon, lat, mapW, mapH));
-    const center = points.reduce((sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }), { x: 0, y: 0 });
-    center.x /= points.length;
-    center.y /= points.length;
-    ctx.font = "800 8px system-ui";
-    ctx.textAlign = "center";
-    ctx.fillStyle = "rgba(255,255,255,.68)";
-    ctx.fillText(rocketShortLabel(country.name), center.x * scaleX, center.y * scaleY);
-  });
   ctx.restore();
 
   ctx.strokeStyle = "rgba(255,255,255,.1)";
@@ -5497,8 +5675,11 @@ function drawRocketLogMap(canvas, logs, mapW, mapH) {
   }
   (logs || []).forEach((log, index) => {
     const hue = ["#b35cff", "#22d9f2", "#45f875", "#ffd33d", "#ff6848"][index % 5];
+    const isSelected = selected === index;
+    const dim = selected !== "all" && !isSelected;
     ctx.strokeStyle = hue;
-    ctx.lineWidth = 2.5;
+    ctx.globalAlpha = dim ? 0.12 : isSelected ? 1 : 0.58;
+    ctx.lineWidth = isSelected ? 4.5 : 2.25;
     ctx.beginPath();
     let started = false;
     (log.trace || []).forEach((point) => {
@@ -5512,7 +5693,8 @@ function drawRocketLogMap(canvas, logs, mapW, mapH) {
       }
     });
     ctx.stroke();
-    if (log.targetX && log.targetY) {
+    ctx.globalAlpha = dim ? 0.16 : 1;
+    if (log.targetX && log.targetY && (selected === "all" || isSelected)) {
       const tx = log.targetX * scaleX;
       const ty = log.targetY * scaleY;
       ctx.fillStyle = log.success ? "#45f875" : "#ff3d5a";
@@ -5523,6 +5705,7 @@ function drawRocketLogMap(canvas, logs, mapW, mapH) {
       ctx.font = "800 10px system-ui";
       ctx.fillText(String(log.round), tx + 7, ty - 5);
     }
+    ctx.globalAlpha = 1;
   });
   ctx.strokeStyle = "rgba(255,255,255,.24)";
   ctx.lineWidth = 2;
@@ -5662,7 +5845,7 @@ function playTakeoffSound() {
   });
 }
 
-function playLandingSound(success = true) {
+function playLandingSound(success = true, stopEngine = false) {
   unlockRocketAudio();
   const now = audioContext.currentTime;
   const buffer = audioContext.createBuffer(1, audioContext.sampleRate * 0.5, audioContext.sampleRate);
@@ -5678,7 +5861,7 @@ function playLandingSound(success = true) {
   gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.48);
   source.connect(filter).connect(gain).connect(fxGain);
   source.start(now);
-  stopPropellerSound();
+  if (stopEngine) stopPropellerSound();
 }
 
 function initRocketAudioControls() {
@@ -5798,19 +5981,20 @@ function escapeHtml(value) {
 document.querySelectorAll(".nav-btn").forEach((button) => {
   button.addEventListener("click", () => {
     if (button.dataset.view === "play") {
-      startRun();
+      showFlagSetup();
       return;
     }
     if (button.dataset.view === "rocket") {
       if (rocketState && !rocketState.sessionSaved) {
-        if (!["setup", "briefing", "preflight"].includes(rocketState.phase)) {
+        if (!["setup", "briefing"].includes(rocketState.phase)) {
           rocketState.active = true;
           rocketState.last = performance.now();
         }
         showView("rocket");
         return;
       }
-      window.location.href = "rocket.html";
+      showView("rocket");
+      startRocketRun();
       return;
     }
     renderTables();
@@ -5824,13 +6008,24 @@ document.querySelectorAll("[data-view-jump]").forEach((button) => {
     showView(button.dataset.viewJump);
   });
 });
+document.querySelectorAll("[data-setup-view]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const target = button.dataset.setupView;
+    if (target === "play") {
+      showFlagSetup();
+      return;
+    }
+    renderTables();
+    showView(target);
+  });
+});
 document.querySelectorAll("[data-rocket-jump]").forEach((button) => {
   button.addEventListener("click", () => {
     const target = button.dataset.rocketJump;
     if (els.techTreeOverlay) els.techTreeOverlay.hidden = true;
     if (els.rocketResultOverlay) els.rocketResultOverlay.hidden = true;
     if (target === "play") {
-      startRun();
+      showFlagSetup();
       return;
     }
     renderTables();
@@ -5841,7 +6036,11 @@ document.querySelectorAll("[data-rocket-rounds]").forEach((button) => {
   button.addEventListener("click", () => prepareRocketBriefing(Number(button.dataset.rocketRounds)));
 });
 
-document.querySelector("#playAgain").addEventListener("click", startRun);
+document.querySelectorAll("[data-flag-rounds]").forEach((button) => {
+  button.addEventListener("click", () => startRun(Number(button.dataset.flagRounds)));
+});
+
+document.querySelector("#playAgain").addEventListener("click", showFlagSetup);
 initRocketAudioControls();
 loadUploadedAudioTracks();
 if (els.rocketRadioSelect) {
@@ -5906,43 +6105,44 @@ els.rocketStart.addEventListener("click", () => {
   }
   startRocketRun();
 });
-els.rocketMenuEndRun?.addEventListener("click", () => endRocketRun("Run Ended", "Flight run ended from Airliner Scout.", "setup"));
-els.rocketMenuMain?.addEventListener("click", () => {
-  if (rocketState?.active) rocketState.active = false;
-  stopPropellerSound();
-  if (els.techTreeOverlay) els.techTreeOverlay.hidden = true;
-  if (els.rocketResultOverlay) els.rocketResultOverlay.hidden = true;
-  showView("play");
-});
 els.rocketResultRestart.addEventListener("click", () => {
   if (rocketState?.resultAction === "setup") {
-    window.location.href = "rocket.html";
+    startRocketRun();
     return;
   }
   startRocketRun();
 });
 els.rocketTutorialNext?.addEventListener("click", continueRocketTutorial);
-els.rocketHudDetails?.addEventListener("mouseenter", () => {
-  els.rocketHudDetails.open = true;
-});
-els.rocketHudDetails?.addEventListener("mouseleave", () => {
-  els.rocketHudDetails.open = false;
-});
-els.techTreeOpen.addEventListener("click", () => {
-  if (els.techTreeOverlay) {
-    updateRocketTechLabels();
-    els.techTreeOverlay.hidden = false;
-  }
-});
-els.techTreeClose.addEventListener("click", () => {
-  if (els.techTreeOverlay) els.techTreeOverlay.hidden = true;
+els.techTreeClose.addEventListener("click", closeRocketPause);
+els.pauseResume?.addEventListener("click", closeRocketPause);
+els.pauseEndRun?.addEventListener("click", () => endRocketRun("Run Ended", "Flight run ended from pause menu.", "setup"));
+els.pauseScanTarget?.addEventListener("click", buyRocketTargetScan);
+document.querySelectorAll("[data-pause-view]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const target = button.dataset.pauseView;
+    closeRocketPause();
+    if (rocketState?.active) rocketState.active = false;
+    stopPropellerSound();
+    if (target === "play") {
+      showFlagSetup();
+      return;
+    }
+    renderTables();
+    showView(target);
+  });
 });
 document.querySelectorAll("[data-tech]").forEach((button) => {
   button.addEventListener("click", () => buyRocketTech(button.dataset.tech));
 });
 window.addEventListener("keydown", (event) => {
+  if (event.code === "Escape" && document.querySelector("#rocketView")?.classList.contains("active")) {
+    event.preventDefault();
+    toggleRocketPause();
+    return;
+  }
+  if (rocketState?.phase === "setup") return;
   if (!rocketState || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "KeyW", "KeyA", "KeyS", "KeyD", "Space"].includes(event.code)) return;
-  if (event.code === "Space" || (rocketState.phase === "preflight" && rocketState.preflight.engineOn && !rocketState.preflight.brakeUnlocked)) {
+  if (event.code === "Space") {
     event.preventDefault();
   }
   rocketState.keys[event.code] = true;
@@ -5953,16 +6153,17 @@ window.addEventListener("keyup", (event) => {
 });
 els.rocketCanvas.addEventListener("pointermove", (event) => {
   if (!rocketState) return;
+  if (rocketState.phase === "setup") return;
   const rect = els.rocketCanvas.getBoundingClientRect();
   rocketState.mouse.x = event.clientX - rect.left;
   rocketState.mouse.y = event.clientY - rect.top;
   rocketState.mouse.inside = true;
   const distanceFromPlane = Math.hypot(rocketState.mouse.x - rect.width / 2, rocketState.mouse.y - rect.height / 2);
-  if (rocketState.parked && rocketState.phase !== "preflight" && rocketState.phase !== "briefing" && distanceFromPlane > 240) {
+  if (rocketState.parked && rocketState.phase !== "briefing" && distanceFromPlane > 240) {
     rocketState.restartTakeoffOnReentry = true;
     els.rocketMessage.textContent = "Takeoff restart armed. Move back into the green control ring to roll.";
   }
-  if (rocketState.restartTakeoffOnReentry && rocketState.parked && rocketState.phase !== "preflight" && rocketState.phase !== "briefing" && distanceFromPlane < 210) {
+  if (rocketState.restartTakeoffOnReentry && rocketState.parked && rocketState.phase !== "briefing" && distanceFromPlane < 210) {
     rocketState.restartTakeoffOnReentry = false;
     rocketState.parked = false;
     rocketState.parkingHold = 0;
@@ -5977,15 +6178,10 @@ els.rocketCanvas.addEventListener("pointermove", (event) => {
     rocketFeedback("Takeoff restarted", "#45f875", "success");
     playTakeoffSound();
   }
-  if (rocketState.phase === "preflight" && rocketState.preflight.draggingLever) {
-    const p = rocketPreflightPanel(rect);
-    const angle = Math.atan2(rocketState.mouse.y - p.lever.y, rocketState.mouse.x - p.lever.x);
-    rocketState.preflight.lever = Math.max(0, Math.min(1, (angle + Math.PI * 0.7) / (Math.PI * 1.4)));
-  }
 });
 els.rocketCanvas.addEventListener("pointerleave", () => {
   if (!rocketState) return;
-  if (rocketState.phase === "preflight") return;
+  if (rocketState.phase === "setup") return;
   rocketState.mouse.inside = false;
   if (rocketState.parked || Math.hypot(rocketState.ship.vx, rocketState.ship.vy) < 7) {
     rocketState.parked = true;
@@ -5998,57 +6194,9 @@ els.rocketCanvas.addEventListener("pointerleave", () => {
   rocketState.manualReleased = false;
   els.rocketMessage.textContent = "Pointer left the map. Autopilot is holding a straight heading until you return near the plane.";
 });
-els.rocketCanvas.addEventListener("pointerdown", (event) => {
-  if (!rocketState || rocketState.phase !== "preflight") return;
-  const rect = els.rocketCanvas.getBoundingClientRect();
-  const x = event.clientX - rect.left;
-  const y = event.clientY - rect.top;
-  const p = rocketPreflightPanel(rect);
-  const engineHit = Math.hypot(x - p.engine.x, y - p.engine.y) < p.engine.r + 8;
-  const crankAngle = -Math.PI * 0.7 + rocketState.preflight.lever * Math.PI * 1.4;
-  const leverHit = Math.hypot(x - (p.lever.x + Math.cos(crankAngle) * p.lever.r), y - (p.lever.y + Math.sin(crankAngle) * p.lever.r)) < 38;
-  if (engineHit) {
-    rocketState.preflight.engineOn = true;
-    els.rocketMessage.textContent = "Engine turned on. Use WASD/arrows to choose your takeoff heading, then drag the brake lever all the way down until it clicks.";
-    rocketFeedback("Engine on", "#45f875", "success");
-    startPropellerSound();
-    startRocketDefaultRadio();
-    playPowerUp();
-    updateRocketTutorial();
-    return;
-  }
-  if (leverHit) {
-    if (!rocketState.preflight.engineOn) {
-      els.rocketMessage.textContent = "Engine is off. Click the engine meter first.";
-      rocketFeedback("Engine off", "#ff3d5a", "error");
-      playTone("wrong");
-      return;
-    }
-    rocketState.preflight.draggingLever = true;
-    els.rocketCanvas.setPointerCapture?.(event.pointerId);
-  }
-});
-els.rocketCanvas.addEventListener("pointerup", (event) => {
-  if (!rocketState || rocketState.phase !== "preflight" || !rocketState.preflight.draggingLever) return;
-  rocketState.preflight.draggingLever = false;
-  els.rocketCanvas.releasePointerCapture?.(event.pointerId);
-  if (rocketState.preflight.lever >= 0.92) {
-    rocketState.preflight.lever = 1;
-    rocketState.preflight.brakeUnlocked = true;
-    els.rocketMessage.textContent = "Brake lever clicked off. Takeoff roll starting.";
-    rocketFeedback("Brake clicked", "#45f875", "success");
-    playPowerUp();
-    updateRocketTutorial();
-    window.setTimeout(engageRocketTakeoff, 450);
-  } else {
-    rocketState.preflight.lever = 0;
-    els.rocketMessage.textContent = "Brake lever slipped back. Drag it fully down until it clicks before releasing.";
-    rocketFeedback("Brake not unlocked", "#ff3d5a", "error");
-    playTone("wrong");
-  }
-});
 els.rocketCanvas.addEventListener("click", (event) => {
-  if (!rocketState || rocketState.phase === "briefing" || rocketState.phase === "preflight") return;
+  if (!rocketState || rocketState.phase === "briefing") return;
+  if (rocketState.phase === "setup") return;
   const rect = els.rocketCanvas.getBoundingClientRect();
   const x = event.clientX - rect.left;
   const y = event.clientY - rect.top;
@@ -6107,24 +6255,22 @@ els.avatarScene.addEventListener("pointerleave", resetAvatarPointer);
 
 renderProfile();
 renderTables();
+loadOfficialFlyLeaderboard();
 loadRocketCatalog();
 loadRocketWorldMap();
 if (!avatarAnimation) avatarAnimation = requestAnimationFrame(animateAvatar);
 const initialView = location.hash.replace("#", "");
-if (initialView === "rocket") {
+const bootParams = new URLSearchParams(location.search);
+if (bootParams.get("simulateAgents") === "1") {
+  runAgentFlySimulationTest();
+  history.replaceState(null, "", `${location.pathname}#runs`);
+  showView("runs", false);
+} else if (initialView === "rocket") {
   showView("rocket", false);
-  if (sessionStorage.getItem("flagHunterLaunchRocket") === "1") {
-    sessionStorage.removeItem("flagHunterLaunchRocket");
-    startRocketRun();
-  } else {
-    els.rocketMessage.textContent = "Open the Rocket setup page to start a new flight session, or use a saved session from Runs.";
-    updateRocketRoundSetup(false);
-  }
+  startRocketRun();
 } else if (["runs", "leaderboard", "profile", "results"].includes(initialView)) {
   renderTables();
   showView(initialView, false);
-} else if (profile.characterCreated) {
-  startRun();
 } else {
-  showView("profile");
+  showFlagSetup();
 }

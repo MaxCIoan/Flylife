@@ -1,0 +1,44 @@
+[build]
+  publish = "."
+
+[[redirects]]
+  from = "/api/fly/run/start"
+  to = "/.netlify/functions/fly-run-start"
+  status = 200
+
+[[redirects]]
+  from = "/api/fly/run/finish"
+  to = "/.netlify/functions/fly-run-finish"
+  status = 200
+
+[[redirects]]
+  from = "/api/fly/leaderboard"
+  to = "/.netlify/functions/fly-leaderboard"
+  status = 200
+
+[[headers]]
+  for = "/*.json"
+  [headers.values]
+    Content-Type = "application/json"
+
+[[headers]]
+  for = "/*.js"
+  [headers.values]
+    Content-Type = "text/javascript"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/fly-session-guard.js"
+  [headers.values]
+    Content-Type = "text/javascript"
+    Cache-Control = "no-store"
+
+[[headers]]
+  for = "/app.js"
+  [headers.values]
+    Content-Type = "text/javascript"
+    Cache-Control = "no-store"
