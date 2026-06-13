@@ -160,8 +160,6 @@ const els = {
   rocketFxVolume: document.querySelector("#rocketFxVolume"),
   profileRocketRadioSelect: document.querySelector("#profileRocketRadioSelect"),
   rocketStartRadio: document.querySelector("#rocketStartRadio"),
-  customAudioInput: document.querySelector("#customAudioInput"),
-  customAudioFolderInput: document.querySelector("#customAudioFolderInput"),
   profileRadioVolume: document.querySelector("#profileRadioVolume"),
   profileEngineVolume: document.querySelector("#profileEngineVolume"),
   profileFxVolume: document.querySelector("#profileFxVolume"),
@@ -202,8 +200,6 @@ const els = {
 };
 
 const storeKey = "flagHunterLocalProfile";
-const audioDbName = "flagHunterAudio";
-const audioStoreName = "tracks";
 const runTime = 45;
 const defaultFlagRounds = 10;
 const allowedGameRounds = [10, 15, 20, 50];
@@ -247,7 +243,10 @@ const rocketRadioStations = [
   "https://ice1.somafm.com/lush-128-mp3",
   "https://ice1.somafm.com/folkfwd-128-mp3",
   "https://ice1.somafm.com/defcon-128-mp3",
-  "https://ice1.somafm.com/cliqhop-128-mp3"
+  "https://ice1.somafm.com/cliqhop-128-mp3",
+  "https://ice1.somafm.com/dronezone-128-mp3",
+  "https://ice1.somafm.com/spacestation-128-mp3",
+  "https://ice1.somafm.com/suburbsofgoa-128-mp3"
 ];
 
 const rocketTechMax = 6;
@@ -700,72 +699,6 @@ function saveRocketAudioSettings() {
   if (els.profileFxVolume) localStorage.setItem("flagHunterFxVolume", els.profileFxVolume.value);
   if (els.rocketStartRadio) localStorage.setItem("flagHunterStartRadio", els.rocketStartRadio.checked ? "1" : "0");
   localStorage.setItem("flagHunterRadioMuted", els.rocketRadio?.muted ? "1" : "0");
-}
-
-function openAudioDb() {
-  if (!("indexedDB" in window)) return Promise.reject(new Error("IndexedDB unavailable"));
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(audioDbName, 1);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(audioStoreName)) db.createObjectStore(audioStoreName, { keyPath: "id" });
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function saveUploadedAudioFiles(fileList) {
-  const files = [...fileList].filter((file) => file.type.startsWith("audio/"));
-  if (!files.length) return;
-  const db = await openAudioDb();
-  const tx = db.transaction(audioStoreName, "readwrite");
-  const store = tx.objectStore(audioStoreName);
-  files.forEach((file) => {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    store.put({ id, name: file.webkitRelativePath || file.name, type: file.type || "audio/mpeg", blob: file });
-  });
-  await new Promise((resolve, reject) => {
-    tx.oncomplete = resolve;
-    tx.onerror = () => reject(tx.error);
-  });
-  db.close();
-  await loadUploadedAudioTracks(true);
-}
-
-async function loadUploadedAudioTracks(selectLatest = false) {
-  let db;
-  try {
-    db = await openAudioDb();
-  } catch {
-    return;
-  }
-  const tracks = await new Promise((resolve, reject) => {
-    const tx = db.transaction(audioStoreName, "readonly");
-    const request = tx.objectStore(audioStoreName).getAll();
-    request.onsuccess = () => resolve(request.result || []);
-    request.onerror = () => reject(request.error);
-  });
-  db.close();
-  document.querySelectorAll("option[data-uploaded='true']").forEach((option) => option.remove());
-  tracks.forEach((track) => appendUploadedAudioOption(track));
-  const savedValue = localStorage.getItem("flagHunterRadioStationValue");
-  const latestValue = tracks.length ? `custom:${tracks[tracks.length - 1].id}` : "";
-  const wanted = selectLatest ? latestValue : savedValue;
-  if (wanted) selectRocketRadioByValue(wanted);
-}
-
-function appendUploadedAudioOption(track) {
-  const src = URL.createObjectURL(track.blob);
-  [els.rocketRadioSelect, els.profileRocketRadioSelect].forEach((select) => {
-    if (!select) return;
-    const option = document.createElement("option");
-    option.dataset.uploaded = "true";
-    option.dataset.src = src;
-    option.value = `custom:${track.id}`;
-    option.textContent = `Uploaded: ${track.name.slice(0, 64)}`;
-    select.append(option);
-  });
 }
 
 function selectRocketRadioByValue(value) {
@@ -6077,7 +6010,6 @@ document.querySelectorAll("[data-flag-rounds]").forEach((button) => {
 
 document.querySelector("#playAgain").addEventListener("click", showFlagSetup);
 initRocketAudioControls();
-loadUploadedAudioTracks();
 if (els.rocketRadioSelect) {
   const savedStation = Number(localStorage.getItem("flagHunterRadioStation") || 0);
   if (Number.isFinite(savedStation) && savedStation > 0) selectRocketRadio(savedStation);
@@ -6119,20 +6051,6 @@ els.rocketRadioMute?.addEventListener("click", () => {
   });
 });
 els.rocketStartRadio?.addEventListener("change", saveRocketAudioSettings);
-async function handleCustomAudioUpload(input) {
-  if (!input?.files?.length) return;
-  try {
-    await saveUploadedAudioFiles(input.files);
-    if (els.rocketRadioSelect?.value) toggleRocketRadio();
-  } catch {
-    if (els.rocketMessage) els.rocketMessage.textContent = "Audio upload could not be saved. Try fewer tracks or smaller files.";
-  } finally {
-    input.value = "";
-  }
-}
-
-els.customAudioInput?.addEventListener("change", () => handleCustomAudioUpload(els.customAudioInput));
-els.customAudioFolderInput?.addEventListener("change", () => handleCustomAudioUpload(els.customAudioFolderInput));
 els.rocketStart.addEventListener("click", () => {
   if (rocketState?.phase === "briefing" && !rocketState.active) {
     beginRocketTakeoff();

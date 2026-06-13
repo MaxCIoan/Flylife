@@ -54,3 +54,5 @@
 - Made the Leaderboard page official-only for Fly scores and removed browser-local fallback rows from that ranking.
 - Allowed valid partial Fly runs to submit to the official database instead of forcing incomplete routes to score zero server-side.
 - Verified production with a live partial-run API probe and filtered Codex probe rows from the public leaderboard output.
+- Removed unsafe custom local audio intake UI/code from the Manual page and Fly audio system.
+- Added Drone Zone, Space Station, and Suburbs of Goa as extra built-in radio station choices.
