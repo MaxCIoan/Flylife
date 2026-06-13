@@ -14,6 +14,7 @@ export default async (request) => {
               finished_at as "finishedAt"
        from fly_runs
        where status = 'completed' and tampered = false and final_score > 0
+         and display_name <> 'CodexProbe'
        order by final_score desc, elapsed_ms asc, finished_at asc
        limit 20`
     );

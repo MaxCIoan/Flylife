@@ -49,3 +49,5 @@
 - Changed itch-context leaderboard requests to use the production Fly API origin and added CORS/preflight headers to Fly API functions.
 - Forced Netlify production builds to install npm dependencies before publishing so the database package is available to functions.
 - Converted Fly API functions from Lambda compatibility handlers to the current Netlify Request/Response function API so Netlify Database can inject its production connection automatically.
+- Fixed official Fly run submission from itch contexts by routing guard start/finish calls to the production API, waiting for the start credentials before finish, and refreshing official leaderboard rows after a submitted run.
+- Renamed browser-only Fly leaderboard rows to `Local Fly` so stale local storage cannot be mistaken for global database scores.
