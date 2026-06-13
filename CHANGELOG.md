@@ -53,3 +53,4 @@
 - Renamed browser-only Fly leaderboard rows to `Local Fly` so stale local storage cannot be mistaken for global database scores.
 - Made the Leaderboard page official-only for Fly scores and removed browser-local fallback rows from that ranking.
 - Allowed valid partial Fly runs to submit to the official database instead of forcing incomplete routes to score zero server-side.
+- Verified production with a live partial-run API probe and filtered Codex probe rows from the public leaderboard output.
