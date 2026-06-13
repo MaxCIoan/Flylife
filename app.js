@@ -1123,6 +1123,7 @@ function saveRocketSessionResult(title, summary) {
     if (officialResult) {
       session.officialResult = officialResult;
       saveProfile();
+      refreshOfficialFlyLeaderboard();
       renderTables();
     }
   });
@@ -1279,7 +1280,7 @@ function buildLocalLeaderboardEntries(flagRuns, flyRuns, officialFlyRuns = []) {
   }));
   const flyEntries = (flyRuns || []).map((run) => ({
     type: "fly",
-    mode: "Fly",
+    mode: "Local Fly",
     displayName: run.displayName || "Guest",
     score: run.score || 0,
     plane: escapeHtml(run.planeClass || getPlaneClass(run).name),
@@ -1289,7 +1290,7 @@ function buildLocalLeaderboardEntries(flagRuns, flyRuns, officialFlyRuns = []) {
   }));
   const officialFlyEntries = (officialFlyRuns || []).map((run) => ({
     type: "official-fly",
-    mode: "Official Fly",
+    mode: "Fly",
     displayName: run.displayName || "Guest",
     score: run.finalScore || 0,
     plane: "",
@@ -1321,6 +1322,11 @@ function loadOfficialFlyLeaderboard() {
       officialFlyLeaders = [];
       setPrivateApiStatus(false);
     });
+}
+
+function refreshOfficialFlyLeaderboard() {
+  officialFlyLeadersLoaded = false;
+  loadOfficialFlyLeaderboard();
 }
 
 function toggleRunDetails(row, data, columns, type = "run") {

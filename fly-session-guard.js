@@ -12,11 +12,21 @@
   const MAX_SCORE_PER_ROUND = 80000;
   const MIN_MS_PER_ROUND = 2500;
   const SALT = "flag-hunter-fly-guard-20260609";
+  const PRODUCTION_API_ORIGIN = "https://flylifeforlife.netlify.app";
 
   let tampered = false;
   let tamperReason = null;
   let runStartedAt = 0;
   let serverRun = readJsonSafe(sessionStorage.getItem(SERVER_RUN_KEY));
+  let serverRunPromise = null;
+
+  function getFlyApiBase() {
+    const hostname = window.location.hostname || "";
+    const itchContext = /(^|\.)itch\.io$/i.test(hostname)
+      || /itch\.io/i.test(document.referrer || "")
+      || new URLSearchParams(window.location.search).has("itchStatus");
+    return itchContext && !/flylifeforlife\.netlify\.app$/i.test(hostname) ? PRODUCTION_API_ORIGIN : "";
+  }
 
   function readJsonSafe(value) {
     if (!value) return null;
@@ -278,27 +288,32 @@
   function startRun({ displayName, rounds }) {
     runStartedAt = Date.now();
     serverRun = null;
+    serverRunPromise = null;
     sessionStorage.removeItem(SERVER_RUN_KEY);
     if (tampered || !ALLOWED_ROUNDS.includes(Number(rounds))) return;
-    postJson("/api/fly/run/start", { displayName, rounds })
+    serverRunPromise = postJson(`${getFlyApiBase()}/api/fly/run/start`, { displayName, rounds })
       .then((run) => {
         serverRun = run;
         sessionStorage.setItem(SERVER_RUN_KEY, JSON.stringify(run));
+        return run;
       })
       .catch((error) => {
         console.warn("Official fly run was not started", error);
+        return null;
       });
   }
 
-  function finishRun(session) {
+  async function finishRun(session) {
     const reason = validateRocketSession(session);
     if (reason) {
       markTampered(reason);
-      return Promise.resolve({ finalScore: 0, tampered: true, tamperReason });
+      return { finalScore: 0, tampered: true, tamperReason };
     }
-    const credentials = serverRun || readJsonSafe(sessionStorage.getItem(SERVER_RUN_KEY));
-    if (!credentials?.runId || !credentials?.token) return Promise.resolve(null);
-    return postJson("/api/fly/run/finish", {
+    const credentials = serverRun
+      || readJsonSafe(sessionStorage.getItem(SERVER_RUN_KEY))
+      || await serverRunPromise;
+    if (!credentials?.runId || !credentials?.token) return null;
+    return postJson(`${getFlyApiBase()}/api/fly/run/finish`, {
       runId: credentials.runId,
       token: credentials.token,
       displayName: session.displayName,
