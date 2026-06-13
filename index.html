@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Fly-geoguessr</title>
+  <title>Flag Hunter</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -11,14 +11,14 @@
     <header class="topbar">
       <a class="brand" href="#play" aria-label="Flag Hunter home">
         <span class="brand-mark">⚑</span>
-        <span>FLY<br><b>GEOGUESSR</b></span>
+        <span>FLAG<br><b>HUNTER</b></span>
       </a>
       <nav class="main-nav" aria-label="Main navigation">
         <button class="nav-btn active" data-view="play">Speed Flags</button>
         <button class="nav-btn" data-view="rocket">Fly</button>
         <button class="nav-btn" data-view="runs">Runs</button>
         <button class="nav-btn" data-view="leaderboard">Leaderboard</button>
-        <button class="nav-btn" data-view="profile">Rules</button>
+        <button class="nav-btn" data-view="profile">Manual</button>
       </nav>
       <button class="profile-chip" id="profileOpen" type="button">
         <div class="avatar" id="topAvatar" aria-hidden="true">FH</div>
@@ -35,7 +35,7 @@
         <aside class="side-panel left-panel">
           <p class="mode-label">Mode: <b>Speedrun</b></p>
           <div class="stat-card">
-            <span>Time Left</span>
+            <span>Answer Time</span>
             <strong id="timeLeft">45.0s</strong>
           </div>
           <div class="stat-card accent-hot">
@@ -58,9 +58,20 @@
 
         <section class="game-stage">
           <canvas class="fireworks-canvas" id="fireworksCanvas" aria-hidden="true"></canvas>
+          <div class="flag-round-setup" id="flagRoundSetup">
+            <span>Speed Flags Setup</span>
+            <strong>Round count</strong>
+            <p>Pick a fixed run length. The timer no longer ends the run; faster answers only improve the speed bonus.</p>
+            <div>
+              <button type="button" data-flag-rounds="10">10 Rounds<span>Quick rank push</span></button>
+              <button type="button" data-flag-rounds="15">15 Rounds<span>Balanced run</span></button>
+              <button type="button" data-flag-rounds="20">20 Rounds<span>Higher score ceiling</span></button>
+              <button type="button" data-flag-rounds="50">50 Rounds<span>Long rank attempt</span></button>
+            </div>
+          </div>
           <div class="round-meta">
             <div class="difficulty-bar"><span id="difficultyBar"></span></div>
-            <strong>Round <span id="round">1</span></strong>
+            <strong>Round <span id="round">0</span> / <span id="flagRoundGoal">10</span></strong>
           </div>
           <div class="flag-card" id="flagCard">
             <img id="flagImage" src="" alt="Current flag">
@@ -75,35 +86,13 @@
             <h2>Recent</h2>
             <ul id="recentList"></ul>
           </section>
-          <section class="activity-card power-card">
-            <h2>Badges</h2>
-            <div class="badge-row">
-              <div class="hex-badge blue">
-                <span class="badge-icon">❄</span>
-                <small>x2</small>
-              </div>
-              <div class="hex-badge purple">
-                <span class="badge-icon">½</span>
-                <small>x1</small>
-              </div>
-              <div class="hex-badge gold">
-                <span class="badge-icon">⏱</span>
-                <small>x1</small>
-              </div>
-            </div>
-            <div class="badge-labels">
-              <span>Freeze</span>
-              <span>50/50</span>
-              <span>Extra Time</span>
-            </div>
+          <section class="activity-card compact">
+            <h2>Speed Flags Score</h2>
+            <p>Correct answers add country value, combo bonus, and speed bonus. Wrong answers cost points but do not end the run.</p>
           </section>
           <section class="activity-card compact">
-            <h2>Rules</h2>
-            <p>Wrong answers cost points but do not end the run. Longer streaks raise difficulty and make time drain faster.</p>
-          </section>
-          <section class="activity-card compact">
-            <h2>Next Backend Step</h2>
-            <p>Use Firebase for identity and Firestore. Keep Netlify for hosting and score verification functions.</p>
+            <h2>Saved Scores</h2>
+            <p>Runs are saved in this browser. Fly can also submit to the Netlify score API when the deployed backend is available.</p>
           </section>
         </aside>
       </section>
@@ -132,90 +121,40 @@
 
       <section class="view rocket-view" id="rocketView" aria-label="Rocket map challenge">
         <aside class="rocket-hud">
-          <details class="rocket-hud-details">
-            <summary>
-              <span>
-                <span class="eyebrow">Airliner Scout</span>
-                <b id="rocketTarget">Flight Route</b>
-              </span>
-              <span class="summary-icon">▾</span>
-            </summary>
-            <div class="rocket-game-nav" aria-label="Rocket navigation">
-              <button type="button" id="rocketMenuEndRun">End Run</button>
-              <button type="button" id="rocketMenuMain">Back To Main Menu</button>
+          <div class="rocket-hud-panel">
+            <span class="eyebrow">Airliner Scout</span>
+            <div class="scout-line">
+              <span>Score</span>
+              <strong id="rocketScore">0</strong>
             </div>
-            <div class="rocket-target-mini" id="rocketTargetMini" hidden>
-              <img id="rocketTargetMiniFlag" src="" alt="">
-              <div>
-                <span>Target</span>
-                <strong id="rocketTargetMiniName">Brazil</strong>
-                <small id="rocketTargetMiniValue">Worth 1,200 + time bonus</small>
-              </div>
+            <div class="scout-line">
+              <span>Round</span>
+              <strong><span id="rocketRound">1</span> / <span id="rocketRoundGoal">3</span></strong>
             </div>
-            <label class="radio-select">Radio
-              <select id="rocketRadioSelect">
-                <option value="">Generated ambience</option>
-                <option value="https://ice1.somafm.com/groovesalad-128-mp3">Groove Salad</option>
-                <option value="https://ice1.somafm.com/deepspaceone-128-mp3">Deep Space One</option>
-                <option value="https://ice1.somafm.com/missioncontrol-128-mp3">Mission Control</option>
-                <option value="https://ice1.somafm.com/poptron-128-mp3">PopTron</option>
-                <option value="https://ice1.somafm.com/secretagent-128-mp3">Secret Agent</option>
-                <option value="https://ice1.somafm.com/lush-128-mp3">Lush</option>
-                <option value="https://ice1.somafm.com/folkfwd-128-mp3">Folk Forward</option>
-                <option value="https://ice1.somafm.com/defcon-128-mp3">DEF CON Radio</option>
-                <option value="https://ice1.somafm.com/cliqhop-128-mp3">Cliqhop</option>
-              </select>
-            </label>
-            <audio id="rocketRadio" crossorigin="anonymous"></audio>
-            <div class="rocket-audio-panel" aria-label="Rocket audio controls">
-              <div class="radio-buttons">
-                <button type="button" id="rocketRadioPrev" aria-label="Previous radio station">‹</button>
-                <button type="button" id="rocketRadioPlay">Play Radio</button>
-                <button type="button" id="rocketRadioNext" aria-label="Next radio station">›</button>
-                <button type="button" id="rocketRadioMute">Mute</button>
-              </div>
-              <label>Radio Volume <input id="rocketRadioVolume" type="range" min="0" max="1" step="0.01" value="0.55"></label>
-              <label>Propeller Volume <input id="rocketEngineVolume" type="range" min="0" max="1" step="0.01" value="0.28"></label>
-              <label>Effects Volume <input id="rocketFxVolume" type="range" min="0" max="1" step="0.01" value="0.72"></label>
-            </div>
-            <div class="flight-manual">
-            <strong>Flight rules</strong>
-            <span>Pre-flight: click the engine meter, then drag the brake lever fully down until it clicks.</span>
-            <span>Takeoff: brake off, reach 105 m/s, then climb above 120 m.</span>
-            <span>Main goal: land inside the target country area; distance to center is the main score.</span>
-            <span>Capital beacon: yellow sparkle, fly through it for tech points.</span>
-            <span>Refuel depot: land on the red target. Under 500 m/s and under 1000 m counts; 20 m/s or less earns extra research TP.</span>
-            <span>Control: steer only inside the purple ring. Click the plane to toggle manual/autopilot.</span>
-            </div>
-            <div class="rocket-stat tech-panel">
-            <span>Tech Tree</span>
-            <strong><span id="rocketTech">0</span> TP</strong>
-            <small>Open it from the in-flight button inside the map.</small>
-            </div>
-            <div class="rocket-stat"><span>Time</span><strong id="rocketTime">90.0s</strong></div>
-            <div class="rocket-stat"><span>Fuel</span><strong id="rocketFuel">100%</strong></div>
-            <div class="rocket-stat"><span>Speed</span><strong id="rocketSpeed">0 m/s</strong></div>
-            <div class="rocket-stat"><span>Altitude</span><strong id="rocketAltitude">0 m</strong></div>
-            <div class="rocket-stat"><span>Round</span><strong><span id="rocketRound">1</span> / <span id="rocketRoundGoal">3</span></strong></div>
-            <div class="rocket-stat"><span>Score</span><strong id="rocketScore">0</strong></div>
             <p id="rocketMessage">Manual control only works near the plane. Click the plane to toggle control; outside the map it keeps flying straight.</p>
-          </details>
+          </div>
         </aside>
         <div class="rocket-stage" id="rocketStage">
-          <button class="tech-menu-button tech-stage-button" id="techTreeOpen" type="button">☰ Tech Tree</button>
           <div class="rocket-round-setup" id="rocketRoundSetup">
-            <span>Flight Length</span>
-            <strong>Choose rounds</strong>
+            <span>Fly Setup</span>
+            <strong>Route length</strong>
+            <p>Pick a run length. Longer runs can score higher, but every missed route can end the attempt earlier.</p>
             <div>
-              <button type="button" data-rocket-rounds="10">10 Rounds</button>
-              <button type="button" data-rocket-rounds="15">15 Rounds</button>
-              <button type="button" data-rocket-rounds="20">20 Rounds</button>
-              <button type="button" data-rocket-rounds="50">50 Rounds</button>
+              <button type="button" data-rocket-rounds="10">10 Rounds<span>Quick route score</span></button>
+              <button type="button" data-rocket-rounds="15">15 Rounds<span>Balanced rank climb</span></button>
+              <button type="button" data-rocket-rounds="20">20 Rounds<span>Higher score ceiling</span></button>
+              <button type="button" data-rocket-rounds="50">50 Rounds<span>Long rank attempt</span></button>
             </div>
+            <nav class="rocket-setup-links" aria-label="Fly setup navigation">
+              <button type="button" data-setup-view="play">Speed Flags</button>
+              <button type="button" data-setup-view="runs">Runs</button>
+              <button type="button" data-setup-view="leaderboard">Leaderboard</button>
+              <button type="button" data-setup-view="profile">Manual</button>
+            </nav>
           </div>
-          <button class="primary-btn rocket-start-button" id="rocketStart" type="button">Start Flight Run</button>
+          <button class="primary-btn rocket-start-button" id="rocketStart" type="button">Begin Takeoff</button>
           <div class="rocket-target-card" id="rocketTargetCard" hidden>
-            <span>Target</span>
+            <span>Destination</span>
             <img id="rocketTargetFlag" src="" alt="">
             <strong id="rocketTargetName">Brazil</strong>
           </div>
@@ -235,7 +174,11 @@
               <h2 id="rocketResultTitle">Run Complete</h2>
               <p id="rocketResultSummary"></p>
               <div class="rocket-result-details" id="rocketResultDetails"></div>
-              <canvas id="rocketResultMap" width="900" height="430" aria-label="Flight route country map"></canvas>
+              <div class="rocket-route-inspector" id="rocketResultInspector" data-rocket-route-inspector>
+                <div class="rocket-route-toolbar" data-rocket-route-buttons></div>
+                <canvas id="rocketResultMap" width="900" height="430" aria-label="Flight route country map"></canvas>
+                <div class="rocket-route-meta" data-rocket-route-meta></div>
+              </div>
               <div class="result-actions">
                 <button class="primary-btn" id="rocketResultRestart" type="button">Start New Flight</button>
               </div>
@@ -243,13 +186,48 @@
           </div>
           <div class="tech-tree-overlay" id="techTreeOverlay" hidden>
             <section class="tech-tree-panel">
-              <button class="tech-close" id="techTreeClose" type="button" aria-label="Close tech tree">×</button>
-              <span class="eyebrow">Upgrade Hangar</span>
+              <button class="tech-close" id="techTreeClose" type="button" aria-label="Close pause menu">×</button>
+              <span class="eyebrow">Paused</span>
               <div class="tech-tree-heading">
-                <h2>Tech Tree</h2>
+                <h2>Flight Menu</h2>
                 <strong id="techTreeStatus">0 tech points available.</strong>
               </div>
-              <p>Spend research points to upgrade your plane. Each path specializes in a key performance area.</p>
+              <div class="pause-actions">
+                <button type="button" id="pauseResume">Resume</button>
+                <button type="button" id="pauseEndRun">End Run</button>
+                <button type="button" id="pauseScanTarget">Scan Destination -10 TP</button>
+                <button type="button" data-pause-view="play">Speed Flags</button>
+                <button type="button" data-pause-view="runs">Runs</button>
+                <button type="button" data-pause-view="leaderboard">Leaderboard</button>
+              </div>
+              <label class="radio-select">Radio
+                <select id="rocketRadioSelect">
+                  <option value="">Generated ambience</option>
+                  <option value="https://ice1.somafm.com/groovesalad-128-mp3">Groove Salad</option>
+                  <option value="https://ice1.somafm.com/deepspaceone-128-mp3">Deep Space One</option>
+                  <option value="https://ice1.somafm.com/missioncontrol-128-mp3">Mission Control</option>
+                  <option value="https://ice1.somafm.com/poptron-128-mp3">PopTron</option>
+                  <option value="https://ice1.somafm.com/secretagent-128-mp3">Secret Agent</option>
+                  <option value="https://ice1.somafm.com/lush-128-mp3">Lush</option>
+                  <option value="https://ice1.somafm.com/folkfwd-128-mp3">Folk Forward</option>
+                  <option value="https://ice1.somafm.com/defcon-128-mp3">DEF CON Radio</option>
+                  <option value="https://ice1.somafm.com/cliqhop-128-mp3">Cliqhop</option>
+                </select>
+              </label>
+              <audio id="rocketRadio" crossorigin="anonymous"></audio>
+              <div class="rocket-audio-panel" aria-label="Rocket audio controls">
+                <div class="radio-buttons">
+                  <button type="button" id="rocketRadioPrev" aria-label="Previous radio station">‹</button>
+                  <button type="button" id="rocketRadioPlay">Play Radio</button>
+                  <button type="button" id="rocketRadioNext" aria-label="Next radio station">›</button>
+                  <button type="button" id="rocketRadioMute">Mute</button>
+                </div>
+                <label>Radio Volume <input id="rocketRadioVolume" type="range" min="0" max="1" step="0.01" value="0.55"></label>
+                <label>Propeller Volume <input id="rocketEngineVolume" type="range" min="0" max="1" step="0.01" value="0.28"></label>
+                <label>Effects Volume <input id="rocketFxVolume" type="range" min="0" max="1" step="0.01" value="0.72"></label>
+              </div>
+              <div class="rank-list" id="pauseRankList"></div>
+              <p>Spend tech points during this run only. New Fly runs reset tech points and upgrades.</p>
               <div class="tech-tree-map">
                 <button class="tech-node fuel-node" type="button" data-tech="fuel" aria-label="Upgrade fuel efficiency">
                   <i class="tech-shield">◈</i>
@@ -307,7 +285,7 @@
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>Date</th><th>Score</th><th>Round Class</th><th>Reached</th><th>Missed</th><th>Longest Run</th><th>Details</th></tr>
+              <tr><th>Date</th><th>Score</th><th>Plane</th><th>Round Class</th><th>Reached</th><th>Missed</th><th>Details</th></tr>
             </thead>
             <tbody id="flyRunsTable"></tbody>
           </table>
@@ -316,13 +294,14 @@
 
       <section class="view data-view" id="leaderboardView" aria-label="Leaderboard">
         <div class="page-heading">
-          <span class="eyebrow">Local Prototype</span>
+          <span class="eyebrow">Local + Official Fly API</span>
           <h1>Leaderboard</h1>
+          <p>Speed Flags scores are local to this browser. Fly shows local runs and, when the deployed API is available, official submitted Fly results.</p>
         </div>
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>Rank</th><th>Player</th><th>Score</th><th>Errors</th><th>Penalty</th><th>Time</th></tr>
+              <tr><th>Rank</th><th>Mode</th><th>Player</th><th>Score</th><th>Plane</th><th>Result</th><th>Details</th></tr>
             </thead>
             <tbody id="leaderboardTable"></tbody>
           </table>
@@ -332,43 +311,47 @@
       <section class="view data-view" id="profileView" aria-label="Rules and settings">
         <div class="manual-dashboard">
           <header class="manual-hero">
-            <span class="eyebrow">Rules / Settings / Algorithms</span>
+            <span class="eyebrow">Manual / Settings / Scoring</span>
             <h1>Game Manual</h1>
-            <p>This is the practical rules page: how each mode scores, how each control works, and how Fly audio starts.</p>
+            <p>This page documents only behavior that is implemented in this build.</p>
           </header>
 
           <section class="manual-card">
             <h2>Speed Flags</h2>
-            <p>Identify the shown flag from four answers before the timer reaches zero. A wrong answer does not end the run, but it creates a large score penalty.</p>
+            <p>Pick a round count, then identify the shown flag from four answers. The clock measures answer speed for bonus points; it does not end the run.</p>
             <ul>
               <li>Correct score = base country value + combo bonus + fast-answer bonus.</li>
               <li>Wrong score = at least -280 points or a bigger percentage hit from your current score.</li>
               <li>Every streak raises the country difficulty pool, so the game becomes less familiar as you keep answering correctly.</li>
-              <li>The timer is the run limit. Your final score is saved into Runs and Leaderboard.</li>
+              <li>The selected round count ends the run. Your final score is saved into Runs and Leaderboard.</li>
             </ul>
           </section>
 
           <section class="manual-card">
+            <h2>Ranks</h2>
+            <div class="manual-grid" id="manualRankList"></div>
+          </section>
+
+          <section class="manual-card">
             <h2>Fly</h2>
-            <p>Fly the plane across the country map, manage fuel, and land in the target country or at a fuel depot. Distance to the landing center is the main score calculation.</p>
+            <p>Fly the plane across the country map, manage fuel, and land in the assigned destination country or at a fuel depot. The final score is real math from the route events listed below.</p>
             <ul>
-              <li>Pre-flight starts parked. Click the engine meter, drag the brake lever down until it clicks, then the plane takes off facing east.</li>
-              <li>Once your engine is on you can move the mouse and this will increse your speed towards where you are pointing space to decelerate at constant 30m/s and or you can move muse closer to plane nose to decelerate fastr.</li>
-              <li>Takeoff requires speed, altitude, and balance. You cannot twist freely on the runway.</li>
+              <li>Press Begin Takeoff to start moving immediately. Build 105 m/s, then climb above 120 m to enter cruise.</li>
               <li>Manual steering works near the plane. Click the plane to release manual control; outside the control zone, autopilot holds a straight heading.</li>
-              <li>When speed reaches zero on the ground, you have landed and must run the takeoff loop again.</li>
-              <li>Fuel depots require a landing attempt: under 500 m/s and under 1000 m qualifies; 20 m/s or less is treated as ground speed and earns extra research points.</li>
-              <li>Target countries have no arrow. Use distance, the world map, and your route judgment.</li>
+              <li>Destination landing points use country-center distance, entry speed, entry altitude, and descent drop over the sampling second.</li>
+              <li>After a destination succeeds, route-completion points are added: 1,200 base + timer bonus + difficulty bonus + fuel bonus.</li>
+              <li>Fuel depots add fuel, points, and tech points based on the same landing quality inputs.</li>
+              <li>Destination countries have no labels, arrow, or marker. Spend 10 tech points in the pause menu for a 5 second distance scan.</li>
             </ul>
           </section>
 
           <section class="manual-card">
             <h2>Fly Tech Tree</h2>
-            <p>Research points can be spent on three upgrade branches. Choose whether to fly longer for more opportunities or go faster for time-score pressure.</p>
+            <p>Research points are earned during Fly runs and can be spent during the current session on three upgrade branches.</p>
             <div class="manual-grid">
               <div><b>Fuel</b><span>Lower fuel burn, better route fuel return, stronger depot refuels.</span></div>
-              <div><b>Speed</b><span>Higher thrust and top speed, eventually pushing toward sound-speed territory.</span></div>
-              <div><b>Handling</b><span>Better turn response, stronger banking, and cleaner recovery after sharp moves.</span></div>
+              <div><b>Speed</b><span>Higher thrust and top speed. Speed, acceleration, braking, handling, and upgrades raise the plane class.</span></div>
+              <div><b>Handling</b><span>Better turn response, stronger banking, cleaner recovery, and higher plane class progress.</span></div>
             </div>
           </section>
 
@@ -392,21 +375,26 @@
                 <option value="https://ice1.somafm.com/cliqhop-128-mp3">Cliqhop</option>
               </select>
             </label>
-           
+            <label>Upload music or audio files
+              <input id="customAudioInput" type="file" accept="audio/*" multiple>
+            </label>
+            <label>Upload a music folder
+              <input id="customAudioFolderInput" type="file" accept="audio/*" multiple webkitdirectory directory>
+            </label>
             <label>Radio Volume <input id="profileRadioVolume" type="range" min="0" max="1" step="0.01" value="0.55"></label>
             <label>Propeller Volume <input id="profileEngineVolume" type="range" min="0" max="1" step="0.01" value="0.28"></label>
             <label>Effects Volume <input id="profileFxVolume" type="range" min="0" max="1" step="0.01" value="0.72"></label>
-            
+            <p class="manual-note">Uploaded audio is usable in this browser session. The browser will not permanently remember the private file path after refresh.</p>
           </section>
 
           <section class="manual-card">
             <h2>Round Levels</h2>
-            <p>Fly sessions can be short or long. Longer sessions reward better route planning because fuel, speed, and landing discipline matter more over time.</p>
+            <p>Fly sessions support 10, 15, 20, and 50 destination rounds. Longer selections can produce higher rank scores but demand more fuel planning.</p>
             <div class="manual-grid">
-              <div><b>Level 1</b><span>Short route practice.</span></div>
-              <div><b>Level 10</b><span>More countries, more refuel decisions.</span></div>
-              <div><b>Level 25+</b><span>Endurance route planning with tech-tree pressure.</span></div>
-              <div><b>Level 100+</b><span>Leaderboard-style marathon where fuel and upgrades decide the run.</span></div>
+              <div><b>10 Rounds</b><span>Quick route practice.</span></div>
+              <div><b>15 Rounds</b><span>Balanced route run.</span></div>
+              <div><b>20 Rounds</b><span>Longer routing and fuel pressure.</span></div>
+              <div><b>50 Rounds</b><span>Endurance run for high local scores.</span></div>
             </div>
           </section>
         </div>
@@ -456,7 +444,7 @@
     </form>
   </dialog>
 
-  <script src="fly-session-guard.js?v=20260609a"></script>
-  <script type="module" src="app.js?v=20260609a"></script>
+  <script src="fly-session-guard.js?v=20260613b"></script>
+  <script type="module" src="app.js?v=20260613c"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "20260609a";
+  const VERSION = "20260613b";
   const PROFILE_KEY = "flagHunterLocalProfile";
   const TRUST_KEY = "flagHunterTrustedProfileV1";
   const ROCKET_ROUNDS_KEY = "flagHunterRocketRounds";
@@ -119,14 +119,11 @@
 
   function sanitizeProfile(profile) {
     return {
-      id: crypto.randomUUID?.() || String(Date.now()),
-      score: 0,
-      rounds: 0,
-      completedRounds: 0,
-      longestRun: 0,
-      status: "cheated",
-      reason: tamperReason,
-      createdAt: new Date().toISOString()
+      ...(profile && typeof profile === "object" ? profile : {}),
+      runs: [],
+      rocketRuns: [],
+      tampered: true,
+      tamperReason
     };
   }
 
@@ -325,6 +322,12 @@
     return false;
   }
 
+  function blockContextMenu(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    return false;
+  }
+
   document.addEventListener("keydown", (event) => {
     const key = String(event.key || "").toLowerCase();
     const chord = event.ctrlKey || event.metaKey;
@@ -332,7 +335,7 @@
     if (chord && event.shiftKey && ["i", "j", "c", "k"].includes(key)) blockEvent(event, "developer tools shortcut was used");
     if (chord && ["u", "s"].includes(key)) blockEvent(event, "protected source/storage shortcut was used");
   }, true);
-  
+  document.addEventListener("contextmenu", blockContextMenu, true);
   document.addEventListener("drop", (event) => blockEvent(event, "drop editing was attempted"), true);
 
   window.FlagGuard = Object.freeze({
