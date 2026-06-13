@@ -51,3 +51,5 @@
 - Converted Fly API functions from Lambda compatibility handlers to the current Netlify Request/Response function API so Netlify Database can inject its production connection automatically.
 - Fixed official Fly run submission from itch contexts by routing guard start/finish calls to the production API, waiting for the start credentials before finish, and refreshing official leaderboard rows after a submitted run.
 - Renamed browser-only Fly leaderboard rows to `Local Fly` so stale local storage cannot be mistaken for global database scores.
+- Made the Leaderboard page official-only for Fly scores and removed browser-local fallback rows from that ranking.
+- Allowed valid partial Fly runs to submit to the official database instead of forcing incomplete routes to score zero server-side.
