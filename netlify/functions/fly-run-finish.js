@@ -1,6 +1,6 @@
 import { query } from "../../db/index.js";
 import { computeFlyScore } from "../../lib/fly-scoring.js";
-import { cleanDisplayName, json, readJson } from "./_shared.js";
+import { cleanDisplayName, emptyResponse, jsonResponse, readRequestJson } from "./_shared.js";
 
 function dateMs(value) {
   if (value instanceof Date) return value.getTime();
@@ -8,13 +8,13 @@ function dateMs(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-export const handler = async (event) => {
-  if (event.httpMethod === "OPTIONS") return json(204, {});
-  if (event.httpMethod !== "POST") return json(405, { error: "method not allowed" });
+export default async (request) => {
+  if (request.method === "OPTIONS") return emptyResponse();
+  if (request.method !== "POST") return jsonResponse(405, { error: "method not allowed" });
 
   try {
-    const body = await readJson(event);
-    if (!body.runId || !body.token) return json(400, { error: "run credentials are required" });
+    const body = await readRequestJson(request);
+    if (!body.runId || !body.token) return jsonResponse(400, { error: "run credentials are required" });
 
     const { rows } = await query(
       `select run_id as "runId", started_at as "startedAt"
@@ -24,7 +24,7 @@ export const handler = async (event) => {
       [body.runId, body.token]
     );
     const run = rows[0];
-    if (!run) return json(404, { error: "run not found" });
+    if (!run) return jsonResponse(404, { error: "run not found" });
 
     const finishedAt = new Date();
     const session = body.session || {};
@@ -57,9 +57,9 @@ export const handler = async (event) => {
       ]
     );
 
-    return json(200, result);
+    return jsonResponse(200, result);
   } catch (error) {
     console.error("fly-run-finish failed", error);
-    return json(500, { error: error instanceof Error ? error.message : "fly run finish failed" });
+    return jsonResponse(500, { error: error instanceof Error ? error.message : "fly run finish failed" });
   }
 };

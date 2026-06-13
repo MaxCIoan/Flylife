@@ -1,9 +1,9 @@
 import { query } from "../../db/index.js";
-import { json } from "./_shared.js";
+import { emptyResponse, jsonResponse } from "./_shared.js";
 
-export const handler = async (event) => {
-  if (event.httpMethod === "OPTIONS") return json(204, {});
-  if (event.httpMethod !== "GET") return json(405, { error: "method not allowed" });
+export default async (request) => {
+  if (request.method === "OPTIONS") return emptyResponse();
+  if (request.method !== "GET") return jsonResponse(405, { error: "method not allowed" });
 
   try {
     const { rows: leaders } = await query(
@@ -18,9 +18,9 @@ export const handler = async (event) => {
        limit 20`
     );
 
-    return json(200, { leaders });
+    return jsonResponse(200, { leaders });
   } catch (error) {
     console.error("fly-leaderboard failed", error);
-    return json(500, { error: error instanceof Error ? error.message : "fly leaderboard failed" });
+    return jsonResponse(500, { error: error instanceof Error ? error.message : "fly leaderboard failed" });
   }
 };
