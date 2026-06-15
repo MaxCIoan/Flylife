@@ -97,6 +97,11 @@ const els = {
   flagRunsTable: document.querySelector("#flagRunsTable"),
   flyRunsTable: document.querySelector("#flyRunsTable"),
   leaderboardTable: document.querySelector("#leaderboardTable"),
+  leaderboardApiState: document.querySelector("#leaderboardApiState"),
+  leaderboardCount: document.querySelector("#leaderboardCount"),
+  leaderboardBest: document.querySelector("#leaderboardBest"),
+  leaderboardUpdated: document.querySelector("#leaderboardUpdated"),
+  leaderboardRefresh: document.querySelector("#leaderboardRefresh"),
   privateApiStatus: document.querySelector("#privateApiStatus"),
   rocketStage: document.querySelector("#rocketStage"),
   rocketCanvas: document.querySelector("#rocketCanvas"),
@@ -190,15 +195,21 @@ let rocketCatalog = null;
 let rocketCatalogLoading = false;
 let rocketMapCache = null;
 let rocketMiniMapCache = null;
+const rocketMiniMapImage = new Image();
 const ROCKET_STATIC_CACHE_SNAP = 320;
 const ROCKET_HUD_INTERVAL_MS = 120;
 const ROCKET_NAV_CHECK_INTERVAL = 0.14;
 const rocketEarthImage = new Image();
-rocketEarthImage.src = "assets/earth-satellite-clouds-4096.jpg";
+rocketEarthImage.src = "assets/earth-satellite-nasa-8192.jpg";
 rocketEarthImage.addEventListener("load", invalidateRocketMapCache);
+rocketMiniMapImage.src = "assets/world-political-minimap.png";
+rocketMiniMapImage.addEventListener("load", () => { rocketMiniMapCache = null; });
 let rocketCountryOverlayEnabled = localStorage.getItem("flagHunterRocketCountryOverlay") !== "0";
 let officialFlyLeaders = [];
 let officialFlyLeadersLoaded = false;
+let officialFlyLeadersLoading = false;
+let officialFlyLeadersError = false;
+let officialFlyLeadersUpdatedAt = null;
 const productionFlyApiOrigin = "https://flylifeforlife.netlify.app";
 const isItchContext = /(^|\.)itch\.io$/i.test(window.location.hostname)
   || /itch\.io/i.test(document.referrer || "")
@@ -421,7 +432,6 @@ function getRocketPool(difficulty) {
 function normalizeRocketCountry(feature) {
   if (!feature?.geometry?.coordinates) return null;
   const name = feature.properties?.name || feature.properties?.ADMIN || "Country";
-  if (blockedRocketCountries.has(name)) return null;
   const rings = [];
   if (feature.geometry.type === "Polygon") {
     feature.geometry.coordinates.forEach((ring) => rings.push(projectRocketRing(ring)));
@@ -1238,31 +1248,31 @@ function renderTables() {
   });
 
   const leaderboardEntries = buildOfficialLeaderboardEntries(officialFlyLeaders);
-  els.leaderboardTable.innerHTML = leaderboardEntries.length ? "" : `<tr><td colspan="7">No official Fly scores yet.</td></tr>`;
+  updateLeaderboardSummary(leaderboardEntries);
+  if (!els.leaderboardTable) return;
+  els.leaderboardTable.innerHTML = leaderboardEntries.length ? "" : `<tr class="table-empty"><td colspan="9">${officialFlyLeadersLoading ? "Loading official Fly scores..." : officialFlyLeadersError ? "Official leaderboard is offline right now." : "No official Fly scores yet."}</td></tr>`;
   leaderboardEntries.forEach((entry, index) => {
     const row = document.createElement("tr");
-    if (entry.type === "fly") {
-      row.className = "clickable-row";
-      row.tabIndex = 0;
-    }
+    row.className = "clickable-row leaderboard-row";
+    row.tabIndex = 0;
     row.innerHTML = `
-      <td>#${index + 1}</td>
-      <td>${entry.mode}</td>
-      <td>${escapeHtml(entry.displayName || "Guest")}</td>
-      <td>${formatScore(entry.score)}</td>
-      <td>${entry.plane || ""}</td>
-      <td>${entry.result}</td>
-      <td>${entry.details}</td>
+      <td><span class="rank-badge">#${index + 1}</span></td>
+      <td><span class="leader-name">${escapeHtml(entry.displayName || "Guest")}</span></td>
+      <td class="score-cell">${formatScore(entry.score)}</td>
+      <td>${entry.roundsLabel}</td>
+      <td>${entry.reachedLabel}</td>
+      <td>${entry.plane || "Unlisted"}</td>
+      <td>${entry.durationLabel}</td>
+      <td class="muted-cell">${entry.submittedLabel}</td>
+      <td><button class="mini-btn" type="button">View</button></td>
     `;
-    if (entry.type === "fly") {
-      row.addEventListener("click", () => toggleRunDetails(row, entry.run, 7, "rocket-run"));
-      row.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          toggleRunDetails(row, entry.run, 7, "rocket-run");
-        }
-      });
-    }
+    row.addEventListener("click", () => toggleRunDetails(row, entry.run, 9, "official-fly"));
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        toggleRunDetails(row, entry.run, 9, "official-fly");
+      }
+    });
     els.leaderboardTable.append(row);
   });
 }
@@ -1303,17 +1313,55 @@ function buildLocalLeaderboardEntries(flagRuns, flyRuns, officialFlyRuns = []) {
 
 function buildOfficialLeaderboardEntries(officialFlyRuns = []) {
   return (officialFlyRuns || [])
-    .map((run) => ({
-      type: "official-fly",
-      mode: "Fly",
-      displayName: run.displayName || "Guest",
-      score: run.finalScore || 0,
-      plane: escapeHtml(run.planeClass || ""),
-      result: `${run.completedRounds || 0}/${run.selectedRounds || run.rounds || 0} reached`,
-      details: run.elapsedMs ? formatDuration(run.elapsedMs) : "Submitted"
-    }))
+    .map((run) => {
+      const selectedRounds = run.selectedRounds || run.rounds || 0;
+      const completedRounds = run.completedRounds || 0;
+      return {
+        type: "official-fly",
+        displayName: run.displayName || "Guest",
+        score: run.finalScore || 0,
+        roundsLabel: selectedRounds ? `${selectedRounds}` : "Unlisted",
+        reachedLabel: selectedRounds ? `${completedRounds}/${selectedRounds}` : `${completedRounds}`,
+        durationLabel: run.elapsedMs ? formatDuration(run.elapsedMs) : "Unlisted",
+        submittedLabel: formatLeaderboardDate(run.finishedAt || run.createdAt),
+        plane: escapeHtml(run.planeClass || ""),
+        run
+      };
+    })
     .sort((a, b) => (b.score || 0) - (a.score || 0))
     .slice(0, 50);
+}
+
+function updateLeaderboardSummary(entries = []) {
+  const count = entries.length;
+  const best = entries[0]?.score || 0;
+  const status = officialFlyLeadersLoading ? "loading" : officialFlyLeadersError ? "offline" : "online";
+  if (els.leaderboardApiState) {
+    els.leaderboardApiState.textContent = status === "loading" ? "Loading" : status === "online" ? "Online" : "Offline";
+    els.leaderboardApiState.dataset.state = status;
+  }
+  if (els.leaderboardCount) els.leaderboardCount.textContent = `${count}`;
+  if (els.leaderboardBest) els.leaderboardBest.textContent = formatScore(best);
+  if (els.leaderboardUpdated) {
+    els.leaderboardUpdated.textContent = officialFlyLeadersLoading
+      ? "Checking live database"
+      : officialFlyLeadersError
+        ? "Could not reach leaderboard"
+        : officialFlyLeadersUpdatedAt
+          ? `Updated ${officialFlyLeadersUpdatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+          : "Ready";
+  }
+  if (els.leaderboardRefresh) {
+    els.leaderboardRefresh.disabled = officialFlyLeadersLoading;
+    els.leaderboardRefresh.textContent = officialFlyLeadersLoading ? "Loading" : "Refresh";
+  }
+}
+
+function formatLeaderboardDate(value) {
+  if (!value) return "Unlisted";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unlisted";
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
 function setPrivateApiStatus(isOnline) {
@@ -1325,16 +1373,25 @@ function setPrivateApiStatus(isOnline) {
 function loadOfficialFlyLeaderboard() {
   if (officialFlyLeadersLoaded) return;
   officialFlyLeadersLoaded = true;
+  officialFlyLeadersLoading = true;
+  officialFlyLeadersError = false;
+  renderTables();
   fetch(`${flyApiBase}/api/fly/leaderboard`)
     .then((response) => response.ok ? response.json() : Promise.reject(new Error("official fly leaderboard unavailable")))
     .then((data) => {
       officialFlyLeaders = Array.isArray(data.leaders) ? data.leaders : [];
+      officialFlyLeadersLoading = false;
+      officialFlyLeadersError = false;
+      officialFlyLeadersUpdatedAt = new Date();
       setPrivateApiStatus(true);
       renderTables();
     })
     .catch(() => {
       officialFlyLeaders = [];
+      officialFlyLeadersLoading = false;
+      officialFlyLeadersError = true;
       setPrivateApiStatus(false);
+      renderTables();
     });
 }
 
@@ -1354,12 +1411,37 @@ function toggleRunDetails(row, data, columns, type = "run") {
   document.querySelectorAll(".clickable-row.expanded").forEach((openRow) => openRow.classList.remove("expanded"));
   const detail = document.createElement("tr");
   detail.className = "run-detail-row";
-  detail.innerHTML = `<td colspan="${columns}">${type === "leaderboard" ? renderPlayerDetails(data) : type === "rocket-run" ? renderRocketRunDetails(data) : renderRunDetails(data)}</td>`;
+  detail.innerHTML = `<td colspan="${columns}">${type === "leaderboard" ? renderPlayerDetails(data) : type === "rocket-run" ? renderRocketRunDetails(data) : type === "official-fly" ? renderOfficialFlyDetails(data) : renderRunDetails(data)}</td>`;
   row.classList.add("expanded");
   row.after(detail);
   if (type === "rocket-run") {
     setupRocketRouteInspector(detail, data);
   }
+}
+
+function renderOfficialFlyDetails(run = {}) {
+  const selectedRounds = run.selectedRounds || run.rounds || 0;
+  const completedRounds = run.completedRounds || 0;
+  const submitted = run.finishedAt || run.createdAt;
+  return `
+    <div class="run-detail-grid leaderboard-detail">
+      <section>
+        <span>Official Entry</span>
+        <strong>${escapeHtml(run.displayName || "Guest")}</strong>
+        <small>${submitted ? `Submitted ${new Date(submitted).toLocaleString()}` : "Submission time unavailable."}</small>
+      </section>
+      <section>
+        <span>Final Score</span>
+        <strong>${formatScore(run.finalScore || 0)}</strong>
+        <small>${completedRounds}/${selectedRounds || 0} destinations reached.</small>
+      </section>
+      <section>
+        <span>Plane</span>
+        <strong>${escapeHtml(run.planeClass || "Unlisted")}</strong>
+        <small>Flight time: ${run.elapsedMs ? formatDuration(run.elapsedMs) : "Unlisted"}.</small>
+      </section>
+    </div>
+  `;
 }
 
 function renderRocketRunDetails(run) {
@@ -3168,6 +3250,8 @@ function drawRocketMap(ctx, rect, camX, camY) {
     canvas.height = cacheH;
     const cacheCtx = canvas.getContext("2d");
     cacheCtx.setTransform(1, 0, 0, 1, 0, 0);
+    cacheCtx.imageSmoothingEnabled = true;
+    cacheCtx.imageSmoothingQuality = "high";
     drawRocketStaticMap(cacheCtx, { width: cacheW, height: cacheH }, cacheX, cacheY);
     rocketMapCache = { canvas, x: cacheX, y: cacheY, w: cacheW, h: cacheH, features: rocketWorldFeatures, boundaries: rocketBoundaryLines, overlay: rocketCountryOverlayEnabled, boundaryStep };
   }
@@ -3221,6 +3305,14 @@ function drawRocketStaticMap(ctx, rect, camX, camY) {
       });
       ctx.fillStyle = hexToRgba(country.color, 0.28);
       ctx.fill("evenodd");
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.strokeStyle = "rgba(2, 10, 15, 0.56)";
+      ctx.lineWidth = 2.2;
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(238, 255, 232, 0.72)";
+      ctx.lineWidth = 0.82;
+      ctx.stroke();
       drawRocketTinyCountryRings(ctx, country);
 
     });
@@ -3285,12 +3377,6 @@ function drawRocketBoundaryLinePass(ctx, camX, camY, rect) {
 }
 
 function getRocketBoundaryPointStep() {
-  if (!rocketState?.ship) return 1;
-  const speed = Math.hypot(rocketState.ship.vx, rocketState.ship.vy);
-  const altitude = rocketState.ship.altitude || 0;
-  if (altitude > 2600 || speed > 1150) return 4;
-  if (altitude > 1500 || speed > 850) return 3;
-  if (altitude > 850 || speed > 650) return 2;
   return 1;
 }
 
@@ -3325,6 +3411,8 @@ function drawRocketEarthRaster(ctx, rect, camX, camY) {
   const sh = (viewBottom - viewTop) / rocketState.mapH * imgH;
   const dx = viewLeft - camX;
   const dy = viewTop - camY;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.drawImage(rocketEarthImage, sx, sy, sw, sh, dx, dy, viewRight - viewLeft, viewBottom - viewTop);
   drawRocketPolarEdge(ctx, rect, camY);
 }
@@ -4297,7 +4385,8 @@ function drawRocketMiniMap(ctx, rect) {
 }
 
 function getRocketMiniMapBase(w, h) {
-  if (rocketMiniMapCache && rocketMiniMapCache.w === w && rocketMiniMapCache.h === h && rocketMiniMapCache.features === rocketWorldFeatures && rocketMiniMapCache.mapW === rocketState.mapW && rocketMiniMapCache.mapH === rocketState.mapH) {
+  const imageReady = rocketMiniMapImage.complete && rocketMiniMapImage.naturalWidth > 0;
+  if (rocketMiniMapCache && rocketMiniMapCache.w === w && rocketMiniMapCache.h === h && rocketMiniMapCache.features === rocketWorldFeatures && rocketMiniMapCache.mapW === rocketState.mapW && rocketMiniMapCache.mapH === rocketState.mapH && rocketMiniMapCache.imageReady === imageReady) {
     return rocketMiniMapCache.canvas;
   }
   const canvas = rocketMiniMapCache?.canvas || document.createElement("canvas");
@@ -4308,6 +4397,15 @@ function getRocketMiniMapBase(w, h) {
   ctx.clearRect(0, 0, w, h);
   ctx.fillStyle = "rgba(3,9,15,.72)";
   ctx.fillRect(0, 0, w, h);
+  if (imageReady) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(rocketMiniMapImage, 0, 0, w, h);
+    ctx.strokeStyle = "rgba(5,5,5,.42)";
+    ctx.strokeRect(0, 0, w, h);
+    rocketMiniMapCache = { canvas, w, h, features: rocketWorldFeatures, mapW: rocketState.mapW, mapH: rocketState.mapH, imageReady };
+    return canvas;
+  }
   ctx.strokeStyle = "rgba(255,255,255,.2)";
   ctx.strokeRect(0, 0, w, h);
   ctx.save();
@@ -4335,7 +4433,7 @@ function getRocketMiniMapBase(w, h) {
     ctx.stroke();
   });
   ctx.restore();
-  rocketMiniMapCache = { canvas, w, h, features: rocketWorldFeatures, mapW: rocketState.mapW, mapH: rocketState.mapH };
+  rocketMiniMapCache = { canvas, w, h, features: rocketWorldFeatures, mapW: rocketState.mapW, mapH: rocketState.mapH, imageReady };
   return canvas;
 }
 
@@ -5309,6 +5407,7 @@ document.querySelector("#guestName")?.addEventListener("click", () => {
   saveProfile();
   renderProfile();
 });
+els.leaderboardRefresh?.addEventListener("click", refreshOfficialFlyLeaderboard);
 window.addEventListener("resize", resizeFireworksCanvas);
 window.addEventListener("resize", resizeRocketCanvas);
 renderProfile();
