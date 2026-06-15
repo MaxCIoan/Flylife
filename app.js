@@ -1841,6 +1841,25 @@ function syncProfileControls() {
   if (els.displayNameInput) els.displayNameInput.value = profile.displayName === "Guest" ? "" : profile.displayName;
 }
 
+function roundRect(ctx, x, y, w, h, r, fill = false) {
+  ctx.beginPath();
+  if (typeof ctx.roundRect === "function") {
+    ctx.roundRect(x, y, w, h, r);
+  } else {
+    const radius = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + w - radius, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+    ctx.lineTo(x + w, y + h - radius);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+    ctx.lineTo(x + radius, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+  }
+  if (fill) ctx.fill();
+}
+
 function startRocketRun() {
   loadRocketWorldMap();
   loadRocketBoundaryLines();
@@ -1962,12 +1981,15 @@ function prepareRocketBriefing(rounds) {
   if (els.rocketStart) {
     els.rocketStart.hidden = false;
     els.rocketStart.textContent = "Begin Takeoff";
+    els.rocketStart.classList.add("is-briefing");
+    els.rocketStart.classList.remove("in-flight");
   }
   window.FlagGuard?.startRun?.({
     displayName: profile.displayName || "Guest",
     rounds
   });
   rocketFeedback(`${rounds} rounds selected`, "#45f875", "success");
+  renderRocketHud();
 }
 
 function applyDeveloperRocketBoost(rounds) {
