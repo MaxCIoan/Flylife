@@ -97,11 +97,6 @@ const els = {
   flagRunsTable: document.querySelector("#flagRunsTable"),
   flyRunsTable: document.querySelector("#flyRunsTable"),
   leaderboardTable: document.querySelector("#leaderboardTable"),
-  leaderboardApiState: document.querySelector("#leaderboardApiState"),
-  leaderboardCount: document.querySelector("#leaderboardCount"),
-  leaderboardBest: document.querySelector("#leaderboardBest"),
-  leaderboardUpdated: document.querySelector("#leaderboardUpdated"),
-  leaderboardRefresh: document.querySelector("#leaderboardRefresh"),
   privateApiStatus: document.querySelector("#privateApiStatus"),
   rocketStage: document.querySelector("#rocketStage"),
   rocketCanvas: document.querySelector("#rocketCanvas"),
@@ -202,14 +197,13 @@ const ROCKET_NAV_CHECK_INTERVAL = 0.14;
 const rocketEarthImage = new Image();
 rocketEarthImage.src = "assets/earth-satellite-nasa-8192.jpg";
 rocketEarthImage.addEventListener("load", invalidateRocketMapCache);
-rocketMiniMapImage.src = "assets/world-political-minimap.png";
+rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260615h";
 rocketMiniMapImage.addEventListener("load", () => { rocketMiniMapCache = null; });
 let rocketCountryOverlayEnabled = localStorage.getItem("flagHunterRocketCountryOverlay") !== "0";
 let officialFlyLeaders = [];
 let officialFlyLeadersLoaded = false;
 let officialFlyLeadersLoading = false;
 let officialFlyLeadersError = false;
-let officialFlyLeadersUpdatedAt = null;
 const productionFlyApiOrigin = "https://flylifeforlife.netlify.app";
 const isItchContext = /(^|\.)itch\.io$/i.test(window.location.hostname)
   || /itch\.io/i.test(document.referrer || "")
@@ -1248,7 +1242,6 @@ function renderTables() {
   });
 
   const leaderboardEntries = buildOfficialLeaderboardEntries(officialFlyLeaders);
-  updateLeaderboardSummary(leaderboardEntries);
   if (!els.leaderboardTable) return;
   els.leaderboardTable.innerHTML = leaderboardEntries.length ? "" : `<tr class="table-empty"><td colspan="9">${officialFlyLeadersLoading ? "Loading official Fly scores..." : officialFlyLeadersError ? "Official leaderboard is offline right now." : "No official Fly scores yet."}</td></tr>`;
   leaderboardEntries.forEach((entry, index) => {
@@ -1332,31 +1325,6 @@ function buildOfficialLeaderboardEntries(officialFlyRuns = []) {
     .slice(0, 50);
 }
 
-function updateLeaderboardSummary(entries = []) {
-  const count = entries.length;
-  const best = entries[0]?.score || 0;
-  const status = officialFlyLeadersLoading ? "loading" : officialFlyLeadersError ? "offline" : "online";
-  if (els.leaderboardApiState) {
-    els.leaderboardApiState.textContent = status === "loading" ? "Loading" : status === "online" ? "Online" : "Offline";
-    els.leaderboardApiState.dataset.state = status;
-  }
-  if (els.leaderboardCount) els.leaderboardCount.textContent = `${count}`;
-  if (els.leaderboardBest) els.leaderboardBest.textContent = formatScore(best);
-  if (els.leaderboardUpdated) {
-    els.leaderboardUpdated.textContent = officialFlyLeadersLoading
-      ? "Checking live database"
-      : officialFlyLeadersError
-        ? "Could not reach leaderboard"
-        : officialFlyLeadersUpdatedAt
-          ? `Updated ${officialFlyLeadersUpdatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
-          : "Ready";
-  }
-  if (els.leaderboardRefresh) {
-    els.leaderboardRefresh.disabled = officialFlyLeadersLoading;
-    els.leaderboardRefresh.textContent = officialFlyLeadersLoading ? "Loading" : "Refresh";
-  }
-}
-
 function formatLeaderboardDate(value) {
   if (!value) return "Unlisted";
   const date = new Date(value);
@@ -1382,7 +1350,6 @@ function loadOfficialFlyLeaderboard() {
       officialFlyLeaders = Array.isArray(data.leaders) ? data.leaders : [];
       officialFlyLeadersLoading = false;
       officialFlyLeadersError = false;
-      officialFlyLeadersUpdatedAt = new Date();
       setPrivateApiStatus(true);
       renderTables();
     })
@@ -2059,7 +2026,6 @@ function startRocketRun() {
 function prepareRocketBriefing(rounds) {
   if (!rocketState) startRocketRun();
   rocketState.desiredRounds = rounds;
-  applyDeveloperRocketBoost(rounds);
   rocketState.phase = "briefing";
   rocketState.targetCardUntil = Infinity;
   rocketState.round = 1;
@@ -2081,20 +2047,6 @@ function prepareRocketBriefing(rounds) {
   });
   rocketFeedback(`${rounds} rounds selected`, "#45f875", "success");
   renderRocketHud();
-}
-
-function applyDeveloperRocketBoost(rounds) {
-  if (!rocketState || Number(rounds) !== 50) return;
-  rocketState.tech = { fuel: rocketTechMax, speed: rocketTechMax, turn: rocketTechMax, sonar: rocketTechMax };
-  rocketState.techPoints = 200;
-  rocketState.fuel = 100;
-  rocketState.telemetry = {
-    peakSpeed: 1600,
-    peakAccel: 1200,
-    peakDecel: 900,
-    peakTurn: 6
-  };
-  rocketFeedback("Developer 50-round boost", "#ffffff", "success");
 }
 
 function updateRocketRoundSetup(show) {
@@ -5407,7 +5359,6 @@ document.querySelector("#guestName")?.addEventListener("click", () => {
   saveProfile();
   renderProfile();
 });
-els.leaderboardRefresh?.addEventListener("click", refreshOfficialFlyLeaderboard);
 window.addEventListener("resize", resizeFireworksCanvas);
 window.addEventListener("resize", resizeRocketCanvas);
 renderProfile();
