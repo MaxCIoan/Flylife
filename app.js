@@ -189,6 +189,10 @@ let rocketBoundaryLoading = false;
 let rocketCatalog = null;
 let rocketCatalogLoading = false;
 let rocketMapCache = null;
+let rocketMiniMapCache = null;
+const ROCKET_STATIC_CACHE_SNAP = 320;
+const ROCKET_HUD_INTERVAL_MS = 120;
+const ROCKET_NAV_CHECK_INTERVAL = 0.14;
 const rocketEarthImage = new Image();
 rocketEarthImage.src = "assets/earth-satellite-clouds-4096.jpg";
 rocketEarthImage.addEventListener("load", invalidateRocketMapCache);
@@ -470,6 +474,7 @@ function normalizeRocketBoundaryFeature(feature) {
 
 function invalidateRocketMapCache() {
   rocketMapCache = null;
+  rocketMiniMapCache = null;
 }
 
 function rocketTechCost(level) {
@@ -1882,7 +1887,7 @@ function startRocketRun() {
     viewH: 1,
     ship: { x: start.x, y: start.y, vx: 0, vy: 0, angle: start.angle || 0, altitude: 0, throttle: 0, bank: 0 },
     start,
-    mouse: { x: 0, y: 0, inside: false },
+    mouse: { x: 0, y: 0, smoothX: 0, smoothY: 0, inside: false },
     keys: {},
     manualControl: false,
     manualReleased: false,
@@ -1922,6 +1927,10 @@ function startRocketRun() {
     targetHistory: rocketState?.targetHistory || [],
     lastObjectiveDistance: null,
     distanceTrend: null,
+    navCheckTimer: 0,
+    nextHudAt: 0,
+    hudKey: "",
+    techHudKey: "",
     sonarPingTimer: 0,
     sonarPingIndex: 0,
     sonarPing: null,
@@ -2537,6 +2546,9 @@ function nextRocketRound(success) {
   rocketState.objectiveZone = null;
   rocketState.lastObjectiveDistance = null;
   rocketState.distanceTrend = null;
+  rocketState.navCheckTimer = 0;
+  rocketState.hudKey = "";
+  rocketState.techHudKey = "";
   rocketState.sonarPingTimer = 0;
   rocketState.sonarPingIndex = 0;
   rocketState.sonarPing = null;
@@ -2576,7 +2588,7 @@ function tickRocket(now) {
   updateRocketTutorial();
   updatePropellerSound();
   drawRocket();
-  renderRocketHud();
+  renderRocketHud(false);
 }
 
 function updateRocketPendingNextRound(dt) {
@@ -2643,7 +2655,7 @@ function updateRocket(dt) {
   if (rocketState.parkingHold > 0) {
     rocketState.parkingHold = Math.max(0, rocketState.parkingHold - dt);
   }
-  const control = getRocketControlVector(rect);
+  const control = getRocketControlVector(rect, dt);
   if (rocketState.parked && control.manual && control.distance > 85) {
     rocketState.parked = false;
   }
@@ -2724,7 +2736,11 @@ function updateRocket(dt) {
   rocketState.ship.x += rocketState.ship.vx * dt;
   rocketState.ship.y += rocketState.ship.vy * dt;
   updateRocketTrail(dt, rect);
-  updateRocketDistanceTrend();
+  rocketState.navCheckTimer = (rocketState.navCheckTimer || 0) - dt;
+  if (rocketState.navCheckTimer <= 0) {
+    updateRocketDistanceTrend();
+    rocketState.navCheckTimer = ROCKET_NAV_CHECK_INTERVAL;
+  }
   rocketState.time -= dt;
   rocketState.fuel -= (0.86 + rocketState.ship.throttle * 1.45 + currentSpeed / 1250) * dt * getRocketFuelDrainMultiplier(rocketState.tech.fuel);
   if (rocketState.fuel <= 0) {
@@ -3014,12 +3030,23 @@ function getTargetLandingStatus() {
   };
 }
 
-function getRocketControlVector(rect) {
+function getRocketControlVector(rect, dt = 0.016) {
   const center = { x: rect.width / 2, y: rect.height / 2 };
   const rawDx = rocketState.mouse.x - center.x;
   const rawDy = rocketState.mouse.y - center.y;
   const distance = Math.hypot(rawDx, rawDy);
   const inZone = Boolean(rocketState.mouse.inside) && distance < 230;
+  if (!rocketState.mouse.hasSmooth || !rocketState.mouse.inside) {
+    rocketState.mouse.smoothX = rocketState.mouse.x;
+    rocketState.mouse.smoothY = rocketState.mouse.y;
+    rocketState.mouse.hasSmooth = true;
+  } else {
+    const smoothing = Math.min(1, 1 - Math.exp(-dt * 26));
+    rocketState.mouse.smoothX += (rocketState.mouse.x - rocketState.mouse.smoothX) * smoothing;
+    rocketState.mouse.smoothY += (rocketState.mouse.y - rocketState.mouse.smoothY) * smoothing;
+  }
+  const smoothDx = rocketState.mouse.smoothX - center.x;
+  const smoothDy = rocketState.mouse.smoothY - center.y;
   if (!inZone) {
     rocketState.manualControl = false;
     rocketState.manualReleased = false;
@@ -3035,7 +3062,7 @@ function getRocketControlVector(rect) {
       distance
     };
   }
-  return { dx: rawDx, dy: rawDy, manual: true, inZone, distance };
+  return { dx: smoothDx, dy: smoothDy, manual: true, inZone, distance };
 }
 
 function updateRocketTrail(dt, rect) {
@@ -3129,19 +3156,20 @@ function drawRocketSetupBackground(ctx, rect) {
 }
 
 function drawRocketMap(ctx, rect, camX, camY) {
-  const snap = 96;
+  const snap = ROCKET_STATIC_CACHE_SNAP;
   const cacheX = Math.floor(camX / snap) * snap;
   const cacheY = Math.floor(camY / snap) * snap;
   const cacheW = Math.ceil(rect.width + snap * 2);
   const cacheH = Math.ceil(rect.height + snap * 2);
-  if (!rocketMapCache || rocketMapCache.x !== cacheX || rocketMapCache.y !== cacheY || rocketMapCache.w !== cacheW || rocketMapCache.h !== cacheH || rocketMapCache.features !== rocketWorldFeatures || rocketMapCache.boundaries !== rocketBoundaryLines || rocketMapCache.overlay !== rocketCountryOverlayEnabled) {
+  const boundaryStep = getRocketBoundaryPointStep();
+  if (!rocketMapCache || rocketMapCache.x !== cacheX || rocketMapCache.y !== cacheY || rocketMapCache.w !== cacheW || rocketMapCache.h !== cacheH || rocketMapCache.features !== rocketWorldFeatures || rocketMapCache.boundaries !== rocketBoundaryLines || rocketMapCache.overlay !== rocketCountryOverlayEnabled || rocketMapCache.boundaryStep !== boundaryStep) {
     const canvas = rocketMapCache?.canvas || document.createElement("canvas");
     canvas.width = cacheW;
     canvas.height = cacheH;
     const cacheCtx = canvas.getContext("2d");
     cacheCtx.setTransform(1, 0, 0, 1, 0, 0);
     drawRocketStaticMap(cacheCtx, { width: cacheW, height: cacheH }, cacheX, cacheY);
-    rocketMapCache = { canvas, x: cacheX, y: cacheY, w: cacheW, h: cacheH, features: rocketWorldFeatures, boundaries: rocketBoundaryLines, overlay: rocketCountryOverlayEnabled };
+    rocketMapCache = { canvas, x: cacheX, y: cacheY, w: cacheW, h: cacheH, features: rocketWorldFeatures, boundaries: rocketBoundaryLines, overlay: rocketCountryOverlayEnabled, boundaryStep };
   }
   ctx.drawImage(rocketMapCache.canvas, cacheX - camX, cacheY - camY);
   ctx.save();
@@ -3242,16 +3270,28 @@ function drawRocketBoundaryLines(ctx, camX, camY, rect) {
 }
 
 function drawRocketBoundaryLinePass(ctx, camX, camY, rect) {
+  const pointStep = getRocketBoundaryPointStep();
   rocketBoundaryLines.forEach((line) => {
     const visible = line.bounds.maxX > camX - 120 && line.bounds.minX < camX + rect.width + 120 && line.bounds.maxY > camY - 120 && line.bounds.minY < camY + rect.height + 120;
     if (!visible) return;
     ctx.beginPath();
     line.points.forEach((point, index) => {
+      if (pointStep > 1 && index > 0 && index < line.points.length - 1 && index % pointStep !== 0) return;
       if (index === 0) ctx.moveTo(point.x, point.y);
       else ctx.lineTo(point.x, point.y);
     });
     ctx.stroke();
   });
+}
+
+function getRocketBoundaryPointStep() {
+  if (!rocketState?.ship) return 1;
+  const speed = Math.hypot(rocketState.ship.vx, rocketState.ship.vy);
+  const altitude = rocketState.ship.altitude || 0;
+  if (altitude > 2600 || speed > 1150) return 4;
+  if (altitude > 1500 || speed > 850) return 3;
+  if (altitude > 850 || speed > 650) return 2;
+  return 1;
 }
 
 function satelliteHash(x, y, salt = 0) {
@@ -3594,8 +3634,8 @@ function drawRocketPointerTrace(ctx, rect) {
   const color = rocketAltitudeColor();
   const noseX = rect.width / 2 + Math.cos(rocketState.ship.angle) * 62;
   const noseY = rect.height / 2 + Math.sin(rocketState.ship.angle) * 62;
-  const mx = rocketState.mouse.x;
-  const my = rocketState.mouse.y;
+  const mx = Number.isFinite(rocketState.mouse.smoothX) ? rocketState.mouse.smoothX : rocketState.mouse.x;
+  const my = Number.isFinite(rocketState.mouse.smoothY) ? rocketState.mouse.smoothY : rocketState.mouse.y;
   const dx = mx - rect.width / 2;
   const dy = my - rect.height / 2;
   const distance = Math.hypot(dx, dy);
@@ -4243,13 +4283,36 @@ function drawGauge(ctx, x, y, label, value, max, color, valueText = "") {
 
 function drawRocketMiniMap(ctx, rect) {
   const w = 190, h = 96, x = rect.width - w - 18, y = 18;
-  ctx.fillStyle = "rgba(3,9,15,.72)";
-  ctx.fillRect(x, y, w, h);
-  ctx.strokeStyle = "rgba(255,255,255,.2)";
-  ctx.strokeRect(x, y, w, h);
+  const base = getRocketMiniMapBase(w, h);
+  ctx.drawImage(base, x, y);
   ctx.save();
   ctx.beginPath();
   ctx.rect(x, y, w, h);
+  ctx.clip();
+  ctx.fillStyle = "#45f875";
+  ctx.beginPath();
+  ctx.arc(x + rocketState.ship.x / rocketState.mapW * w, y + rocketState.ship.y / rocketState.mapH * h, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function getRocketMiniMapBase(w, h) {
+  if (rocketMiniMapCache && rocketMiniMapCache.w === w && rocketMiniMapCache.h === h && rocketMiniMapCache.features === rocketWorldFeatures && rocketMiniMapCache.mapW === rocketState.mapW && rocketMiniMapCache.mapH === rocketState.mapH) {
+    return rocketMiniMapCache.canvas;
+  }
+  const canvas = rocketMiniMapCache?.canvas || document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = "rgba(3,9,15,.72)";
+  ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = "rgba(255,255,255,.2)";
+  ctx.strokeRect(0, 0, w, h);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, w, h);
   ctx.clip();
   ctx.strokeStyle = "rgba(190,230,205,.55)";
   ctx.fillStyle = "rgba(103,183,124,.18)";
@@ -4261,8 +4324,8 @@ function drawRocketMiniMap(ctx, rect) {
     ctx.beginPath();
     country.rings.forEach((ring) => {
       ring.forEach((point, index) => {
-        const px = x + point.x / rocketState.mapW * w;
-        const py = y + point.y / rocketState.mapH * h;
+        const px = point.x / rocketState.mapW * w;
+        const py = point.y / rocketState.mapH * h;
         if (index === 0) ctx.moveTo(px, py);
         else ctx.lineTo(px, py);
       });
@@ -4271,16 +4334,16 @@ function drawRocketMiniMap(ctx, rect) {
     ctx.fill("evenodd");
     ctx.stroke();
   });
-  rocketState.depots.forEach((depot) => {
-    if (depot.used) return;
-  });
-  ctx.fillStyle = "#45f875";
-  ctx.beginPath(); ctx.arc(x + rocketState.ship.x / rocketState.mapW * w, y + rocketState.ship.y / rocketState.mapH * h, 4, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
+  rocketMiniMapCache = { canvas, w, h, features: rocketWorldFeatures, mapW: rocketState.mapW, mapH: rocketState.mapH };
+  return canvas;
 }
 
-function renderRocketHud() {
+function renderRocketHud(force = true) {
   if (!rocketState) return;
+  const now = performance.now();
+  if (!force && rocketState.nextHudAt && now < rocketState.nextHudAt) return;
+  rocketState.nextHudAt = now + ROCKET_HUD_INTERVAL_MS;
   const rocketView = document.querySelector("#rocketView");
   if (rocketView) rocketView.dataset.phase = rocketState.phase;
   if (els.rocketTarget) els.rocketTarget.textContent = "Flight Route";
@@ -4299,7 +4362,20 @@ function renderRocketHud() {
     els.rocketStart.classList.toggle("is-briefing", briefing);
     els.rocketStart.classList.toggle("in-flight", !briefing);
   }
-  updateRocketTechLabels();
+  const techKey = [
+    rocketState.phase,
+    rocketState.techPoints,
+    rocketState.tech.fuel,
+    rocketState.tech.speed,
+    rocketState.tech.turn,
+    rocketState.tech.sonar,
+    rocketScanActive() ? "scan" : "idle",
+    els.techTreeOverlay && !els.techTreeOverlay.hidden ? "pause" : "play"
+  ].join("|");
+  if (force || rocketState.techHudKey !== techKey) {
+    rocketState.techHudKey = techKey;
+    updateRocketTechLabels();
+  }
 }
 
 function updateRocketTechLabels() {
