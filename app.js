@@ -5044,6 +5044,28 @@ function escapeHtml(value) {
   }[char]));
 }
 
+function handleRocketRoundChoice(rounds, event = null) {
+  if (event?.flylifeHandled) return;
+  if (event) event.flylifeHandled = true;
+  const value = Number(rounds);
+  if (!Number.isFinite(value)) return;
+  if (!rocketState) {
+    showView("rocket");
+    startRocketRun();
+  }
+  prepareRocketBriefing(value);
+}
+
+function handleRocketStartClick(event = null) {
+  if (event?.flylifeHandled) return;
+  if (event) event.flylifeHandled = true;
+  if (rocketState?.phase === "briefing" && !rocketState.active) {
+    beginRocketTakeoff();
+    return;
+  }
+  startRocketRun();
+}
+
 document.querySelectorAll(".nav-btn").forEach((button) => {
   button.addEventListener("click", () => {
     if (button.dataset.view === "play") {
@@ -5099,7 +5121,7 @@ document.querySelectorAll("[data-rocket-jump]").forEach((button) => {
   });
 });
 document.querySelectorAll("[data-rocket-rounds]").forEach((button) => {
-  button.addEventListener("click", () => prepareRocketBriefing(Number(button.dataset.rocketRounds)));
+  button.addEventListener("click", (event) => handleRocketRoundChoice(button.dataset.rocketRounds, event));
 });
 
 document.querySelectorAll("[data-flag-rounds]").forEach((button) => {
@@ -5150,12 +5172,19 @@ els.rocketRadioMute?.addEventListener("click", () => {
   });
 });
 els.rocketStartRadio?.addEventListener("change", saveRocketAudioSettings);
-els.rocketStart?.addEventListener("click", () => {
-  if (rocketState?.phase === "briefing" && !rocketState.active) {
-    beginRocketTakeoff();
+els.rocketStart?.addEventListener("click", handleRocketStartClick);
+document.addEventListener("click", (event) => {
+  if (event.flylifeHandled) return;
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const roundButton = target.closest("[data-rocket-rounds]");
+  if (roundButton) {
+    handleRocketRoundChoice(roundButton.dataset.rocketRounds, event);
     return;
   }
-  startRocketRun();
+  if (target.closest("#rocketStart")) {
+    handleRocketStartClick(event);
+  }
 });
 els.rocketResultRestart?.addEventListener("click", () => {
   if (rocketState?.resultAction === "next-round") {
@@ -5303,3 +5332,4 @@ if (bootParams.get("simulateAgents") === "1") {
 } else {
   showFlagSetup();
 }
+window.FlylifeAppReady = true;
