@@ -191,13 +191,14 @@ let rocketCatalogLoading = false;
 let rocketMapCache = null;
 let rocketMiniMapCache = null;
 const rocketMiniMapImage = new Image();
-const ROCKET_STATIC_CACHE_SNAP = 320;
+const ROCKET_STATIC_CACHE_SNAP = 640;
 const ROCKET_HUD_INTERVAL_MS = 120;
 const ROCKET_NAV_CHECK_INTERVAL = 0.14;
+const ROCKET_TINY_COUNTRY_DOT_MAX = 30;
 const rocketEarthImage = new Image();
 rocketEarthImage.src = "assets/earth-satellite-nasa-8192.jpg";
 rocketEarthImage.addEventListener("load", invalidateRocketMapCache);
-rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260615h";
+rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260615i";
 rocketMiniMapImage.addEventListener("load", () => { rocketMiniMapCache = null; });
 let rocketCountryOverlayEnabled = localStorage.getItem("flagHunterRocketCountryOverlay") !== "0";
 let officialFlyLeaders = [];
@@ -3247,25 +3248,18 @@ function drawRocketStaticMap(ctx, rect, camX, camY) {
       const visible = country.bounds.maxX > camX - 160 && country.bounds.minX < camX + rect.width + 160 && country.bounds.maxY > camY - 160 && country.bounds.minY < camY + rect.height + 160;
       if (!visible) return;
 
-      ctx.beginPath();
-      country.rings.forEach((ring) => {
-        ring.forEach((point, index) => {
-          if (index === 0) ctx.moveTo(point.x, point.y);
-          else ctx.lineTo(point.x, point.y);
-        });
-        ctx.closePath();
-      });
+      const countryPath = getRocketCountryPath(country);
       ctx.fillStyle = hexToRgba(country.color, 0.28);
-      ctx.fill("evenodd");
+      ctx.fill(countryPath, "evenodd");
       ctx.lineJoin = "round";
       ctx.lineCap = "round";
       ctx.strokeStyle = "rgba(2, 10, 15, 0.56)";
       ctx.lineWidth = 2.2;
-      ctx.stroke();
+      ctx.stroke(countryPath);
       ctx.strokeStyle = "rgba(238, 255, 232, 0.72)";
       ctx.lineWidth = 0.82;
-      ctx.stroke();
-      drawRocketTinyCountryRings(ctx, country);
+      ctx.stroke(countryPath);
+      drawRocketTinyCountryMarker(ctx, country);
 
     });
     drawRocketBoundaryLines(ctx, camX, camY, rect);
@@ -3295,7 +3289,6 @@ function drawRocketStaticMap(ctx, rect, camX, camY) {
     });
   }
 
-  if (rocketCountryOverlayEnabled) drawRocketCatalogIslandDots(ctx, camX, camY, rect);
   ctx.restore();
 }
 
@@ -3318,6 +3311,10 @@ function drawRocketBoundaryLinePass(ctx, camX, camY, rect) {
   rocketBoundaryLines.forEach((line) => {
     const visible = line.bounds.maxX > camX - 120 && line.bounds.minX < camX + rect.width + 120 && line.bounds.maxY > camY - 120 && line.bounds.minY < camY + rect.height + 120;
     if (!visible) return;
+    if (pointStep <= 1) {
+      ctx.stroke(getRocketBoundaryPath(line));
+      return;
+    }
     ctx.beginPath();
     line.points.forEach((point, index) => {
       if (pointStep > 1 && index > 0 && index < line.points.length - 1 && index % pointStep !== 0) return;
@@ -3330,6 +3327,31 @@ function drawRocketBoundaryLinePass(ctx, camX, camY, rect) {
 
 function getRocketBoundaryPointStep() {
   return 1;
+}
+
+function getRocketCountryPath(country) {
+  if (country.path) return country.path;
+  const path = new Path2D();
+  country.rings.forEach((ring) => {
+    ring.forEach((point, index) => {
+      if (index === 0) path.moveTo(point.x, point.y);
+      else path.lineTo(point.x, point.y);
+    });
+    path.closePath();
+  });
+  country.path = path;
+  return path;
+}
+
+function getRocketBoundaryPath(line) {
+  if (line.path) return line.path;
+  const path = new Path2D();
+  line.points.forEach((point, index) => {
+    if (index === 0) path.moveTo(point.x, point.y);
+    else path.lineTo(point.x, point.y);
+  });
+  line.path = path;
+  return path;
 }
 
 function satelliteHash(x, y, salt = 0) {
@@ -3408,45 +3430,20 @@ function drawRocketGlobeCurvature(ctx, rect) {
   ctx.restore();
 }
 
-function drawRocketCatalogIslandDots(ctx, camX, camY, rect) {
-  if (!rocketCatalog?.length) return;
-  rocketCatalog.forEach((item) => {
-    if (blockedRocketCountries.has(item.name) || rocketCountryFeature(item.name)) return;
-    const point = Number.isFinite(item.x) && Number.isFinite(item.y) ? item : worldPoint(item.lon, item.lat, rocketState.mapW, rocketState.mapH);
-    if (point.x < camX - 24 || point.x > camX + rect.width + 24 || point.y < camY - 24 || point.y > camY + rect.height + 24) return;
-    const radius = item.difficulty >= 4 ? 3.2 : 4.2;
-    ctx.fillStyle = rocketCountryColor(item.name);
-    ctx.strokeStyle = "rgba(235,255,221,.92)";
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-  });
-}
-
-function drawRocketTinyCountryRings(ctx, country) {
-  country.rings.forEach((ring) => {
-    const bounds = ring.reduce((box, point) => ({
-      minX: Math.min(box.minX, point.x),
-      minY: Math.min(box.minY, point.y),
-      maxX: Math.max(box.maxX, point.x),
-      maxY: Math.max(box.maxY, point.y)
-    }), { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
-    const width = bounds.maxX - bounds.minX;
-    const height = bounds.maxY - bounds.minY;
-    if (width >= 18 && height >= 18) return;
-    const x = (bounds.minX + bounds.maxX) / 2;
-    const y = (bounds.minY + bounds.maxY) / 2;
-    const radius = Math.max(2.4, Math.min(5, Math.max(width, height) * 0.7));
-    ctx.fillStyle = country.color;
-    ctx.strokeStyle = "rgba(235,255,221,.9)";
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-  });
+function drawRocketTinyCountryMarker(ctx, country) {
+  const width = country.bounds.maxX - country.bounds.minX;
+  const height = country.bounds.maxY - country.bounds.minY;
+  if (width > ROCKET_TINY_COUNTRY_DOT_MAX || height > ROCKET_TINY_COUNTRY_DOT_MAX) return;
+  const x = country.labelPoint?.x ?? (country.bounds.minX + country.bounds.maxX) / 2;
+  const y = country.labelPoint?.y ?? (country.bounds.minY + country.bounds.maxY) / 2;
+  const radius = Math.max(3.2, Math.min(5.2, Math.max(width, height) * 0.38));
+  ctx.fillStyle = country.color;
+  ctx.strokeStyle = "rgba(235,255,221,.9)";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
 }
 
 function drawRocketAtmosphere(ctx, rect) {
