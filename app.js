@@ -190,7 +190,7 @@ let rocketCatalog = null;
 let rocketCatalogLoading = false;
 let rocketMapCache = null;
 const rocketEarthImage = new Image();
-rocketEarthImage.src = "assets/earth-satellite-clouds.jpg";
+rocketEarthImage.src = "assets/earth-satellite-clouds-4096.jpg";
 rocketEarthImage.addEventListener("load", invalidateRocketMapCache);
 let rocketCountryOverlayEnabled = localStorage.getItem("flagHunterRocketCountryOverlay") !== "0";
 let officialFlyLeaders = [];
@@ -2442,13 +2442,7 @@ function recordRocketRound(success, reason = "route") {
 }
 
 function makeRocketClouds() {
-  return Array.from({ length: 22 }, (_, index) => ({
-    x: 500 + Math.random() * (ROCKET_MAP_W - 1000),
-    y: 450 + Math.random() * (ROCKET_MAP_H - 900),
-    r: 150 + Math.random() * 240,
-    drift: 12 + Math.random() * 28,
-    seed: index * 23 + Math.random() * 10
-  }));
+  return [];
 }
 
 function nextRocketRound(success) {
@@ -2508,7 +2502,6 @@ function nextRocketRound(success) {
   rocketState.depots = makeRocketDepots();
   renderRocketDepotIntel();
   rocketState.clouds = makeRocketClouds();
-  rocketState.clouds = [];
   rocketState.trail = [];
   rocketState.routeTrail = [];
   rocketState.landingLogs = [];
@@ -3250,26 +3243,8 @@ function drawRocketSatelliteBase(ctx, rect, camX, camY) {
     drawRocketEarthRaster(ctx, rect, camX, camY);
     return;
   }
-  const ocean = ctx.createLinearGradient(0, 0, rect.width, rect.height);
-  ocean.addColorStop(0, "#07223a");
-  ocean.addColorStop(0.45, "#0b4456");
-  ocean.addColorStop(1, "#041322");
-  ctx.fillStyle = ocean;
+  ctx.fillStyle = "#071827";
   ctx.fillRect(0, 0, rect.width, rect.height);
-  const cell = 180;
-  const startX = Math.floor(camX / cell) * cell;
-  const startY = Math.floor(camY / cell) * cell;
-  for (let wx = startX; wx < camX + rect.width + cell; wx += cell) {
-    for (let wy = startY; wy < camY + rect.height + cell; wy += cell) {
-      const noise = satelliteHash(wx / cell, wy / cell, 17);
-      const x = wx - camX + noise * 80;
-      const y = wy - camY + satelliteHash(wx / cell, wy / cell, 29) * 80;
-      ctx.fillStyle = noise > 0.55 ? "rgba(72, 154, 174, 0.13)" : "rgba(2, 18, 31, 0.16)";
-      ctx.beginPath();
-      ctx.ellipse(x, y, 90 + noise * 130, 28 + noise * 70, noise * Math.PI, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
 }
 
 function drawRocketEarthRaster(ctx, rect, camX, camY) {
@@ -3394,7 +3369,7 @@ function drawRocketAtmosphere(ctx, rect) {
   ctx.fill();
   [
     ["GROUND", 0, "#45f875"],
-    ["CLOUDS", 700, "#ffffff"],
+    ["LOW AIR", 700, "#ffffff"],
     ["HIGH SKY", 1600, "#3a8cff"],
     ["ORBIT", 4200, "#b35cff"]
   ].forEach(([label, level, color], index) => {
