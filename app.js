@@ -202,7 +202,7 @@ const ROCKET_TINY_COUNTRY_DOT_MAX = 30;
 const rocketEarthImage = new Image();
 rocketEarthImage.src = "assets/earth-satellite-nasa-8192.jpg";
 rocketEarthImage.addEventListener("load", invalidateRocketMapCache);
-rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260615j";
+rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260615k";
 rocketMiniMapImage.addEventListener("load", () => { rocketMiniMapCache = null; });
 let rocketCountryOverlayEnabled = localStorage.getItem("flagHunterRocketCountryOverlay") !== "0";
 let officialFlyLeaders = [];
@@ -293,21 +293,14 @@ const rocketTechSteps = {
 };
 
 const planeClasses = [
-  { name: "Propeller Trainer", threshold: 0, points: 0 },
-  { name: "WW2 Scout", threshold: 8, points: 40000 },
-  { name: "WW2 Warbird", threshold: 12, points: 90000 },
-  { name: "Blitz Fighter", threshold: 16, points: 160000 },
-  { name: "Turbo Prop", threshold: 20, points: 280000 },
-  { name: "1980s Airliner", threshold: 24, points: 450000 },
-  { name: "Boeing 737", threshold: 28, points: 700000 },
-  { name: "Advanced Airliner", threshold: 32, points: 1100000 },
-  { name: "Boeing 787 Dreamliner", threshold: 36, points: 1800000 },
-  { name: "Private Jet", threshold: 40, points: 3000000 },
-  { name: "F-16 Falcon", threshold: 44, points: 5000000 },
-  { name: "F-22 Raptor", threshold: 48, points: 10000000 },
-  { name: "Military Fighter Jet", threshold: 52, points: 25000000 },
-  { name: "Hypersonic Test Jet", threshold: 56, points: 50000000 },
-  { name: "Orbital Spaceplane", threshold: 60, points: 100000000 }
+  { rank: "Unranked", name: "Propeller Trainer" },
+  { rank: "Rookie", name: "WW2 Warbird" },
+  { rank: "Explorer", name: "Blitz Fighter" },
+  { rank: "Diplomat", name: "Boeing 737" },
+  { rank: "Cartographer", name: "Boeing 787 Dreamliner" },
+  { rank: "Flag Master", name: "F-16 Falcon" },
+  { rank: "World Ace", name: "Military Fighter Jet" },
+  { rank: "Century Legend", name: "Orbital Spaceplane" }
 ];
 
 const rocketTargets = [
@@ -1680,17 +1673,9 @@ function getBestFlyScore() {
 }
 
 function getPlaneClass(input = {}) {
-  const tech = input.tech || {};
-  const peakSpeed = Number(input.peakSpeed ?? input.telemetry?.peakSpeed ?? 0);
-  const peakAccel = Number(input.peakAccel ?? input.telemetry?.peakAccel ?? 0);
-  const peakDecel = Number(input.peakDecel ?? input.telemetry?.peakDecel ?? 0);
-  const peakTurn = Number(input.peakTurn ?? input.telemetry?.peakTurn ?? 0);
-  const turn = Number(tech.turn || 0);
-  const speed = Number(tech.speed || 0);
-  const fuel = Number(tech.fuel || 0);
-  const performance = speed * 4 + turn * 2.2 + fuel * 1.2 + peakSpeed / 240 + peakAccel / 500 + peakDecel / 520 + peakTurn * 0.9;
-  const flyScore = Math.max(Number(input.score ?? input.finalScore ?? input.bestScore ?? 0) || 0, getBestFlyScore(), rocketState?.score || 0);
-  return [...planeClasses].reverse().find((plane) => performance >= plane.threshold && flyScore >= plane.points) || planeClasses[0];
+  const score = Math.max(Number(input.score ?? input.finalScore ?? input.bestScore ?? 0) || 0, getBestOverallScore(), rocketState?.score || 0);
+  const rank = getRank(score);
+  return planeClasses.find((plane) => plane.rank === rank.name) || planeClasses[0];
 }
 
 function getPlaneClassName(run = {}) {
@@ -1698,10 +1683,7 @@ function getPlaneClassName(run = {}) {
 }
 
 function getBestPlaneClass() {
-  return (profile.rocketRuns || [])
-    .filter((run) => run.source !== "agent-simulation")
-    .map((run) => getPlaneClassName(run))
-    .sort((a, b) => Math.max(0, planeClasses.findIndex((plane) => plane.name === b)) - Math.max(0, planeClasses.findIndex((plane) => plane.name === a)))[0] || planeClasses[0].name;
+  return getPlaneClass().name;
 }
 
 function seededRandom(seed) {
@@ -1913,7 +1895,7 @@ function renderRankLists() {
         <b>${escapeHtml(rank.name)}</b>
         <span>${formatScore(rank.points)} pts required</span>
         <em>${unlocked ? (index === current.index ? `${formatScore(points)} pts now` : "Unlocked") : `${formatScore(rank.points - points)} pts away`}</em>
-        ${index === current.index ? `<span>Best plane: ${escapeHtml(bestPlane)}</span>` : ""}
+        ${index === current.index ? `<span>Rank plane: ${escapeHtml(bestPlane)}</span>` : ""}
         <i><u style="width:${unlocked ? progress : 0}%"></u></i>
       </div>
     `;
@@ -1925,17 +1907,15 @@ function renderRankLists() {
 
 function renderPlaneClassList() {
   if (!els.manualPlaneList) return;
-  const bestFlyScore = getBestFlyScore();
-  const bestPlane = getBestPlaneClass();
+  const currentRank = getRank(getBestOverallScore());
   els.manualPlaneList.innerHTML = planeClasses.map((plane) => {
-    const unlocked = planeClasses.findIndex((item) => item.name === bestPlane) >= planeClasses.findIndex((item) => item.name === plane.name);
-    const scoreText = plane.points ? `${formatScore(plane.points)} Fly pts` : "Start";
-    const perfText = plane.threshold ? `rating ${plane.threshold}+` : "training rating";
+    const rank = ranks.find((item) => item.name === plane.rank) || ranks[0];
+    const unlocked = currentRank.index >= ranks.findIndex((item) => item.name === plane.rank);
     return `
       <div class="${unlocked ? "unlocked" : ""}">
         <b>${escapeHtml(plane.name)}</b>
-        <span>${scoreText} + ${perfText}</span>
-        <span>${unlocked ? "Unlocked" : `${formatScore(Math.max(0, plane.points - bestFlyScore))} Fly pts away`}</span>
+        <span>${escapeHtml(plane.rank)} rank</span>
+        <span>${unlocked ? "Unlocked" : `${formatScore(Math.max(0, rank.points - getBestOverallScore()))} pts away`}</span>
       </div>
     `;
   }).join("");
