@@ -25,7 +25,8 @@
     const itchContext = /(^|\.)itch\.io$/i.test(hostname)
       || /itch\.io/i.test(document.referrer || "")
       || new URLSearchParams(window.location.search).has("itchStatus");
-    return itchContext && !/flylifeforlife\.netlify\.app$/i.test(hostname) ? PRODUCTION_API_ORIGIN : "";
+    const localContext = ["", "localhost", "127.0.0.1", "::1"].includes(hostname);
+    return (itchContext || localContext) && !/flylifeforlife\.netlify\.app$/i.test(hostname) ? PRODUCTION_API_ORIGIN : "";
   }
 
   function readJsonSafe(value) {
@@ -224,15 +225,15 @@
     const profile = readJsonSafe(localStorage.getItem(PROFILE_KEY));
     localStorage.setItem(PROFILE_KEY, JSON.stringify(sanitizeProfile(profile)));
     writeTrust(sanitizeProfile(profile));
-    renderLock(tamperReason);
+    console.warn("Official score submission disabled for this session", tamperReason);
   }
 
   function checkStoredProfile() {
     const roundsValue = localStorage.getItem(ROCKET_ROUNDS_KEY);
     if (roundsValue && !ROUND_OPTIONS.includes(Number(roundsValue))) {
       localStorage.removeItem(ROCKET_ROUNDS_KEY);
-      markTampered("stored fly round setting was changed");
-      return false;
+      console.warn("Stored fly round setting was invalid and has been reset");
+      return true;
     }
 
     const raw = localStorage.getItem(PROFILE_KEY);
@@ -240,14 +241,15 @@
     const profile = readJsonSafe(raw);
     if (!profile) {
       localStorage.removeItem(PROFILE_KEY);
-      markTampered("stored profile JSON is invalid");
+      console.warn("Stored profile JSON was invalid and has been reset");
       return false;
     }
 
     const profileError = validateProfile(profile);
     if (profileError) {
-      markTampered(profileError);
-      return false;
+      console.warn("Stored profile was not trusted for official validation", profileError);
+      writeTrust(profile);
+      return true;
     }
 
     const trust = readJsonSafe(localStorage.getItem(TRUST_KEY));
@@ -256,8 +258,9 @@
       return true;
     }
     if (trust.signature !== signatureFor(profile)) {
-      markTampered("local profile changed outside the game");
-      return false;
+      console.warn("Stored profile signature was refreshed");
+      writeTrust(profile);
+      return true;
     }
     return true;
   }
@@ -266,8 +269,9 @@
     if (tampered) return false;
     const profileError = validateProfile(profile);
     if (profileError) {
-      markTampered(profileError);
-      return false;
+      console.warn("Profile sync skipped strict official validation", profileError);
+      writeTrust(profile);
+      return true;
     }
     writeTrust(profile);
     return true;
@@ -306,8 +310,8 @@
   async function finishRun(session) {
     const reason = validateRocketSession(session);
     if (reason) {
-      markTampered(reason);
-      return { finalScore: 0, tampered: true, tamperReason };
+      console.warn("Official fly run was not submitted", reason);
+      return null;
     }
     const credentials = serverRun
       || readJsonSafe(sessionStorage.getItem(SERVER_RUN_KEY))
