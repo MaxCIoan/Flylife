@@ -59,11 +59,14 @@ const ROCKET_DEPOT_RADIUS = 104;
 const ROCKET_OBJECTIVE_SAMPLE_SECONDS = 1;
 
 const ranks = [
-  { name: "Rookie", points: 0 },
-  { name: "Explorer", points: 3000 },
-  { name: "Diplomat", points: 8000 },
-  { name: "Cartographer", points: 16000 },
-  { name: "Flag Master", points: 30000 }
+  { name: "Unranked", points: 0 },
+  { name: "Rookie", points: 40000 },
+  { name: "Explorer", points: 100000 },
+  { name: "Diplomat", points: 250000 },
+  { name: "Cartographer", points: 1000000 },
+  { name: "Flag Master", points: 5000000 },
+  { name: "World Ace", points: 10000000 },
+  { name: "Century Legend", points: 100000000 }
 ];
 
 const els = {
@@ -151,6 +154,7 @@ const els = {
   pauseScanTarget: document.querySelector("#pauseScanTarget"),
   pauseRankList: document.querySelector("#pauseRankList"),
   manualRankList: document.querySelector("#manualRankList"),
+  manualPlaneList: document.querySelector("#manualPlaneList"),
   rocketMessage: document.querySelector("#rocketMessage"),
   rocketStart: document.querySelector("#rocketStart"),
   rocketResultOverlay: document.querySelector("#rocketResultOverlay"),
@@ -191,14 +195,14 @@ let rocketCatalogLoading = false;
 let rocketMapCache = null;
 let rocketMiniMapCache = null;
 const rocketMiniMapImage = new Image();
-const ROCKET_STATIC_CACHE_SNAP = 640;
+const ROCKET_STATIC_CACHE_SNAP = 768;
 const ROCKET_HUD_INTERVAL_MS = 120;
 const ROCKET_NAV_CHECK_INTERVAL = 0.14;
 const ROCKET_TINY_COUNTRY_DOT_MAX = 30;
 const rocketEarthImage = new Image();
 rocketEarthImage.src = "assets/earth-satellite-nasa-8192.jpg";
 rocketEarthImage.addEventListener("load", invalidateRocketMapCache);
-rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260615i";
+rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260615j";
 rocketMiniMapImage.addEventListener("load", () => { rocketMiniMapCache = null; });
 let rocketCountryOverlayEnabled = localStorage.getItem("flagHunterRocketCountryOverlay") !== "0";
 let officialFlyLeaders = [];
@@ -212,6 +216,7 @@ const isItchContext = /(^|\.)itch\.io$/i.test(window.location.hostname)
 const isLocalFlyContext = ["", "localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
 const flyApiBase = (isItchContext || isLocalFlyContext) ? productionFlyApiOrigin : "";
 const blockedRocketCountries = new Set(["Fiji", "Antarctica"]);
+const mainlandRocketTargetCountries = new Set(["Netherlands"]);
 const rocketCountryAliases = {
   "United States": "United States of America",
   "DR Congo": "Democratic Republic of the Congo",
@@ -288,13 +293,21 @@ const rocketTechSteps = {
 };
 
 const planeClasses = [
-  { name: "Propeller Trainer", threshold: 0 },
-  { name: "WW2 Warbird", threshold: 5 },
-  { name: "1980s Airliner", threshold: 10 },
-  { name: "Advanced Airliner", threshold: 15 },
-  { name: "AIRBUS Class", threshold: 20 },
-  { name: "Private Jet", threshold: 25 },
-  { name: "Military Fighter Jet", threshold: 31 }
+  { name: "Propeller Trainer", threshold: 0, points: 0 },
+  { name: "WW2 Scout", threshold: 8, points: 40000 },
+  { name: "WW2 Warbird", threshold: 12, points: 90000 },
+  { name: "Blitz Fighter", threshold: 16, points: 160000 },
+  { name: "Turbo Prop", threshold: 20, points: 280000 },
+  { name: "1980s Airliner", threshold: 24, points: 450000 },
+  { name: "Boeing 737", threshold: 28, points: 700000 },
+  { name: "Advanced Airliner", threshold: 32, points: 1100000 },
+  { name: "Boeing 787 Dreamliner", threshold: 36, points: 1800000 },
+  { name: "Private Jet", threshold: 40, points: 3000000 },
+  { name: "F-16 Falcon", threshold: 44, points: 5000000 },
+  { name: "F-22 Raptor", threshold: 48, points: 10000000 },
+  { name: "Military Fighter Jet", threshold: 52, points: 25000000 },
+  { name: "Hypersonic Test Jet", threshold: 56, points: 50000000 },
+  { name: "Orbital Spaceplane", threshold: 60, points: 100000000 }
 ];
 
 const rocketTargets = [
@@ -528,8 +541,42 @@ function pointInRocketCountry(point, country) {
   return country?.rings?.some((ring) => pointInRocketRing(point, ring));
 }
 
-function randomPointInRocketCountry(country) {
+function rocketRingBounds(ring) {
+  return ring.reduce((box, point) => ({
+    minX: Math.min(box.minX, point.x),
+    minY: Math.min(box.minY, point.y),
+    maxX: Math.max(box.maxX, point.x),
+    maxY: Math.max(box.maxY, point.y)
+  }), { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
+}
+
+function randomPointInRocketRing(ring, fallbackPoint = null) {
+  if (!ring?.length) return null;
+  const bounds = rocketRingBounds(ring);
+  const width = bounds.maxX - bounds.minX;
+  const height = bounds.maxY - bounds.minY;
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const point = {
+      x: bounds.minX + Math.random() * width,
+      y: bounds.minY + Math.random() * height
+    };
+    if (pointInRocketRing(point, ring)) return point;
+  }
+  if (fallbackPoint && pointInRocketRing(fallbackPoint, ring)) return fallbackPoint;
+  return {
+    x: (bounds.minX + bounds.maxX) / 2,
+    y: (bounds.minY + bounds.maxY) / 2
+  };
+}
+
+function randomPointInRocketCountry(country, anchor = null) {
   if (!country?.bounds) return null;
+  const capitalPoint = anchor?.capitalPoint;
+  if (capitalPoint && mainlandRocketTargetCountries.has(anchor.name)) {
+    const capitalRing = country.rings.find((ring) => pointInRocketRing(capitalPoint, ring));
+    const point = randomPointInRocketRing(capitalRing, capitalPoint);
+    if (point) return point;
+  }
   const width = country.bounds.maxX - country.bounds.minX;
   const height = country.bounds.maxY - country.bounds.minY;
   const labelPoint = { x: country.label.x, y: country.label.y };
@@ -562,7 +609,7 @@ function rocketCountryFeature(name) {
 
 function rocketPointForCountry(anchor, options = {}) {
   const country = rocketCountryFeature(anchor?.name);
-  const inside = randomPointInRocketCountry(country);
+  const inside = randomPointInRocketCountry(country, anchor);
   if (inside) return inside;
   const point = options.preferCapital ? anchor?.capitalPoint || anchor : anchor;
   if (!point) return null;
@@ -1097,7 +1144,7 @@ function saveRocketSessionResult(title, summary) {
   if (!rocketState || rocketState.sessionSaved) return null;
   rocketState.sessionSaved = true;
   const completedRounds = rocketState.roundLogs.filter((log) => log.success).length;
-  const planeClass = getPlaneClass({ tech: rocketState.tech, telemetry: rocketState.telemetry }).name;
+  const planeClass = getPlaneClass({ tech: rocketState.tech, telemetry: rocketState.telemetry, score: rocketState.score }).name;
   const session = {
     id: crypto.randomUUID(),
     mode: "rocket",
@@ -1226,7 +1273,7 @@ function renderTables() {
     row.innerHTML = `
       <td>${new Date(run.createdAt).toLocaleString()}</td>
       <td>${formatScore(run.score)}</td>
-      <td>${escapeHtml(run.planeClass || getPlaneClass(run).name)}</td>
+      <td>${escapeHtml(getPlaneClassName(run))}</td>
       <td>${run.selectedRounds || run.rounds} rounds</td>
       <td>${run.completedRounds || 0} reached</td>
       <td>${Math.max(0, (run.longestRun || 0) - (run.completedRounds || 0))} missed</td>
@@ -1286,7 +1333,7 @@ function buildLocalLeaderboardEntries(flagRuns, flyRuns, officialFlyRuns = []) {
     mode: "Local Fly",
     displayName: run.displayName || "Guest",
     score: run.score || 0,
-    plane: escapeHtml(run.planeClass || getPlaneClass(run).name),
+    plane: escapeHtml(getPlaneClassName(run)),
     result: `${run.completedRounds || 0}/${run.selectedRounds || run.rounds || 0} reached`,
     details: `<button class="mini-btn" type="button">Open</button>`,
     run
@@ -1426,7 +1473,7 @@ function renderRocketRunDetails(run) {
       <section>
         <span>Final Score</span>
         <strong>${formatScore(run.score || 0)}</strong>
-        <small>Plane: ${escapeHtml(run.planeClass || getPlaneClass(run).name)}. Class: ${run.selectedRounds || run.rounds} rounds. Fuel left: ${(run.fuel || 0).toFixed(0)}%.</small>
+        <small>Plane: ${escapeHtml(getPlaneClassName(run))}. Class: ${run.selectedRounds || run.rounds} rounds. Fuel left: ${(run.fuel || 0).toFixed(0)}%.</small>
       </section>
       <section>
         <span>Best Destination</span>
@@ -1622,10 +1669,14 @@ function getBestRun() {
 
 function getBestOverallScore() {
   const flagBest = Math.max(0, ...(profile.runs || []).map((run) => Number(run.score) || 0));
+  return Math.max(flagBest, getBestFlyScore());
+}
+
+function getBestFlyScore() {
   const flyBest = Math.max(0, ...(profile.rocketRuns || [])
     .filter((run) => run.source !== "agent-simulation")
     .map((run) => Number(run.score) || 0));
-  return Math.max(flagBest, flyBest);
+  return flyBest;
 }
 
 function getPlaneClass(input = {}) {
@@ -1637,14 +1688,19 @@ function getPlaneClass(input = {}) {
   const turn = Number(tech.turn || 0);
   const speed = Number(tech.speed || 0);
   const fuel = Number(tech.fuel || 0);
-  const score = speed * 4 + turn * 2.2 + fuel * 1.2 + peakSpeed / 240 + peakAccel / 500 + peakDecel / 520 + peakTurn * 0.9;
-  return [...planeClasses].reverse().find((plane) => score >= plane.threshold) || planeClasses[0];
+  const performance = speed * 4 + turn * 2.2 + fuel * 1.2 + peakSpeed / 240 + peakAccel / 500 + peakDecel / 520 + peakTurn * 0.9;
+  const flyScore = Math.max(Number(input.score ?? input.finalScore ?? input.bestScore ?? 0) || 0, getBestFlyScore(), rocketState?.score || 0);
+  return [...planeClasses].reverse().find((plane) => performance >= plane.threshold && flyScore >= plane.points) || planeClasses[0];
+}
+
+function getPlaneClassName(run = {}) {
+  return getPlaneClass(run).name;
 }
 
 function getBestPlaneClass() {
   return (profile.rocketRuns || [])
     .filter((run) => run.source !== "agent-simulation")
-    .map((run) => run.planeClass || getPlaneClass(run).name)
+    .map((run) => getPlaneClassName(run))
     .sort((a, b) => Math.max(0, planeClasses.findIndex((plane) => plane.name === b)) - Math.max(0, planeClasses.findIndex((plane) => plane.name === a)))[0] || planeClasses[0].name;
 }
 
@@ -1804,7 +1860,7 @@ function makeSimulatedFlyAgentRuns() {
       techPoints: persona.style === "pro" ? 4 : persona.style === "conservative" ? 2 : 0,
       tech: persona.tech,
       telemetry: persona.telemetry,
-      planeClass: getPlaneClass({ tech: persona.tech, telemetry: persona.telemetry }).name,
+      planeClass: getPlaneClass({ tech: persona.tech, telemetry: persona.telemetry, score: completedScore }).name,
       logs
     };
   });
@@ -1864,6 +1920,25 @@ function renderRankLists() {
   }).join("");
   if (els.pauseRankList) els.pauseRankList.innerHTML = markup;
   if (els.manualRankList) els.manualRankList.innerHTML = markup;
+  renderPlaneClassList();
+}
+
+function renderPlaneClassList() {
+  if (!els.manualPlaneList) return;
+  const bestFlyScore = getBestFlyScore();
+  const bestPlane = getBestPlaneClass();
+  els.manualPlaneList.innerHTML = planeClasses.map((plane) => {
+    const unlocked = planeClasses.findIndex((item) => item.name === bestPlane) >= planeClasses.findIndex((item) => item.name === plane.name);
+    const scoreText = plane.points ? `${formatScore(plane.points)} Fly pts` : "Start";
+    const perfText = plane.threshold ? `rating ${plane.threshold}+` : "training rating";
+    return `
+      <div class="${unlocked ? "unlocked" : ""}">
+        <b>${escapeHtml(plane.name)}</b>
+        <span>${scoreText} + ${perfText}</span>
+        <span>${unlocked ? "Unlocked" : `${formatScore(Math.max(0, plane.points - bestFlyScore))} Fly pts away`}</span>
+      </div>
+    `;
+  }).join("");
 }
 
 function showView(name, updateHash = true) {
@@ -3297,11 +3372,8 @@ function drawRocketBoundaryLines(ctx, camX, camY, rect) {
   ctx.save();
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
-  ctx.strokeStyle = "rgba(2, 10, 15, 0.64)";
-  ctx.lineWidth = 2.1;
-  drawRocketBoundaryLinePass(ctx, camX, camY, rect);
-  ctx.strokeStyle = "rgba(230, 252, 230, 0.78)";
-  ctx.lineWidth = 0.72;
+  ctx.strokeStyle = "rgba(230, 252, 230, 0.74)";
+  ctx.lineWidth = 0.9;
   drawRocketBoundaryLinePass(ctx, camX, camY, rect);
   ctx.restore();
 }
@@ -4104,7 +4176,7 @@ function drawRocketShip(ctx, x, y, angle) {
 
 function drawRocketDashboard(ctx, rect) {
   const speed = Math.hypot(rocketState.ship.vx, rocketState.ship.vy);
-  const plane = getPlaneClass({ tech: rocketState.tech, telemetry: rocketState.telemetry }).name;
+  const plane = getPlaneClass({ tech: rocketState.tech, telemetry: rocketState.telemetry, score: rocketState.score }).name;
   const x = 18;
   const y = rect.height - 132;
   ctx.save();
@@ -4459,7 +4531,7 @@ function updateRocketTechLabels() {
     }
   });
   if (els.techTreeStatus) {
-    const plane = getPlaneClass({ tech: rocketState.tech, telemetry: rocketState.telemetry }).name;
+    const plane = getPlaneClass({ tech: rocketState.tech, telemetry: rocketState.telemetry, score: rocketState.score }).name;
     els.techTreeStatus.textContent = `${plane} | ${rocketState.techPoints} tech points`;
   }
   if (els.pauseScanTarget) {

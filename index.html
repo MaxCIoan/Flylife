@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Flag Hunter</title>
-  <link rel="stylesheet" href="styles.css?v=20260615i">
+  <link rel="stylesheet" href="styles.css?v=20260615j">
 </head>
 <body>
   <div class="private-api-status" id="privateApiStatus" aria-hidden="true"></div>
@@ -50,9 +50,9 @@
           </div>
           <div class="rank-card">
             <span>Rank Progress</span>
-            <strong><span id="rankPoints">0</span> / <span id="nextRankPoints">3000</span></strong>
+            <strong><span id="rankPoints">0</span> / <span id="nextRankPoints">40,000</span></strong>
             <div class="progress-track"><span id="rankProgress"></span></div>
-            <div class="rank-row"><small id="rankName">Rookie</small><small id="nextRankName">Explorer</small></div>
+            <div class="rank-row"><small id="rankName">Unranked</small><small id="nextRankName">Rookie</small></div>
           </div>
         </aside>
 
@@ -341,6 +341,11 @@
           </section>
 
           <section class="manual-card">
+            <h2>Plane Classes</h2>
+            <div class="manual-grid" id="manualPlaneList"></div>
+          </section>
+
+          <section class="manual-card">
             <h2>Fly</h2>
             <p>Fly the plane across the country map, manage fuel, and land in the assigned destination country or at a fuel depot. The final score is real math from the route events listed below.</p>
             <ul>
@@ -355,11 +360,12 @@
 
           <section class="manual-card">
             <h2>Fly Tech Tree</h2>
-            <p>Research points are earned during Fly runs and can be spent during the current session on three upgrade branches.</p>
+            <p>Research points are earned during Fly runs and can be spent during the current session on four upgrade branches.</p>
             <div class="manual-grid">
               <div><b>Fuel</b><span>Lower fuel burn, better route fuel return, stronger depot refuels.</span></div>
               <div><b>Speed</b><span>Higher thrust and top speed. Speed, acceleration, braking, handling, and upgrades raise the plane class.</span></div>
               <div><b>Handling</b><span>Better turn response, stronger banking, cleaner recovery, and higher plane class progress.</span></div>
+              <div><b>Sonar</b><span>Timed depot pings, destination range help, and ideal landing readouts.</span></div>
             </div>
           </section>
 
@@ -423,7 +429,7 @@
     </form>
   </dialog>
 
-  <script src="fly-session-guard.js?v=20260615i"></script>
-  <script src="app.js?v=20260615i"></script>
+  <script src="fly-session-guard.js?v=20260615j"></script>
+  <script src="app.js?v=20260615j"></script>
 </body>
 </html>
