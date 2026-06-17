@@ -198,10 +198,19 @@ let rocketMiniMapCache = null;
 let rocketTerrainTileCache = new Map();
 let rocketTerrainTileSerial = 0;
 let rocketTerrainSampleCanvas = null;
+let rocketImageryTileCache = new Map();
+let rocketImageryTileSerial = 0;
+let rocketImageryActiveLoads = 0;
 const rocketMiniMapImage = new Image();
 const ROCKET_STATIC_CACHE_SNAP = 768;
 const ROCKET_DETAIL_TILE_SIZE = 512;
 const ROCKET_DETAIL_VIRTUAL_ZOOM = 10;
+const ROCKET_IMAGERY_TILE_SIZE = 512;
+const ROCKET_IMAGERY_RASTER_SIZE = 1024;
+const ROCKET_IMAGERY_CACHE_MAX = 90;
+const ROCKET_IMAGERY_MAX_LOADS = 4;
+const ROCKET_IMAGERY_LAYER = "BlueMarble_ShadedRelief_Bathymetry";
+const ROCKET_IMAGERY_WMS_URL = "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi";
 const ROCKET_CLOSE_CAMERA_ZOOM = 2.05;
 const ROCKET_HUD_INTERVAL_MS = 120;
 const ROCKET_NAV_CHECK_INTERVAL = 0.14;
@@ -375,55 +384,6 @@ function worldPoint(lon, lat, mapW = ROCKET_MAP_W, mapH = ROCKET_MAP_H) {
     y: (90 - lat) / 180 * mapH
   };
 }
-
-const rocketSurfaceMarkers = [
-  { name: "Hong Kong", lon: 114.1694, lat: 22.3193, kind: "city", priority: 1 },
-  { name: "Busan", lon: 129.0756, lat: 35.1796, kind: "city", priority: 1 },
-  { name: "Singapore", lon: 103.8198, lat: 1.3521, kind: "city", priority: 1 },
-  { name: "Shanghai", lon: 121.4737, lat: 31.2304, kind: "city", priority: 1 },
-  { name: "Tokyo", lon: 139.6917, lat: 35.6895, kind: "city", priority: 1 },
-  { name: "Seoul", lon: 126.978, lat: 37.5665, kind: "city", priority: 1 },
-  { name: "Taipei", lon: 121.5654, lat: 25.033, kind: "city", priority: 1 },
-  { name: "Manila", lon: 120.9842, lat: 14.5995, kind: "city", priority: 1 },
-  { name: "Jakarta", lon: 106.8456, lat: -6.2088, kind: "city", priority: 1 },
-  { name: "Mumbai", lon: 72.8777, lat: 19.076, kind: "city", priority: 1 },
-  { name: "Istanbul", lon: 28.9784, lat: 41.0082, kind: "city", priority: 1 },
-  { name: "Cairo", lon: 31.2357, lat: 30.0444, kind: "city", priority: 1 },
-  { name: "Dubai", lon: 55.2708, lat: 25.2048, kind: "city", priority: 1 },
-  { name: "London", lon: -0.1276, lat: 51.5072, kind: "city", priority: 1 },
-  { name: "Paris", lon: 2.3522, lat: 48.8566, kind: "city", priority: 1 },
-  { name: "New York", lon: -74.006, lat: 40.7128, kind: "city", priority: 1 },
-  { name: "Los Angeles", lon: -118.2437, lat: 34.0522, kind: "city", priority: 1 },
-  { name: "Rio", lon: -43.1729, lat: -22.9068, kind: "city", priority: 1 },
-  { name: "Sydney", lon: 151.2093, lat: -33.8688, kind: "city", priority: 1 },
-  { name: "Pyramids", lon: 31.1342, lat: 29.9792, kind: "landmark", priority: 2 },
-  { name: "Great Wall", lon: 116.5704, lat: 40.4319, kind: "landmark", priority: 2 },
-  { name: "Maldives", lon: 73.22, lat: 3.2, kind: "island", priority: 1 },
-  { name: "Seychelles", lon: 55.45, lat: -4.62, kind: "island", priority: 1 },
-  { name: "Mauritius", lon: 57.55, lat: -20.17, kind: "island", priority: 1 },
-  { name: "Reunion", lon: 55.53, lat: -21.11, kind: "island", priority: 1 },
-  { name: "Comoros", lon: 43.25, lat: -11.65, kind: "island", priority: 1 },
-  { name: "Cape Verde", lon: -23.61, lat: 15.11, kind: "island", priority: 1 },
-  { name: "Bahamas", lon: -77.4, lat: 25.03, kind: "island", priority: 1 },
-  { name: "Bermuda", lon: -64.75, lat: 32.31, kind: "island", priority: 1 },
-  { name: "Barbados", lon: -59.54, lat: 13.19, kind: "island", priority: 1 },
-  { name: "Puerto Rico", lon: -66.59, lat: 18.22, kind: "island", priority: 1 },
-  { name: "Malta", lon: 14.38, lat: 35.94, kind: "island", priority: 1 },
-  { name: "Faroe", lon: -6.91, lat: 62.0, kind: "island", priority: 1 },
-  { name: "Guam", lon: 144.79, lat: 13.44, kind: "island", priority: 1 },
-  { name: "Palau", lon: 134.58, lat: 7.5, kind: "island", priority: 1 },
-  { name: "Micronesia", lon: 158.2, lat: 6.9, kind: "island", priority: 1 },
-  { name: "Marshall Is.", lon: 171.18, lat: 7.13, kind: "island", priority: 1 },
-  { name: "Nauru", lon: 166.93, lat: -0.52, kind: "island", priority: 1 },
-  { name: "Tuvalu", lon: 179.2, lat: -8.52, kind: "island", priority: 1 },
-  { name: "Samoa", lon: -172.1, lat: -13.76, kind: "island", priority: 1 },
-  { name: "Tonga", lon: -175.2, lat: -21.18, kind: "island", priority: 1 },
-  { name: "Vanuatu", lon: 167.0, lat: -15.4, kind: "island", priority: 1 },
-  { name: "New Caledonia", lon: 165.62, lat: -21.3, kind: "island", priority: 1 },
-  { name: "French Polynesia", lon: -149.4, lat: -17.65, kind: "island", priority: 1 },
-  { name: "Cook Is.", lon: -159.77, lat: -21.23, kind: "island", priority: 1 },
-  { name: "Niue", lon: -169.86, lat: -19.05, kind: "island", priority: 1 }
-];
 
 const mapCountries = [
   { name: "Canada", color: "#5aa477", poly: [[-141,70],[-60,70],[-52,50],[-82,42],[-125,49],[-141,60]] },
@@ -3448,7 +3408,6 @@ function drawRocket() {
   drawRocketRunway(ctx, camX, camY);
   drawRocketSonar(ctx, worldRect, camX, camY);
   ctx.restore();
-  drawRocketSurfaceMarkers(ctx, rect, camX, camY, zoom);
   drawRocketGlobeCurvature(ctx, rect);
   drawRocketAtmosphere(ctx, rect);
   drawRocketSpaceLayer(ctx, rect);
@@ -3483,138 +3442,6 @@ function getRocketCameraZoom() {
   return Math.round(rocketState.cameraZoom * 20) / 20;
 }
 
-function drawRocketSurfaceMarkers(ctx, rect, camX, camY, zoom) {
-  if (!rocketState || zoom < 1.16) return;
-  const labelBoxes = [];
-  const altitude = rocketState.ship?.altitude || 0;
-  ctx.save();
-  rocketSurfaceMarkers.forEach((marker) => {
-    const point = rocketSurfaceMarkerPoint(marker);
-    const x = (point.x - camX) * zoom;
-    const y = (point.y - camY) * zoom;
-    if (x < -60 || x > rect.width + 60 || y < -60 || y > rect.height + 60) return;
-    const size = marker.kind === "landmark" ? 6 : marker.kind === "city" ? 4.5 : 3.5;
-    const color = marker.kind === "landmark" ? "#ffb25f" : marker.kind === "city" ? "#ffd33d" : "#80ffe8";
-    ctx.globalAlpha = marker.kind === "island" ? 0.78 : 0.9;
-    if (marker.kind === "island") drawRocketIslandMarker(ctx, x, y, size, color);
-    else if (marker.kind === "landmark") drawRocketLandmarkMarker(ctx, marker, x, y, size, color);
-    else drawRocketCityMarker(ctx, x, y, size, color);
-    const showLabel = marker.kind === "landmark"
-      ? zoom > 1.2
-      : marker.kind === "city"
-        ? zoom > 1.34 && altitude < 5200
-        : zoom > 1.72 && altitude < 3600;
-    if (showLabel) drawRocketSurfaceLabel(ctx, marker.name, x, y, color, labelBoxes);
-  });
-  ctx.restore();
-}
-
-function rocketSurfaceMarkerPoint(marker) {
-  const mapW = rocketState?.mapW || ROCKET_MAP_W;
-  const mapH = rocketState?.mapH || ROCKET_MAP_H;
-  if (!marker.point || marker.mapW !== mapW || marker.mapH !== mapH) {
-    marker.point = worldPoint(marker.lon, marker.lat, mapW, mapH);
-    marker.mapW = mapW;
-    marker.mapH = mapH;
-  }
-  return marker.point;
-}
-
-function drawRocketCityMarker(ctx, x, y, size, color) {
-  ctx.save();
-  ctx.fillStyle = color;
-  ctx.strokeStyle = "rgba(3, 8, 14, 0.82)";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(x, y, size + 2.5, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(x, y, size, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.64)";
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-  ctx.moveTo(x - size - 4, y);
-  ctx.lineTo(x + size + 4, y);
-  ctx.moveTo(x, y - size - 4);
-  ctx.lineTo(x, y + size + 4);
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawRocketIslandMarker(ctx, x, y, size, color) {
-  ctx.save();
-  ctx.strokeStyle = "rgba(128, 255, 232, 0.68)";
-  ctx.fillStyle = "rgba(128, 255, 232, 0.46)";
-  ctx.lineWidth = 1.4;
-  ctx.beginPath();
-  ctx.arc(x, y, size + 5, -0.4, Math.PI * 1.35);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(x, y, size, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = color;
-  ctx.fillRect(x + size + 2, y - 1, 2, 2);
-  ctx.fillRect(x - size - 4, y + 2, 2, 2);
-  ctx.restore();
-}
-
-function drawRocketLandmarkMarker(ctx, marker, x, y, size, color) {
-  ctx.save();
-  ctx.strokeStyle = "rgba(3, 8, 14, 0.86)";
-  ctx.fillStyle = color;
-  ctx.lineWidth = 2.2;
-  if (marker.name === "Great Wall") {
-    ctx.beginPath();
-    ctx.moveTo(x - 14, y + 6);
-    ctx.lineTo(x - 7, y - 3);
-    ctx.lineTo(x + 1, y + 4);
-    ctx.lineTo(x + 9, y - 5);
-    ctx.lineTo(x + 16, y + 2);
-    ctx.stroke();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.6;
-    ctx.stroke();
-  } else {
-    ctx.beginPath();
-    ctx.moveTo(x, y - size - 5);
-    ctx.lineTo(x - size - 7, y + size + 5);
-    ctx.lineTo(x + size + 7, y + size + 5);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-function drawRocketSurfaceLabel(ctx, text, x, y, color, labelBoxes) {
-  ctx.save();
-  ctx.font = "900 10px system-ui";
-  const w = Math.ceil(ctx.measureText(text).width + 12);
-  const h = 18;
-  const canvasWidth = ctx.canvas.getBoundingClientRect?.().width || ctx.canvas.width || window.innerWidth;
-  let bx = Math.max(8, Math.min(canvasWidth - w - 8, x + 9));
-  let by = y - h - 7;
-  if (by < 8) by = y + 9;
-  const box = { x: bx, y: by, w, h };
-  const overlaps = labelBoxes.some((item) => bx < item.x + item.w && bx + w > item.x && by < item.y + item.h && by + h > item.y);
-  if (overlaps) {
-    ctx.restore();
-    return;
-  }
-  labelBoxes.push(box);
-  ctx.fillStyle = "rgba(3, 8, 14, 0.78)";
-  roundRect(ctx, bx, by, w, h, 6);
-  ctx.fill();
-  ctx.strokeStyle = hexToRgba(color, 0.72);
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  ctx.fillStyle = color;
-  ctx.textAlign = "left";
-  ctx.fillText(text, bx + 6, by + 13);
-  ctx.restore();
-}
-
 function drawRocketSetupBackground(ctx, rect) {
   const grad = ctx.createLinearGradient(0, 0, rect.width, rect.height);
   grad.addColorStop(0, "#071827");
@@ -3643,24 +3470,25 @@ function drawRocketSetupBackground(ctx, rect) {
 }
 
 function drawRocketMap(ctx, rect, camX, camY) {
-  const snap = ROCKET_STATIC_CACHE_SNAP;
+  const snap = getRocketStaticCacheSnap();
+  const pixelScale = getRocketMapCachePixelScale();
   const cacheX = Math.floor(camX / snap) * snap;
   const cacheY = Math.floor(camY / snap) * snap;
   const cacheW = Math.ceil(rect.width + snap * 2);
   const cacheH = Math.ceil(rect.height + snap * 2);
   const boundaryStep = getRocketBoundaryPointStep();
-  if (!rocketMapCache || rocketMapCache.x !== cacheX || rocketMapCache.y !== cacheY || rocketMapCache.w !== cacheW || rocketMapCache.h !== cacheH || rocketMapCache.features !== rocketWorldFeatures || rocketMapCache.boundaries !== rocketBoundaryLines || rocketMapCache.overlay !== rocketCountryOverlayEnabled || rocketMapCache.boundaryStep !== boundaryStep) {
+  if (!rocketMapCache || rocketMapCache.x !== cacheX || rocketMapCache.y !== cacheY || rocketMapCache.w !== cacheW || rocketMapCache.h !== cacheH || rocketMapCache.pixelScale !== pixelScale || rocketMapCache.features !== rocketWorldFeatures || rocketMapCache.boundaries !== rocketBoundaryLines || rocketMapCache.overlay !== rocketCountryOverlayEnabled || rocketMapCache.boundaryStep !== boundaryStep) {
     const canvas = rocketMapCache?.canvas || document.createElement("canvas");
-    canvas.width = cacheW;
-    canvas.height = cacheH;
+    canvas.width = Math.max(1, Math.ceil(cacheW * pixelScale));
+    canvas.height = Math.max(1, Math.ceil(cacheH * pixelScale));
     const cacheCtx = canvas.getContext("2d");
-    cacheCtx.setTransform(1, 0, 0, 1, 0, 0);
+    cacheCtx.setTransform(pixelScale, 0, 0, pixelScale, 0, 0);
     cacheCtx.imageSmoothingEnabled = true;
     cacheCtx.imageSmoothingQuality = "high";
     drawRocketStaticMap(cacheCtx, { width: cacheW, height: cacheH }, cacheX, cacheY);
-    rocketMapCache = { canvas, x: cacheX, y: cacheY, w: cacheW, h: cacheH, features: rocketWorldFeatures, boundaries: rocketBoundaryLines, overlay: rocketCountryOverlayEnabled, boundaryStep };
+    rocketMapCache = { canvas, x: cacheX, y: cacheY, w: cacheW, h: cacheH, pixelScale, features: rocketWorldFeatures, boundaries: rocketBoundaryLines, overlay: rocketCountryOverlayEnabled, boundaryStep };
   }
-  ctx.drawImage(rocketMapCache.canvas, cacheX - camX, cacheY - camY);
+  ctx.drawImage(rocketMapCache.canvas, cacheX - camX, cacheY - camY, rocketMapCache.w, rocketMapCache.h);
   ctx.save();
   ctx.translate(-camX, -camY);
   const reveal = ctx.createRadialGradient(rocketState.ship.x, rocketState.ship.y, 120, rocketState.ship.x, rocketState.ship.y, 1000);
@@ -3671,8 +3499,22 @@ function drawRocketMap(ctx, rect, camX, camY) {
   ctx.restore();
 }
 
+function getRocketStaticCacheSnap() {
+  return (rocketState?.cameraZoom || 1) >= 1.18 ? 512 : ROCKET_STATIC_CACHE_SNAP;
+}
+
+function getRocketMapCachePixelScale() {
+  const zoom = rocketState?.cameraZoom || 1;
+  if (zoom < 1.18) return 1;
+  const memory = Number(navigator.deviceMemory) || 4;
+  if (memory <= 2) return 1.25;
+  if (memory <= 4) return 1.5;
+  return 2;
+}
+
 function drawRocketStaticMap(ctx, rect, camX, camY) {
   drawRocketSatelliteBase(ctx, rect, camX, camY);
+  drawRocketImageryDetailTiles(ctx, rect, camX, camY);
   drawRocketTerrainDetailTiles(ctx, rect, camX, camY);
   ctx.save();
   ctx.translate(-camX, -camY);
@@ -3839,6 +3681,122 @@ function drawRocketEarthRaster(ctx, rect, camX, camY) {
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(rocketEarthImage, sx, sy, sw, sh, dx, dy, viewRight - viewLeft, viewBottom - viewTop);
   drawRocketPolarEdge(ctx, rect, camY);
+}
+
+function drawRocketImageryDetailTiles(ctx, rect, camX, camY) {
+  if (!shouldUseRocketImageryDetail()) return;
+  const tileSize = ROCKET_IMAGERY_TILE_SIZE;
+  const minTileX = Math.max(0, Math.floor(camX / tileSize));
+  const maxTileX = Math.min(Math.ceil(rocketState.mapW / tileSize) - 1, Math.floor((camX + rect.width) / tileSize));
+  const minTileY = Math.max(0, Math.floor(camY / tileSize));
+  const maxTileY = Math.min(Math.ceil(rocketState.mapH / tileSize) - 1, Math.floor((camY + rect.height) / tileSize));
+  let painted = false;
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  for (let ty = minTileY; ty <= maxTileY; ty += 1) {
+    for (let tx = minTileX; tx <= maxTileX; tx += 1) {
+      const tile = getRocketImageryTile(tx, ty);
+      if (tile?.status !== "loaded" || !tile.image) continue;
+      const worldX = tx * tileSize;
+      const worldY = ty * tileSize;
+      const drawW = Math.min(tileSize, rocketState.mapW - worldX);
+      const drawH = Math.min(tileSize, rocketState.mapH - worldY);
+      ctx.drawImage(tile.image, worldX - camX, worldY - camY, drawW, drawH);
+      painted = true;
+    }
+  }
+  if (painted) {
+    ctx.fillStyle = "rgba(255,255,255,0.04)";
+    ctx.fillRect(0, 0, rect.width, rect.height);
+  }
+  ctx.restore();
+}
+
+function shouldUseRocketImageryDetail() {
+  if (!rocketState || !window.fetch) return false;
+  const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if (connection?.saveData) return false;
+  return (rocketState.cameraZoom || 1) >= 1.18;
+}
+
+function getRocketImageryTile(tx, ty) {
+  const key = `${tx}:${ty}`;
+  let tile = rocketImageryTileCache.get(key);
+  if (!tile) {
+    tile = { tx, ty, status: "idle", image: null, used: 0, retryAt: 0 };
+    rocketImageryTileCache.set(key, tile);
+  }
+  tile.used = ++rocketImageryTileSerial;
+  if ((tile.status === "idle" || (tile.status === "error" && performance.now() > tile.retryAt)) && rocketImageryActiveLoads < ROCKET_IMAGERY_MAX_LOADS) {
+    startRocketImageryTileLoad(tile);
+  }
+  trimRocketImageryTileCache();
+  return tile;
+}
+
+function startRocketImageryTileLoad(tile) {
+  tile.status = "loading";
+  rocketImageryActiveLoads += 1;
+  const image = new Image();
+  image.crossOrigin = "anonymous";
+  image.decoding = "async";
+  image.onload = () => {
+    rocketImageryActiveLoads = Math.max(0, rocketImageryActiveLoads - 1);
+    tile.status = "loaded";
+    tile.image = image;
+    startRocketImageryPendingLoads();
+    invalidateRocketMapCache();
+  };
+  image.onerror = () => {
+    rocketImageryActiveLoads = Math.max(0, rocketImageryActiveLoads - 1);
+    tile.status = "error";
+    tile.retryAt = performance.now() + 60000;
+    startRocketImageryPendingLoads();
+    invalidateRocketMapCache();
+  };
+  image.src = makeRocketImageryTileUrl(tile.tx, tile.ty);
+}
+
+function startRocketImageryPendingLoads() {
+  if (rocketImageryActiveLoads >= ROCKET_IMAGERY_MAX_LOADS) return;
+  [...rocketImageryTileCache.values()]
+    .filter((tile) => tile.status === "idle" || (tile.status === "error" && performance.now() > tile.retryAt))
+    .sort((a, b) => b.used - a.used)
+    .slice(0, ROCKET_IMAGERY_MAX_LOADS - rocketImageryActiveLoads)
+    .forEach(startRocketImageryTileLoad);
+}
+
+function makeRocketImageryTileUrl(tx, ty) {
+  const tileSize = ROCKET_IMAGERY_TILE_SIZE;
+  const worldX = tx * tileSize;
+  const worldY = ty * tileSize;
+  const west = worldX / rocketState.mapW * 360 - 180;
+  const east = Math.min(rocketState.mapW, worldX + tileSize) / rocketState.mapW * 360 - 180;
+  const north = 90 - worldY / rocketState.mapH * 180;
+  const south = 90 - Math.min(rocketState.mapH, worldY + tileSize) / rocketState.mapH * 180;
+  const params = new URLSearchParams({
+    SERVICE: "WMS",
+    VERSION: "1.1.1",
+    REQUEST: "GetMap",
+    LAYERS: ROCKET_IMAGERY_LAYER,
+    STYLES: "",
+    SRS: "EPSG:4326",
+    BBOX: `${west.toFixed(6)},${south.toFixed(6)},${east.toFixed(6)},${north.toFixed(6)}`,
+    WIDTH: String(ROCKET_IMAGERY_RASTER_SIZE),
+    HEIGHT: String(ROCKET_IMAGERY_RASTER_SIZE),
+    FORMAT: "image/jpeg"
+  });
+  return `${ROCKET_IMAGERY_WMS_URL}?${params.toString()}`;
+}
+
+function trimRocketImageryTileCache() {
+  if (rocketImageryTileCache.size <= ROCKET_IMAGERY_CACHE_MAX) return;
+  [...rocketImageryTileCache.entries()]
+    .filter(([, tile]) => tile.status !== "loading")
+    .sort((a, b) => a[1].used - b[1].used)
+    .slice(0, Math.max(0, rocketImageryTileCache.size - ROCKET_IMAGERY_CACHE_MAX))
+    .forEach(([key]) => rocketImageryTileCache.delete(key));
 }
 
 function getRocketTerrainDetailProfile() {
