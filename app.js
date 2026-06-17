@@ -212,6 +212,7 @@ const ROCKET_IMAGERY_MAX_LOADS = 4;
 const ROCKET_IMAGERY_LAYER = "BlueMarble_ShadedRelief_Bathymetry";
 const ROCKET_IMAGERY_WMS_URL = "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi";
 const ROCKET_CLOSE_CAMERA_ZOOM = 2.05;
+const ROCKET_ISLAND_RELIEF_MIN_ZOOM = 1.1;
 const ROCKET_HUD_INTERVAL_MS = 120;
 const ROCKET_NAV_CHECK_INTERVAL = 0.14;
 const ROCKET_TINY_COUNTRY_DOT_MAX = 30;
@@ -384,6 +385,127 @@ function worldPoint(lon, lat, mapW = ROCKET_MAP_W, mapH = ROCKET_MAP_H) {
     y: (90 - lat) / 180 * mapH
   };
 }
+
+const rocketIslandReliefFeatures = [
+  ["Palau", 134.58, 7.5, "volcanic", 20],
+  ["Yap", 138.12, 9.55, "island", 13],
+  ["Ulithi", 139.66, 10.02, "atoll", 12],
+  ["Woleai", 143.9, 7.36, "atoll", 10],
+  ["Guam", 144.79, 13.44, "volcanic", 17],
+  ["Rota", 145.2, 14.15, "island", 11],
+  ["Tinian", 145.64, 14.98, "island", 10],
+  ["Saipan", 145.75, 15.18, "island", 12],
+  ["Chuuk Lagoon", 151.84, 7.44, "atoll", 17],
+  ["Pohnpei", 158.23, 6.85, "volcanic", 16],
+  ["Kosrae", 162.98, 5.32, "volcanic", 13],
+  ["Nauru", 166.93, -0.52, "reef", 13],
+  ["Majuro", 171.38, 7.09, "atoll", 15],
+  ["Kwajalein", 167.47, 8.72, "atoll", 16],
+  ["Bikini", 165.38, 11.61, "atoll", 12],
+  ["Enewetak", 162.32, 11.35, "atoll", 12],
+  ["Jaluit", 169.62, 5.92, "atoll", 12],
+  ["Wotje", 170.0, 9.45, "atoll", 11],
+  ["Maloelap", 171.07, 8.72, "atoll", 11],
+  ["Ailinglaplap", 168.73, 7.28, "atoll", 12],
+  ["Tarawa", 173.0, 1.43, "atoll", 16],
+  ["Makin", 172.98, 3.38, "atoll", 11],
+  ["Butaritari", 172.82, 3.12, "atoll", 13],
+  ["Abaiang", 173.04, 1.85, "atoll", 11],
+  ["Abemama", 173.85, 0.4, "atoll", 12],
+  ["Tabiteuea", 174.83, -1.43, "atoll", 14],
+  ["Kanton", -171.72, -2.82, "atoll", 12],
+  ["Kiritimati", -157.4, 1.87, "atoll", 22],
+  ["Tabuaeran", -159.36, 3.86, "atoll", 13],
+  ["Teraina", -160.39, 4.69, "atoll", 11],
+  ["Funafuti", 179.2, -8.52, "atoll", 15],
+  ["Nukufetau", 178.36, -8.0, "atoll", 11],
+  ["Nanumea", 176.12, -5.67, "atoll", 10],
+  ["Tokelau Atafu", -172.5, -8.55, "atoll", 11],
+  ["Tokelau Nukunonu", -171.82, -9.17, "atoll", 11],
+  ["Tokelau Fakaofo", -171.23, -9.38, "atoll", 11],
+  ["Savaii", -172.42, -13.62, "volcanic", 24],
+  ["Samoa Upolu", -171.75, -13.93, "volcanic", 22],
+  ["Tutuila", -170.7, -14.28, "volcanic", 15],
+  ["Tonga Tongatapu", -175.2, -21.18, "reef", 17],
+  ["Vavau", -173.98, -18.65, "reef", 14],
+  ["Niue", -169.86, -19.05, "reef", 15],
+  ["Rarotonga", -159.77, -21.23, "volcanic", 14],
+  ["Aitutaki", -159.78, -18.85, "atoll", 12],
+  ["Tahiti", -149.4, -17.65, "volcanic", 24],
+  ["Bora Bora", -151.74, -16.5, "reef", 13],
+  ["New Caledonia", 165.62, -21.3, "island", 34],
+  ["Vanuatu Efate", 168.32, -17.65, "volcanic", 15],
+  ["Solomon Guadalcanal", 160.15, -9.6, "volcanic", 24],
+  ["Fiji Viti Levu", 178.0, -17.8, "volcanic", 28],
+  ["Fiji Vanua Levu", 179.25, -16.58, "volcanic", 22],
+  ["Maldives North Male", 73.52, 4.18, "atoll", 17],
+  ["Maldives Ari", 72.83, 3.88, "atoll", 15],
+  ["Maldives Addu", 73.13, -0.63, "atoll", 14],
+  ["Chagos", 72.42, -7.32, "atoll", 15],
+  ["Seychelles Mahe", 55.45, -4.62, "volcanic", 16],
+  ["Seychelles Praslin", 55.74, -4.32, "island", 11],
+  ["Aldabra", 46.37, -9.42, "atoll", 15],
+  ["Mauritius", 57.55, -20.17, "volcanic", 20],
+  ["Rodrigues", 63.42, -19.72, "reef", 13],
+  ["Reunion", 55.53, -21.11, "volcanic", 20],
+  ["Grande Comore", 43.33, -11.7, "volcanic", 17],
+  ["Anjouan", 44.43, -12.22, "volcanic", 13],
+  ["Moheli", 43.73, -12.32, "volcanic", 11],
+  ["Mayotte", 45.17, -12.83, "reef", 14],
+  ["Socotra", 54.02, 12.48, "island", 22],
+  ["Zanzibar", 39.34, -6.16, "reef", 22],
+  ["Pemba", 39.75, -5.22, "reef", 15],
+  ["Mafia", 39.75, -7.87, "reef", 12],
+  ["Sao Tome", 6.61, 0.25, "volcanic", 16],
+  ["Principe", 7.41, 1.62, "volcanic", 11],
+  ["Bioko", 8.7, 3.5, "volcanic", 17],
+  ["Cape Verde Santiago", -23.61, 15.11, "volcanic", 16],
+  ["Cape Verde Sao Vicente", -24.98, 16.85, "volcanic", 13],
+  ["Cape Verde Sal", -22.92, 16.73, "reef", 12],
+  ["Saint Lucia", -60.98, 13.91, "volcanic", 16],
+  ["Martinique", -61.02, 14.64, "volcanic", 17],
+  ["Dominica", -61.37, 15.41, "volcanic", 16],
+  ["Barbados", -59.54, 13.19, "reef", 15],
+  ["Grenada", -61.68, 12.12, "volcanic", 13],
+  ["Saint Vincent", -61.2, 13.25, "volcanic", 14],
+  ["Guadeloupe", -61.55, 16.25, "volcanic", 18],
+  ["Antigua", -61.8, 17.08, "reef", 12],
+  ["Barbuda", -61.8, 17.63, "reef", 11],
+  ["Saint Kitts", -62.73, 17.32, "volcanic", 11],
+  ["Nevis", -62.58, 17.15, "volcanic", 10],
+  ["Montserrat", -62.19, 16.74, "volcanic", 10],
+  ["Anguilla", -63.06, 18.22, "reef", 10],
+  ["Saint Martin", -63.05, 18.07, "reef", 11],
+  ["Tortola", -64.62, 18.43, "reef", 11],
+  ["Saint Thomas", -64.93, 18.34, "reef", 10],
+  ["Saint Croix", -64.75, 17.73, "reef", 11],
+  ["Puerto Rico", -66.59, 18.22, "volcanic", 30],
+  ["Vieques", -65.44, 18.13, "reef", 10],
+  ["Culebra", -65.3, 18.31, "reef", 9],
+  ["Trinidad", -61.22, 10.69, "island", 25],
+  ["Tobago", -60.67, 11.25, "reef", 14],
+  ["Aruba", -69.97, 12.52, "reef", 12],
+  ["Curacao", -68.99, 12.17, "reef", 15],
+  ["Bonaire", -68.28, 12.2, "reef", 12],
+  ["Cayman Grand", -81.25, 19.32, "reef", 13],
+  ["Jamaica", -77.3, 18.1, "volcanic", 32],
+  ["Bahamas Andros", -77.95, 24.7, "reef", 27],
+  ["Bahamas New Providence", -77.35, 25.03, "reef", 11],
+  ["Bahamas Eleuthera", -76.18, 25.1, "reef", 17],
+  ["Bahamas Abaco", -77.1, 26.55, "reef", 19],
+  ["Bahamas Exuma", -76.45, 23.7, "reef", 21],
+  ["Turks Caicos", -71.8, 21.75, "reef", 16]
+].map(([name, lon, lat, kind, radius], index) => ({
+  name,
+  lon,
+  lat,
+  kind,
+  radius,
+  seed: index * 977 + Math.round((lon + 180) * 91) + Math.round((lat + 90) * 131),
+  point: null,
+  mapW: 0,
+  mapH: 0
+}));
 
 const mapCountries = [
   { name: "Canada", color: "#5aa477", poly: [[-141,70],[-60,70],[-52,50],[-82,42],[-125,49],[-141,60]] },
@@ -3557,6 +3679,7 @@ function drawRocketStaticMap(ctx, rect, camX, camY) {
       drawRocketTinyCountryMarker(ctx, country);
 
     });
+    drawRocketIslandReliefEnhancements(ctx, rect, camX, camY);
     drawRocketBoundaryLines(ctx, camX, camY, rect);
   } else if (rocketCountryOverlayEnabled) {
     mapCountries.forEach((country) => {
@@ -3582,6 +3705,9 @@ function drawRocketStaticMap(ctx, rect, camX, camY) {
       ctx.stroke();
 
     });
+    drawRocketIslandReliefEnhancements(ctx, rect, camX, camY);
+  } else {
+    drawRocketIslandReliefEnhancements(ctx, rect, camX, camY);
   }
 
   ctx.restore();
@@ -3797,6 +3923,158 @@ function trimRocketImageryTileCache() {
     .sort((a, b) => a[1].used - b[1].used)
     .slice(0, Math.max(0, rocketImageryTileCache.size - ROCKET_IMAGERY_CACHE_MAX))
     .forEach(([key]) => rocketImageryTileCache.delete(key));
+}
+
+function drawRocketIslandReliefEnhancements(ctx, rect, camX, camY) {
+  if (!rocketState || (rocketState.cameraZoom || 1) < ROCKET_ISLAND_RELIEF_MIN_ZOOM) return;
+  ctx.save();
+  rocketIslandReliefFeatures.forEach((feature) => {
+    const point = getRocketIslandReliefPoint(feature);
+    const radius = getRocketIslandReliefRadius(feature);
+    if (point.x < camX - radius * 3 || point.x > camX + rect.width + radius * 3 || point.y < camY - radius * 3 || point.y > camY + rect.height + radius * 3) return;
+    if (feature.kind === "atoll") drawRocketAtollRelief(ctx, point.x, point.y, radius, feature);
+    else if (feature.kind === "reef") drawRocketReefRelief(ctx, point.x, point.y, radius, feature);
+    else drawRocketIslandLandRelief(ctx, point.x, point.y, radius, feature);
+  });
+  ctx.restore();
+}
+
+function getRocketIslandReliefPoint(feature) {
+  const mapW = rocketState?.mapW || ROCKET_MAP_W;
+  const mapH = rocketState?.mapH || ROCKET_MAP_H;
+  if (!feature.point || feature.mapW !== mapW || feature.mapH !== mapH) {
+    feature.point = worldPoint(feature.lon, feature.lat, mapW, mapH);
+    feature.mapW = mapW;
+    feature.mapH = mapH;
+  }
+  return feature.point;
+}
+
+function getRocketIslandReliefRadius(feature) {
+  const isPacific = (feature.lon > 120 || feature.lon < -120) && feature.lat > -35 && feature.lat < 35;
+  const isolatedPacific = (feature.lon > 145 || feature.lon < -145) && feature.lat > -25 && feature.lat < 25;
+  const kindScale = feature.kind === "atoll" ? 1.12 : feature.kind === "reef" ? 1.0 : 1.05;
+  const oceanScale = isolatedPacific ? 1.34 : isPacific ? 1.18 : 1;
+  return Math.max(9, feature.radius * kindScale * oceanScale);
+}
+
+function drawRocketAtollRelief(ctx, x, y, radius, feature) {
+  const rand = seededRandom(feature.seed);
+  const angle = (rand() - 0.5) * Math.PI;
+  const rx = radius * (1.45 + rand() * 0.42);
+  const ry = radius * (0.82 + rand() * 0.32);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  const lagoon = ctx.createRadialGradient(0, 0, radius * 0.1, 0, 0, rx);
+  lagoon.addColorStop(0, "rgba(98, 210, 225, 0.30)");
+  lagoon.addColorStop(0.62, "rgba(65, 190, 204, 0.22)");
+  lagoon.addColorStop(1, "rgba(185, 243, 221, 0.05)");
+  ctx.fillStyle = lagoon;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(141, 247, 226, 0.58)";
+  ctx.lineWidth = Math.max(1.2, radius * 0.12);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(255, 246, 191, 0.66)";
+  ctx.lineWidth = Math.max(1, radius * 0.075);
+  const motus = 7 + Math.floor(rand() * 5);
+  for (let index = 0; index < motus; index += 1) {
+    const t = index / motus * Math.PI * 2 + rand() * 0.38;
+    const px = Math.cos(t) * rx * (0.78 + rand() * 0.16);
+    const py = Math.sin(t) * ry * (0.78 + rand() * 0.16);
+    const w = Math.max(2.6, radius * (0.14 + rand() * 0.12));
+    const h = Math.max(1.4, radius * (0.07 + rand() * 0.08));
+    ctx.fillStyle = rand() > 0.42 ? "rgba(222, 207, 127, 0.82)" : "rgba(79, 145, 83, 0.72)";
+    ctx.beginPath();
+    ctx.ellipse(px, py, w, h, t + rand() * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.strokeStyle = "rgba(232, 255, 245, 0.32)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx * 1.18, ry * 1.16, 0, -0.15, Math.PI * 0.82);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawRocketReefRelief(ctx, x, y, radius, feature) {
+  const rand = seededRandom(feature.seed);
+  const angle = (rand() - 0.5) * Math.PI;
+  const rx = radius * (1.2 + rand() * 0.35);
+  const ry = radius * (0.58 + rand() * 0.26);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.fillStyle = "rgba(62, 197, 211, 0.20)";
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx * 1.25, ry * 1.28, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(139, 249, 226, 0.52)";
+  ctx.lineWidth = Math.max(1.1, radius * 0.1);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx, ry, 0, rand() * 0.3, Math.PI * (1.45 + rand() * 0.42));
+  ctx.stroke();
+  ctx.fillStyle = "rgba(222, 207, 127, 0.76)";
+  ctx.beginPath();
+  ctx.ellipse(-rx * 0.1, 0, Math.max(2.4, radius * 0.22), Math.max(1.5, radius * 0.11), 0.25, 0, Math.PI * 2);
+  ctx.fill();
+  if (radius > 13) {
+    ctx.fillStyle = "rgba(64, 126, 71, 0.62)";
+    ctx.beginPath();
+    ctx.ellipse(rx * 0.15, -ry * 0.05, radius * 0.16, radius * 0.08, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawRocketIslandLandRelief(ctx, x, y, radius, feature) {
+  const rand = seededRandom(feature.seed);
+  const angle = (rand() - 0.5) * Math.PI;
+  const rx = radius * (1.05 + rand() * 0.35);
+  const ry = radius * (0.62 + rand() * 0.26);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.fillStyle = "rgba(71, 196, 207, 0.20)";
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx * 1.55, ry * 1.55, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(146, 248, 222, 0.46)";
+  ctx.lineWidth = Math.max(1, radius * 0.08);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx * 1.24, ry * 1.2, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = "rgba(210, 190, 119, 0.84)";
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx * 1.05, ry * 1.04, 0, 0, Math.PI * 2);
+  ctx.fill();
+  const land = ctx.createRadialGradient(-rx * 0.2, -ry * 0.22, radius * 0.08, 0, 0, rx);
+  land.addColorStop(0, feature.kind === "volcanic" ? "rgba(72, 125, 73, 0.95)" : "rgba(87, 150, 86, 0.92)");
+  land.addColorStop(0.56, "rgba(80, 137, 72, 0.90)");
+  land.addColorStop(1, "rgba(181, 166, 96, 0.78)");
+  ctx.fillStyle = land;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx * 0.86, ry * 0.86, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = feature.kind === "volcanic" ? "rgba(40, 78, 45, 0.62)" : "rgba(236, 230, 155, 0.44)";
+  ctx.lineWidth = Math.max(1, radius * 0.075);
+  const ridgeCount = feature.kind === "volcanic" ? 4 : 2;
+  for (let index = 0; index < ridgeCount; index += 1) {
+    const offset = (index - (ridgeCount - 1) / 2) * ry * 0.22;
+    ctx.beginPath();
+    ctx.moveTo(-rx * 0.5, offset + (rand() - 0.5) * ry * 0.16);
+    ctx.quadraticCurveTo(0, offset - ry * (0.35 + rand() * 0.18), rx * 0.52, offset + (rand() - 0.5) * ry * 0.2);
+    ctx.stroke();
+  }
+  ctx.fillStyle = "rgba(255, 247, 190, 0.42)";
+  ctx.beginPath();
+  ctx.ellipse(-rx * 0.45, ry * 0.3, Math.max(1.5, radius * 0.12), Math.max(1, radius * 0.055), -0.25, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 function getRocketTerrainDetailProfile() {
