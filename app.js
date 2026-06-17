@@ -195,8 +195,13 @@ let rocketCatalog = null;
 let rocketCatalogLoading = false;
 let rocketMapCache = null;
 let rocketMiniMapCache = null;
+let rocketTerrainTileCache = new Map();
+let rocketTerrainTileSerial = 0;
+let rocketTerrainSampleCanvas = null;
 const rocketMiniMapImage = new Image();
 const ROCKET_STATIC_CACHE_SNAP = 768;
+const ROCKET_DETAIL_TILE_SIZE = 512;
+const ROCKET_DETAIL_VIRTUAL_ZOOM = 10;
 const ROCKET_HUD_INTERVAL_MS = 120;
 const ROCKET_NAV_CHECK_INTERVAL = 0.14;
 const ROCKET_TINY_COUNTRY_DOT_MAX = 30;
@@ -3460,6 +3465,7 @@ function drawRocketMap(ctx, rect, camX, camY) {
 
 function drawRocketStaticMap(ctx, rect, camX, camY) {
   drawRocketSatelliteBase(ctx, rect, camX, camY);
+  drawRocketTerrainDetailTiles(ctx, rect, camX, camY);
   ctx.save();
   ctx.translate(-camX, -camY);
 
@@ -3625,6 +3631,198 @@ function drawRocketEarthRaster(ctx, rect, camX, camY) {
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(rocketEarthImage, sx, sy, sw, sh, dx, dy, viewRight - viewLeft, viewBottom - viewTop);
   drawRocketPolarEdge(ctx, rect, camY);
+}
+
+function getRocketTerrainDetailProfile() {
+  const cores = Number(navigator.hardwareConcurrency) || 4;
+  const memory = Number(navigator.deviceMemory) || 4;
+  if (memory <= 2 || cores <= 2) return { lineScale: 0.48, sample: 28, maxTiles: 28 };
+  if (memory <= 4 || cores <= 4) return { lineScale: 0.68, sample: 36, maxTiles: 44 };
+  return { lineScale: 1, sample: 48, maxTiles: 72 };
+}
+
+function drawRocketTerrainDetailTiles(ctx, rect, camX, camY) {
+  if (!rocketEarthImage.complete || !rocketEarthImage.naturalWidth) return;
+  const profile = getRocketTerrainDetailProfile();
+  const tileSize = ROCKET_DETAIL_TILE_SIZE;
+  const minTileX = Math.max(0, Math.floor(camX / tileSize) - 1);
+  const maxTileX = Math.min(Math.ceil(rocketState.mapW / tileSize) - 1, Math.floor((camX + rect.width) / tileSize) + 1);
+  const minTileY = Math.max(0, Math.floor(camY / tileSize) - 1);
+  const maxTileY = Math.min(Math.ceil(rocketState.mapH / tileSize) - 1, Math.floor((camY + rect.height) / tileSize) + 1);
+  ctx.save();
+  ctx.globalCompositeOperation = "soft-light";
+  ctx.globalAlpha = 0.74;
+  for (let ty = minTileY; ty <= maxTileY; ty += 1) {
+    for (let tx = minTileX; tx <= maxTileX; tx += 1) {
+      const tile = getRocketTerrainDetailTile(tx, ty, profile);
+      if (!tile) continue;
+      ctx.drawImage(tile, tx * tileSize - camX, ty * tileSize - camY, tileSize, tileSize);
+    }
+  }
+  ctx.restore();
+}
+
+function getRocketTerrainDetailTile(tx, ty, profile) {
+  const key = `${tx}:${ty}`;
+  const cached = rocketTerrainTileCache.get(key);
+  if (cached) {
+    cached.used = ++rocketTerrainTileSerial;
+    return cached.canvas;
+  }
+  const canvas = makeRocketTerrainDetailTile(tx, ty, profile);
+  rocketTerrainTileCache.set(key, { canvas, used: ++rocketTerrainTileSerial });
+  trimRocketTerrainTileCache(profile.maxTiles);
+  return canvas;
+}
+
+function trimRocketTerrainTileCache(maxTiles) {
+  if (rocketTerrainTileCache.size <= maxTiles) return;
+  [...rocketTerrainTileCache.entries()]
+    .sort((a, b) => a[1].used - b[1].used)
+    .slice(0, rocketTerrainTileCache.size - maxTiles)
+    .forEach(([key]) => rocketTerrainTileCache.delete(key));
+}
+
+function makeRocketTerrainDetailTile(tx, ty, profile) {
+  const tileSize = ROCKET_DETAIL_TILE_SIZE;
+  const canvas = document.createElement("canvas");
+  canvas.width = tileSize;
+  canvas.height = tileSize;
+  const ctx = canvas.getContext("2d");
+  const worldX = tx * tileSize;
+  const worldY = ty * tileSize;
+  const stats = sampleRocketTerrainTile(worldX, worldY, tileSize, profile.sample);
+  const seed = ((tx * 73856093) ^ (ty * 19349663) ^ 0x6f3d2b1) >>> 0;
+  const rand = seededRandom(seed);
+  ctx.clearRect(0, 0, tileSize, tileSize);
+
+  const landRatio = 1 - stats.oceanRatio;
+  const density = Math.max(0.35, profile.lineScale);
+  const microStep = Math.max(16, tileSize / ROCKET_DETAIL_VIRTUAL_ZOOM);
+
+  if (stats.oceanRatio > 0.28) {
+    const oceanLines = Math.round((10 + stats.oceanRatio * 18) * density);
+    for (let index = 0; index < oceanLines; index += 1) {
+      const y = rand() * tileSize;
+      const x = -40 + rand() * 120;
+      const length = tileSize * (0.45 + rand() * 0.55);
+      const bend = (rand() - 0.5) * 80;
+      ctx.strokeStyle = rand() > 0.45 ? "rgba(80, 170, 226, 0.20)" : "rgba(16, 58, 112, 0.26)";
+      ctx.lineWidth = 0.7 + rand() * 1.1;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.bezierCurveTo(x + length * 0.32, y + bend, x + length * 0.68, y - bend * 0.45, x + length, y + (rand() - 0.5) * 55);
+      ctx.stroke();
+    }
+  }
+
+  if (landRatio > 0.16) {
+    const ridgeLines = Math.round((14 + stats.roughness * 44 + landRatio * 22) * density);
+    for (let index = 0; index < ridgeLines; index += 1) {
+      const x = rand() * tileSize;
+      const y = rand() * tileSize;
+      const len = 28 + rand() * microStep * 2.9;
+      const angle = rand() * Math.PI * 2;
+      const bend = (rand() - 0.5) * 36;
+      const warm = stats.dryRatio > stats.greenRatio;
+      const snowy = stats.snowRatio > 0.32;
+      ctx.strokeStyle = snowy
+        ? "rgba(230, 242, 255, 0.24)"
+        : warm
+          ? "rgba(118, 76, 38, 0.22)"
+          : "rgba(33, 86, 43, 0.20)";
+      ctx.lineWidth = 0.65 + rand() * 1.1;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(
+        x + Math.cos(angle + 0.7) * len * 0.5,
+        y + Math.sin(angle + 0.7) * len * 0.5 + bend,
+        x + Math.cos(angle) * len,
+        y + Math.sin(angle) * len
+      );
+      ctx.stroke();
+    }
+
+    const contourLines = Math.round((6 + stats.roughness * 16) * density);
+    ctx.strokeStyle = stats.snowRatio > 0.25 ? "rgba(255,255,255,0.17)" : "rgba(255, 240, 194, 0.13)";
+    ctx.lineWidth = 0.65;
+    for (let index = 0; index < contourLines; index += 1) {
+      const y = rand() * tileSize;
+      const wave = microStep * (0.32 + rand() * 0.42);
+      ctx.beginPath();
+      for (let x = -20; x <= tileSize + 20; x += microStep * 0.7) {
+        const py = y + Math.sin((x + rand() * 35) / wave) * (5 + rand() * 11);
+        if (x <= -20) ctx.moveTo(x, py);
+        else ctx.lineTo(x, py);
+      }
+      ctx.stroke();
+    }
+  }
+
+  if (stats.coastRatio > 0.12) {
+    ctx.strokeStyle = "rgba(120, 225, 211, 0.20)";
+    ctx.lineWidth = 1.2;
+    const coastLines = Math.round((5 + stats.coastRatio * 12) * density);
+    for (let index = 0; index < coastLines; index += 1) {
+      const x = rand() * tileSize;
+      const y = rand() * tileSize;
+      ctx.beginPath();
+      ctx.arc(x, y, 18 + rand() * 42, rand() * Math.PI, rand() * Math.PI + Math.PI * (0.3 + rand() * 0.55));
+      ctx.stroke();
+    }
+  }
+
+  return canvas;
+}
+
+function sampleRocketTerrainTile(worldX, worldY, tileSize, sampleSize) {
+  const fallback = { oceanRatio: 0.5, greenRatio: 0.2, dryRatio: 0.2, snowRatio: 0.05, coastRatio: 0.1, roughness: 0.2 };
+  if (!rocketEarthImage.complete || !rocketEarthImage.naturalWidth) return fallback;
+  try {
+    const canvas = rocketTerrainSampleCanvas || document.createElement("canvas");
+    rocketTerrainSampleCanvas = canvas;
+    if (canvas.width !== sampleSize || canvas.height !== sampleSize) {
+      canvas.width = sampleSize;
+      canvas.height = sampleSize;
+    }
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const sx = worldX / rocketState.mapW * rocketEarthImage.naturalWidth;
+    const sy = worldY / rocketState.mapH * rocketEarthImage.naturalHeight;
+    const sw = Math.min(tileSize, rocketState.mapW - worldX) / rocketState.mapW * rocketEarthImage.naturalWidth;
+    const sh = Math.min(tileSize, rocketState.mapH - worldY) / rocketState.mapH * rocketEarthImage.naturalHeight;
+    ctx.clearRect(0, 0, sampleSize, sampleSize);
+    ctx.drawImage(rocketEarthImage, sx, sy, sw, sh, 0, 0, sampleSize, sampleSize);
+    const data = ctx.getImageData(0, 0, sampleSize, sampleSize).data;
+    let ocean = 0, green = 0, dry = 0, snow = 0, coast = 0, roughness = 0, previousLuma = null, samples = 0;
+    for (let index = 0; index < data.length; index += 4) {
+      const r = data[index];
+      const g = data[index + 1];
+      const b = data[index + 2];
+      const luma = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
+      const isOcean = b > g * 1.08 && b > r * 1.18 && b > 28;
+      const isSnow = r > 170 && g > 168 && b > 160;
+      const isGreen = !isOcean && g >= r * 0.9 && g > b * 0.7;
+      const isDry = !isOcean && r > g * 0.98 && r > b * 1.1;
+      if (isOcean) ocean += 1;
+      if (isSnow) snow += 1;
+      if (isGreen) green += 1;
+      if (isDry) dry += 1;
+      if (isOcean && (r > 22 || g > 38)) coast += 1;
+      if (previousLuma != null) roughness += Math.abs(luma - previousLuma);
+      previousLuma = luma;
+      samples += 1;
+    }
+    return {
+      oceanRatio: ocean / samples,
+      greenRatio: green / samples,
+      dryRatio: dry / samples,
+      snowRatio: snow / samples,
+      coastRatio: coast / samples,
+      roughness: Math.min(1, roughness / Math.max(1, samples - 1) * 18)
+    };
+  } catch {
+    return fallback;
+  }
 }
 
 function drawRocketPolarEdge(ctx, rect, camY) {
