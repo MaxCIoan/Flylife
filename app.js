@@ -3953,50 +3953,41 @@ function getRocketIslandReliefPoint(feature) {
 function getRocketIslandReliefRadius(feature) {
   const isPacific = (feature.lon > 120 || feature.lon < -120) && feature.lat > -35 && feature.lat < 35;
   const isolatedPacific = (feature.lon > 145 || feature.lon < -145) && feature.lat > -25 && feature.lat < 25;
-  const kindScale = feature.kind === "atoll" ? 1.12 : feature.kind === "reef" ? 1.0 : 1.05;
-  const oceanScale = isolatedPacific ? 1.34 : isPacific ? 1.18 : 1;
-  return Math.max(9, feature.radius * kindScale * oceanScale);
+  const kindScale = feature.kind === "atoll" ? 0.78 : feature.kind === "reef" ? 0.72 : 0.86;
+  const oceanScale = isolatedPacific ? 1.14 : isPacific ? 1.06 : 1;
+  return Math.max(5.5, feature.radius * kindScale * oceanScale);
 }
 
 function drawRocketAtollRelief(ctx, x, y, radius, feature) {
   const rand = seededRandom(feature.seed);
   const angle = (rand() - 0.5) * Math.PI;
-  const rx = radius * (1.45 + rand() * 0.42);
-  const ry = radius * (0.82 + rand() * 0.32);
+  const rx = radius * (1.18 + rand() * 0.24);
+  const ry = radius * (0.56 + rand() * 0.2);
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(angle);
-  const lagoon = ctx.createRadialGradient(0, 0, radius * 0.1, 0, 0, rx);
-  lagoon.addColorStop(0, "rgba(98, 210, 225, 0.30)");
-  lagoon.addColorStop(0.62, "rgba(65, 190, 204, 0.22)");
-  lagoon.addColorStop(1, "rgba(185, 243, 221, 0.05)");
-  ctx.fillStyle = lagoon;
+  ctx.fillStyle = "rgba(80, 205, 218, 0.10)";
   ctx.beginPath();
-  ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 0, rx * 1.18, ry * 1.22, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = "rgba(141, 247, 226, 0.58)";
-  ctx.lineWidth = Math.max(1.2, radius * 0.12);
+  ctx.strokeStyle = "rgba(116, 241, 221, 0.34)";
+  ctx.lineWidth = Math.max(0.75, radius * 0.065);
   ctx.beginPath();
   ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
   ctx.stroke();
-  ctx.strokeStyle = "rgba(255, 246, 191, 0.66)";
-  ctx.lineWidth = Math.max(1, radius * 0.075);
-  const motus = 7 + Math.floor(rand() * 5);
+  const motus = 12 + Math.floor(rand() * 8);
   for (let index = 0; index < motus; index += 1) {
     const t = index / motus * Math.PI * 2 + rand() * 0.38;
-    const px = Math.cos(t) * rx * (0.78 + rand() * 0.16);
-    const py = Math.sin(t) * ry * (0.78 + rand() * 0.16);
-    const w = Math.max(2.6, radius * (0.14 + rand() * 0.12));
-    const h = Math.max(1.4, radius * (0.07 + rand() * 0.08));
-    ctx.fillStyle = rand() > 0.42 ? "rgba(222, 207, 127, 0.82)" : "rgba(79, 145, 83, 0.72)";
-    ctx.beginPath();
-    ctx.ellipse(px, py, w, h, t + rand() * 0.4, 0, Math.PI * 2);
-    ctx.fill();
+    const px = Math.cos(t) * rx * (0.82 + rand() * 0.1);
+    const py = Math.sin(t) * ry * (0.82 + rand() * 0.1);
+    const w = Math.max(1.3, radius * (0.075 + rand() * 0.065));
+    const h = Math.max(0.85, radius * (0.035 + rand() * 0.045));
+    drawRocketIslandLandPiece(ctx, px, py, w, h, t + rand() * 0.7, rand, rand() > 0.38);
   }
-  ctx.strokeStyle = "rgba(232, 255, 245, 0.32)";
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(232, 255, 245, 0.18)";
+  ctx.lineWidth = 0.8;
   ctx.beginPath();
-  ctx.ellipse(0, 0, rx * 1.18, ry * 1.16, 0, -0.15, Math.PI * 0.82);
+  ctx.ellipse(0, 0, rx * 1.12, ry * 1.12, 0, -0.15, Math.PI * 0.58);
   ctx.stroke();
   ctx.restore();
 }
@@ -4004,29 +3995,27 @@ function drawRocketAtollRelief(ctx, x, y, radius, feature) {
 function drawRocketReefRelief(ctx, x, y, radius, feature) {
   const rand = seededRandom(feature.seed);
   const angle = (rand() - 0.5) * Math.PI;
-  const rx = radius * (1.2 + rand() * 0.35);
-  const ry = radius * (0.58 + rand() * 0.26);
+  const rx = radius * (0.95 + rand() * 0.2);
+  const ry = radius * (0.46 + rand() * 0.16);
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(angle);
-  ctx.fillStyle = "rgba(62, 197, 211, 0.20)";
+  ctx.fillStyle = "rgba(62, 197, 211, 0.09)";
   ctx.beginPath();
-  ctx.ellipse(0, 0, rx * 1.25, ry * 1.28, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 0, rx * 1.18, ry * 1.2, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = "rgba(139, 249, 226, 0.52)";
-  ctx.lineWidth = Math.max(1.1, radius * 0.1);
+  ctx.strokeStyle = "rgba(139, 249, 226, 0.34)";
+  ctx.lineWidth = Math.max(0.8, radius * 0.06);
   ctx.beginPath();
-  ctx.ellipse(0, 0, rx, ry, 0, rand() * 0.3, Math.PI * (1.45 + rand() * 0.42));
+  ctx.ellipse(0, 0, rx, ry, 0, rand() * 0.3, Math.PI * (1.35 + rand() * 0.38));
   ctx.stroke();
-  ctx.fillStyle = "rgba(222, 207, 127, 0.76)";
-  ctx.beginPath();
-  ctx.ellipse(-rx * 0.1, 0, Math.max(2.4, radius * 0.22), Math.max(1.5, radius * 0.11), 0.25, 0, Math.PI * 2);
-  ctx.fill();
-  if (radius > 13) {
-    ctx.fillStyle = "rgba(64, 126, 71, 0.62)";
-    ctx.beginPath();
-    ctx.ellipse(rx * 0.15, -ry * 0.05, radius * 0.16, radius * 0.08, -0.2, 0, Math.PI * 2);
-    ctx.fill();
+  const pieces = radius > 13 ? 5 : 3;
+  for (let index = 0; index < pieces; index += 1) {
+    const px = (rand() - 0.5) * rx * 1.1;
+    const py = (rand() - 0.5) * ry * 0.9;
+    const w = Math.max(1.5, radius * (0.09 + rand() * 0.06));
+    const h = Math.max(0.9, radius * (0.045 + rand() * 0.035));
+    drawRocketIslandLandPiece(ctx, px, py, w, h, rand() * Math.PI, rand, rand() > 0.55);
   }
   ctx.restore();
 }
@@ -4034,34 +4023,23 @@ function drawRocketReefRelief(ctx, x, y, radius, feature) {
 function drawRocketIslandLandRelief(ctx, x, y, radius, feature) {
   const rand = seededRandom(feature.seed);
   const angle = (rand() - 0.5) * Math.PI;
-  const rx = radius * (1.05 + rand() * 0.35);
-  const ry = radius * (0.62 + rand() * 0.26);
+  const rx = radius * (0.82 + rand() * 0.18);
+  const ry = radius * (0.48 + rand() * 0.16);
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(angle);
-  ctx.fillStyle = "rgba(71, 196, 207, 0.20)";
+  ctx.fillStyle = "rgba(71, 196, 207, 0.08)";
   ctx.beginPath();
-  ctx.ellipse(0, 0, rx * 1.55, ry * 1.55, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 0, rx * 1.28, ry * 1.34, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = "rgba(146, 248, 222, 0.46)";
-  ctx.lineWidth = Math.max(1, radius * 0.08);
+  ctx.strokeStyle = "rgba(146, 248, 222, 0.28)";
+  ctx.lineWidth = Math.max(0.75, radius * 0.045);
   ctx.beginPath();
-  ctx.ellipse(0, 0, rx * 1.24, ry * 1.2, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 0, rx * 1.1, ry * 1.08, 0, 0, Math.PI * 2);
   ctx.stroke();
-  ctx.fillStyle = "rgba(210, 190, 119, 0.84)";
-  ctx.beginPath();
-  ctx.ellipse(0, 0, rx * 1.05, ry * 1.04, 0, 0, Math.PI * 2);
-  ctx.fill();
-  const land = ctx.createRadialGradient(-rx * 0.2, -ry * 0.22, radius * 0.08, 0, 0, rx);
-  land.addColorStop(0, feature.kind === "volcanic" ? "rgba(72, 125, 73, 0.95)" : "rgba(87, 150, 86, 0.92)");
-  land.addColorStop(0.56, "rgba(80, 137, 72, 0.90)");
-  land.addColorStop(1, "rgba(181, 166, 96, 0.78)");
-  ctx.fillStyle = land;
-  ctx.beginPath();
-  ctx.ellipse(0, 0, rx * 0.86, ry * 0.86, 0, 0, Math.PI * 2);
-  ctx.fill();
+  drawRocketIslandLandPiece(ctx, 0, 0, rx * 0.74, ry * 0.76, 0, rand, true, feature.kind === "volcanic");
   ctx.strokeStyle = feature.kind === "volcanic" ? "rgba(40, 78, 45, 0.62)" : "rgba(236, 230, 155, 0.44)";
-  ctx.lineWidth = Math.max(1, radius * 0.075);
+  ctx.lineWidth = Math.max(0.65, radius * 0.045);
   const ridgeCount = feature.kind === "volcanic" ? 4 : 2;
   for (let index = 0; index < ridgeCount; index += 1) {
     const offset = (index - (ridgeCount - 1) / 2) * ry * 0.22;
@@ -4070,11 +4048,44 @@ function drawRocketIslandLandRelief(ctx, x, y, radius, feature) {
     ctx.quadraticCurveTo(0, offset - ry * (0.35 + rand() * 0.18), rx * 0.52, offset + (rand() - 0.5) * ry * 0.2);
     ctx.stroke();
   }
-  ctx.fillStyle = "rgba(255, 247, 190, 0.42)";
-  ctx.beginPath();
-  ctx.ellipse(-rx * 0.45, ry * 0.3, Math.max(1.5, radius * 0.12), Math.max(1, radius * 0.055), -0.25, 0, Math.PI * 2);
-  ctx.fill();
+  if (radius > 13) {
+    drawRocketIslandLandPiece(ctx, rx * 0.58, -ry * 0.08, rx * 0.22, ry * 0.2, -0.25, rand, true, false);
+    drawRocketIslandLandPiece(ctx, -rx * 0.62, ry * 0.16, rx * 0.17, ry * 0.15, 0.35, rand, rand() > 0.5, false);
+  }
   ctx.restore();
+}
+
+function drawRocketIslandLandPiece(ctx, x, y, rx, ry, angle, rand, green = true, volcanic = false) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.fillStyle = "rgba(222, 207, 127, 0.86)";
+  drawRocketIslandBlobPath(ctx, rx * 1.08, ry * 1.05, rand);
+  ctx.fill();
+  ctx.fillStyle = green
+    ? volcanic ? "rgba(61, 116, 64, 0.92)" : "rgba(74, 139, 75, 0.88)"
+    : "rgba(204, 185, 105, 0.88)";
+  drawRocketIslandBlobPath(ctx, rx * 0.72, ry * 0.68, rand);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(16, 46, 35, 0.48)";
+  ctx.lineWidth = Math.max(0.45, Math.min(rx, ry) * 0.22);
+  drawRocketIslandBlobPath(ctx, rx * 0.75, ry * 0.7, rand);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawRocketIslandBlobPath(ctx, rx, ry, rand) {
+  const points = 8;
+  ctx.beginPath();
+  for (let index = 0; index <= points; index += 1) {
+    const t = index / points * Math.PI * 2;
+    const wobble = 0.78 + rand() * 0.32;
+    const px = Math.cos(t) * rx * wobble;
+    const py = Math.sin(t) * ry * (0.82 + rand() * 0.24);
+    if (index === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
 }
 
 function getRocketTerrainDetailProfile() {
