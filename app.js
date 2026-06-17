@@ -202,6 +202,7 @@ const rocketMiniMapImage = new Image();
 const ROCKET_STATIC_CACHE_SNAP = 768;
 const ROCKET_DETAIL_TILE_SIZE = 512;
 const ROCKET_DETAIL_VIRTUAL_ZOOM = 10;
+const ROCKET_CLOSE_CAMERA_ZOOM = 2.05;
 const ROCKET_HUD_INTERVAL_MS = 120;
 const ROCKET_NAV_CHECK_INTERVAL = 0.14;
 const ROCKET_TINY_COUNTRY_DOT_MAX = 30;
@@ -374,6 +375,55 @@ function worldPoint(lon, lat, mapW = ROCKET_MAP_W, mapH = ROCKET_MAP_H) {
     y: (90 - lat) / 180 * mapH
   };
 }
+
+const rocketSurfaceMarkers = [
+  { name: "Hong Kong", lon: 114.1694, lat: 22.3193, kind: "city", priority: 1 },
+  { name: "Busan", lon: 129.0756, lat: 35.1796, kind: "city", priority: 1 },
+  { name: "Singapore", lon: 103.8198, lat: 1.3521, kind: "city", priority: 1 },
+  { name: "Shanghai", lon: 121.4737, lat: 31.2304, kind: "city", priority: 1 },
+  { name: "Tokyo", lon: 139.6917, lat: 35.6895, kind: "city", priority: 1 },
+  { name: "Seoul", lon: 126.978, lat: 37.5665, kind: "city", priority: 1 },
+  { name: "Taipei", lon: 121.5654, lat: 25.033, kind: "city", priority: 1 },
+  { name: "Manila", lon: 120.9842, lat: 14.5995, kind: "city", priority: 1 },
+  { name: "Jakarta", lon: 106.8456, lat: -6.2088, kind: "city", priority: 1 },
+  { name: "Mumbai", lon: 72.8777, lat: 19.076, kind: "city", priority: 1 },
+  { name: "Istanbul", lon: 28.9784, lat: 41.0082, kind: "city", priority: 1 },
+  { name: "Cairo", lon: 31.2357, lat: 30.0444, kind: "city", priority: 1 },
+  { name: "Dubai", lon: 55.2708, lat: 25.2048, kind: "city", priority: 1 },
+  { name: "London", lon: -0.1276, lat: 51.5072, kind: "city", priority: 1 },
+  { name: "Paris", lon: 2.3522, lat: 48.8566, kind: "city", priority: 1 },
+  { name: "New York", lon: -74.006, lat: 40.7128, kind: "city", priority: 1 },
+  { name: "Los Angeles", lon: -118.2437, lat: 34.0522, kind: "city", priority: 1 },
+  { name: "Rio", lon: -43.1729, lat: -22.9068, kind: "city", priority: 1 },
+  { name: "Sydney", lon: 151.2093, lat: -33.8688, kind: "city", priority: 1 },
+  { name: "Pyramids", lon: 31.1342, lat: 29.9792, kind: "landmark", priority: 2 },
+  { name: "Great Wall", lon: 116.5704, lat: 40.4319, kind: "landmark", priority: 2 },
+  { name: "Maldives", lon: 73.22, lat: 3.2, kind: "island", priority: 1 },
+  { name: "Seychelles", lon: 55.45, lat: -4.62, kind: "island", priority: 1 },
+  { name: "Mauritius", lon: 57.55, lat: -20.17, kind: "island", priority: 1 },
+  { name: "Reunion", lon: 55.53, lat: -21.11, kind: "island", priority: 1 },
+  { name: "Comoros", lon: 43.25, lat: -11.65, kind: "island", priority: 1 },
+  { name: "Cape Verde", lon: -23.61, lat: 15.11, kind: "island", priority: 1 },
+  { name: "Bahamas", lon: -77.4, lat: 25.03, kind: "island", priority: 1 },
+  { name: "Bermuda", lon: -64.75, lat: 32.31, kind: "island", priority: 1 },
+  { name: "Barbados", lon: -59.54, lat: 13.19, kind: "island", priority: 1 },
+  { name: "Puerto Rico", lon: -66.59, lat: 18.22, kind: "island", priority: 1 },
+  { name: "Malta", lon: 14.38, lat: 35.94, kind: "island", priority: 1 },
+  { name: "Faroe", lon: -6.91, lat: 62.0, kind: "island", priority: 1 },
+  { name: "Guam", lon: 144.79, lat: 13.44, kind: "island", priority: 1 },
+  { name: "Palau", lon: 134.58, lat: 7.5, kind: "island", priority: 1 },
+  { name: "Micronesia", lon: 158.2, lat: 6.9, kind: "island", priority: 1 },
+  { name: "Marshall Is.", lon: 171.18, lat: 7.13, kind: "island", priority: 1 },
+  { name: "Nauru", lon: 166.93, lat: -0.52, kind: "island", priority: 1 },
+  { name: "Tuvalu", lon: 179.2, lat: -8.52, kind: "island", priority: 1 },
+  { name: "Samoa", lon: -172.1, lat: -13.76, kind: "island", priority: 1 },
+  { name: "Tonga", lon: -175.2, lat: -21.18, kind: "island", priority: 1 },
+  { name: "Vanuatu", lon: 167.0, lat: -15.4, kind: "island", priority: 1 },
+  { name: "New Caledonia", lon: 165.62, lat: -21.3, kind: "island", priority: 1 },
+  { name: "French Polynesia", lon: -149.4, lat: -17.65, kind: "island", priority: 1 },
+  { name: "Cook Is.", lon: -159.77, lat: -21.23, kind: "island", priority: 1 },
+  { name: "Niue", lon: -169.86, lat: -19.05, kind: "island", priority: 1 }
+];
 
 const mapCountries = [
   { name: "Canada", color: "#5aa477", poly: [[-141,70],[-60,70],[-52,50],[-82,42],[-125,49],[-141,60]] },
@@ -3387,24 +3437,182 @@ function drawRocket() {
     drawRocketSetupBackground(ctx, rect);
     return;
   }
-  const camX = rocketState.ship.x - rect.width / 2;
-  const camY = rocketState.ship.y - rect.height / 2;
-  drawRocketMap(ctx, rect, camX, camY);
+  const zoom = getRocketCameraZoom();
+  const worldRect = { width: rect.width / zoom, height: rect.height / zoom };
+  const camX = rocketState.ship.x - worldRect.width / 2;
+  const camY = rocketState.ship.y - worldRect.height / 2;
+  ctx.save();
+  ctx.scale(zoom, zoom);
+  drawRocketMap(ctx, worldRect, camX, camY);
+  drawRocketTrail(ctx, camX, camY);
+  drawRocketRunway(ctx, camX, camY);
+  drawRocketSonar(ctx, worldRect, camX, camY);
+  ctx.restore();
+  drawRocketSurfaceMarkers(ctx, rect, camX, camY, zoom);
   drawRocketGlobeCurvature(ctx, rect);
   drawRocketAtmosphere(ctx, rect);
   drawRocketSpaceLayer(ctx, rect);
-  drawRocketTrail(ctx, camX, camY);
-  drawRocketRunway(ctx, camX, camY);
   drawRocketControlZone(ctx, rect.width / 2, rect.height / 2);
   drawRocketShip(ctx, rect.width / 2, rect.height / 2, rocketState.ship.angle);
   drawRocketPointerTrace(ctx, rect);
-  drawRocketSonar(ctx, rect, camX, camY);
   drawRocketDashboard(ctx, rect);
   drawRocketMiniMap(ctx, rect);
   drawRocketTimerBanner(ctx, rect);
   drawRocketScanBanner(ctx, rect);
   drawRocketLandingNotice(ctx, rect);
   drawRocketFeedback(ctx, rect);
+}
+
+function getRocketCameraZoom() {
+  if (!rocketState) return 1;
+  const altitude = Math.max(0, rocketState.ship?.altitude || 0);
+  let target;
+  if (altitude < 350) {
+    target = ROCKET_CLOSE_CAMERA_ZOOM;
+  } else if (altitude < 1600) {
+    target = ROCKET_CLOSE_CAMERA_ZOOM - (altitude - 350) / 1250 * 0.35;
+  } else if (altitude < 4200) {
+    target = 1.7 - (altitude - 1600) / 2600 * 0.38;
+  } else {
+    target = 1.32 - Math.min(0.2, (altitude - 4200) / 2600 * 0.2);
+  }
+  target = Math.max(1.12, Math.min(ROCKET_CLOSE_CAMERA_ZOOM, target));
+  rocketState.cameraZoom = rocketState.cameraZoom
+    ? rocketState.cameraZoom + (target - rocketState.cameraZoom) * 0.08
+    : target;
+  return Math.round(rocketState.cameraZoom * 20) / 20;
+}
+
+function drawRocketSurfaceMarkers(ctx, rect, camX, camY, zoom) {
+  if (!rocketState || zoom < 1.16) return;
+  const labelBoxes = [];
+  const altitude = rocketState.ship?.altitude || 0;
+  ctx.save();
+  rocketSurfaceMarkers.forEach((marker) => {
+    const point = rocketSurfaceMarkerPoint(marker);
+    const x = (point.x - camX) * zoom;
+    const y = (point.y - camY) * zoom;
+    if (x < -60 || x > rect.width + 60 || y < -60 || y > rect.height + 60) return;
+    const size = marker.kind === "landmark" ? 6 : marker.kind === "city" ? 4.5 : 3.5;
+    const color = marker.kind === "landmark" ? "#ffb25f" : marker.kind === "city" ? "#ffd33d" : "#80ffe8";
+    ctx.globalAlpha = marker.kind === "island" ? 0.78 : 0.9;
+    if (marker.kind === "island") drawRocketIslandMarker(ctx, x, y, size, color);
+    else if (marker.kind === "landmark") drawRocketLandmarkMarker(ctx, marker, x, y, size, color);
+    else drawRocketCityMarker(ctx, x, y, size, color);
+    const showLabel = marker.kind === "landmark"
+      ? zoom > 1.2
+      : marker.kind === "city"
+        ? zoom > 1.34 && altitude < 5200
+        : zoom > 1.72 && altitude < 3600;
+    if (showLabel) drawRocketSurfaceLabel(ctx, marker.name, x, y, color, labelBoxes);
+  });
+  ctx.restore();
+}
+
+function rocketSurfaceMarkerPoint(marker) {
+  const mapW = rocketState?.mapW || ROCKET_MAP_W;
+  const mapH = rocketState?.mapH || ROCKET_MAP_H;
+  if (!marker.point || marker.mapW !== mapW || marker.mapH !== mapH) {
+    marker.point = worldPoint(marker.lon, marker.lat, mapW, mapH);
+    marker.mapW = mapW;
+    marker.mapH = mapH;
+  }
+  return marker.point;
+}
+
+function drawRocketCityMarker(ctx, x, y, size, color) {
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.strokeStyle = "rgba(3, 8, 14, 0.82)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x, y, size + 2.5, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x, y, size, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.64)";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(x - size - 4, y);
+  ctx.lineTo(x + size + 4, y);
+  ctx.moveTo(x, y - size - 4);
+  ctx.lineTo(x, y + size + 4);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawRocketIslandMarker(ctx, x, y, size, color) {
+  ctx.save();
+  ctx.strokeStyle = "rgba(128, 255, 232, 0.68)";
+  ctx.fillStyle = "rgba(128, 255, 232, 0.46)";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.arc(x, y, size + 5, -0.4, Math.PI * 1.35);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x, y, size, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = color;
+  ctx.fillRect(x + size + 2, y - 1, 2, 2);
+  ctx.fillRect(x - size - 4, y + 2, 2, 2);
+  ctx.restore();
+}
+
+function drawRocketLandmarkMarker(ctx, marker, x, y, size, color) {
+  ctx.save();
+  ctx.strokeStyle = "rgba(3, 8, 14, 0.86)";
+  ctx.fillStyle = color;
+  ctx.lineWidth = 2.2;
+  if (marker.name === "Great Wall") {
+    ctx.beginPath();
+    ctx.moveTo(x - 14, y + 6);
+    ctx.lineTo(x - 7, y - 3);
+    ctx.lineTo(x + 1, y + 4);
+    ctx.lineTo(x + 9, y - 5);
+    ctx.lineTo(x + 16, y + 2);
+    ctx.stroke();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(x, y - size - 5);
+    ctx.lineTo(x - size - 7, y + size + 5);
+    ctx.lineTo(x + size + 7, y + size + 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawRocketSurfaceLabel(ctx, text, x, y, color, labelBoxes) {
+  ctx.save();
+  ctx.font = "900 10px system-ui";
+  const w = Math.ceil(ctx.measureText(text).width + 12);
+  const h = 18;
+  const canvasWidth = ctx.canvas.getBoundingClientRect?.().width || ctx.canvas.width || window.innerWidth;
+  let bx = Math.max(8, Math.min(canvasWidth - w - 8, x + 9));
+  let by = y - h - 7;
+  if (by < 8) by = y + 9;
+  const box = { x: bx, y: by, w, h };
+  const overlaps = labelBoxes.some((item) => bx < item.x + item.w && bx + w > item.x && by < item.y + item.h && by + h > item.y);
+  if (overlaps) {
+    ctx.restore();
+    return;
+  }
+  labelBoxes.push(box);
+  ctx.fillStyle = "rgba(3, 8, 14, 0.78)";
+  roundRect(ctx, bx, by, w, h, 6);
+  ctx.fill();
+  ctx.strokeStyle = hexToRgba(color, 0.72);
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.textAlign = "left";
+  ctx.fillText(text, bx + 6, by + 13);
+  ctx.restore();
 }
 
 function drawRocketSetupBackground(ctx, rect) {
