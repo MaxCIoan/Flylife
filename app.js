@@ -168,6 +168,7 @@ const els = {
 };
 
 const storeKey = "flagHunterLocalProfile";
+const playerIdKey = "flagHunterPlayerIdV1";
 const runTime = 45;
 const defaultFlagRounds = 10;
 const allowedGameRounds = [10, 15, 20, 50];
@@ -200,9 +201,9 @@ const ROCKET_HUD_INTERVAL_MS = 120;
 const ROCKET_NAV_CHECK_INTERVAL = 0.14;
 const ROCKET_TINY_COUNTRY_DOT_MAX = 30;
 const rocketEarthImage = new Image();
-rocketEarthImage.src = "assets/earth-satellite-nasa-8192.jpg";
+rocketEarthImage.src = "assets/earth-satellite-nasa-8192.jpg?v=20260617a";
 rocketEarthImage.addEventListener("load", invalidateRocketMapCache);
-rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260615k";
+rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260617a";
 rocketMiniMapImage.addEventListener("load", () => { rocketMiniMapCache = null; });
 let rocketCountryOverlayEnabled = localStorage.getItem("flagHunterRocketCountryOverlay") !== "0";
 let officialFlyLeaders = [];
@@ -216,7 +217,7 @@ const isItchContext = /(^|\.)itch\.io$/i.test(window.location.hostname)
 const isLocalFlyContext = ["", "localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
 const flyApiBase = (isItchContext || isLocalFlyContext) ? productionFlyApiOrigin : "";
 const blockedRocketCountries = new Set(["Fiji", "Antarctica"]);
-const mainlandRocketTargetCountries = new Set(["Netherlands"]);
+const mainlandRocketTargetCountries = new Set(["Netherlands", "New Zealand"]);
 const rocketCountryAliases = {
   "United States": "United States of America",
   "DR Congo": "Democratic Republic of the Congo",
@@ -249,7 +250,32 @@ const rocketRadioStations = [
   "https://ice1.somafm.com/suburbsofgoa-128-mp3"
 ];
 
-const rocketTechMax = 6;
+function makeLocalPlayerId() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  return `player_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function getLocalPlayerId() {
+  const stored = localStorage.getItem(playerIdKey);
+  if (stored) return stored;
+  const id = makeLocalPlayerId();
+  localStorage.setItem(playerIdKey, id);
+  return id;
+}
+
+function cleanRankPoints(value) {
+  return Math.max(0, Math.min(1000000000, Math.round(Number(value) || 0)));
+}
+
+function estimateRankPointsFromHistory(candidate = {}) {
+  const flagPoints = (candidate.runs || []).reduce((sum, run) => sum + cleanRankPoints(run.score), 0);
+  const flyPoints = (candidate.rocketRuns || [])
+    .filter((run) => run.source !== "agent-simulation")
+    .reduce((sum, run) => sum + cleanRankPoints(run.score ?? run.finalScore), 0);
+  return cleanRankPoints(flagPoints + flyPoints);
+}
+
+const rocketTechMax = 10;
 const rocketTechInfo = {
   fuel: { title: "Fuel Tank", effect: "Lower fuel drain, better starting fuel, and stronger depot refuels." },
   speed: { title: "Engine Boost", effect: "More thrust, higher top speed, and better airbrake control." },
@@ -264,7 +290,11 @@ const rocketTechSteps = {
     ["Smart Tank", "+8 route fuel, stronger refuels"],
     ["Depot Coupler", "+10 route fuel, +8 depot fuel"],
     ["Reserve Cell", "+13 route fuel, -10% drain"],
-    ["Long Range", "+16 route fuel, best depot returns"]
+    ["Long Range", "+16 route fuel, best depot returns"],
+    ["Vapor Recovery", "+20 route fuel, lower cruise drain"],
+    ["Auxiliary Tanks", "+25 route fuel, bigger reserves"],
+    ["Efficiency Core", "-16% drain, stronger takeoff fuel"],
+    ["Endurance Cell", "+34 route fuel, best long-run economy"]
   ],
   speed: [
     ["Engine Boost", "+180 thrust"],
@@ -272,7 +302,11 @@ const rocketTechSteps = {
     ["Propulsion", "+210 thrust"],
     ["Overdrive", "+150 m/s top speed"],
     ["Jet Stream", "+240 thrust"],
-    ["Sound Chase", "max speed and airbrake"]
+    ["Sound Chase", "more speed and airbrake"],
+    ["Afterburner", "+260 thrust"],
+    ["Supersonic Trim", "+180 m/s top speed"],
+    ["Vector Nozzle", "faster acceleration recovery"],
+    ["Hypersonic Flow", "best speed class"]
   ],
   turn: [
     ["Gyro Stabilizer", "+0.42 response"],
@@ -280,7 +314,11 @@ const rocketTechSteps = {
     ["Agile Frame", "stronger banking"],
     ["Precision Control", "+0.55 response"],
     ["Bank Assist", "faster recovery"],
-    ["Apex Handling", "max turn path"]
+    ["Apex Handling", "sharper turn path"],
+    ["Fly-By-Wire", "+0.62 response"],
+    ["Lift Vectoring", "better tight-country turns"],
+    ["Stability AI", "smoother recovery"],
+    ["Ace Controls", "best handling class"]
   ],
   sonar: [
     ["Sonar Unlock", "depot ping every 60s"],
@@ -288,7 +326,11 @@ const rocketTechSteps = {
     ["Target Ring", "green range pulse"],
     ["Signal Sort", "depot ping every 36s"],
     ["Approach Readout", "show target ideal range"],
-    ["Perfect Readout", "exact speed and altitude ideals"]
+    ["Perfect Readout", "exact speed and altitude ideals"],
+    ["Wide Sweep", "longer depot ping lifetime"],
+    ["Depot Memory", "clearer fuel-depot history"],
+    ["Precision Pulse", "faster target guidance"],
+    ["Mission Oracle", "best approach readout"]
   ]
 };
 
@@ -489,7 +531,7 @@ function invalidateRocketMapCache() {
 }
 
 function rocketTechCost(level) {
-  return [2, 4, 6, 8, 10, 12][level] ?? 999;
+  return [2, 4, 6, 8, 10, 14, 18, 24, 32, 42][level] ?? 999;
 }
 
 function rocketTechUpgradeCost(kind, level) {
@@ -498,16 +540,16 @@ function rocketTechUpgradeCost(kind, level) {
 }
 
 function getRocketStartingFuelBonus(level = 0) {
-  return [0, 1, 4, 8, 12, 16, 22][Math.max(0, Math.min(rocketTechMax, level))] ?? 0;
+  return [0, 1, 4, 8, 12, 16, 22, 26, 30, 34, 40][Math.max(0, Math.min(rocketTechMax, level))] ?? 0;
 }
 
 function getRocketFuelDrainMultiplier(level = 0) {
-  return Math.max(0.5, 1 - [0, 0.03, 0.05, 0.07, 0.09, 0.10, 0.12][Math.max(0, Math.min(rocketTechMax, level))]);
+  return Math.max(0.5, 1 - [0, 0.03, 0.05, 0.07, 0.09, 0.10, 0.12, 0.135, 0.15, 0.165, 0.18][Math.max(0, Math.min(rocketTechMax, level))]);
 }
 
 function getRocketSonarInterval(level = 0) {
   if (level <= 0) return Infinity;
-  return Math.max(18, 60 - (level - 1) * 8);
+  return Math.max(12, 60 - (level - 1) * 6);
 }
 
 function makeRocketTargetIdeal() {
@@ -628,20 +670,123 @@ function rocketCountryColor(name) {
 
 function loadProfile() {
   const fallback = {
+    playerId: getLocalPlayerId(),
     displayName: "Guest",
+    displayNameLocked: false,
+    rankPoints: 0,
+    rocketRuns: [],
     runs: []
   };
   try {
     const loaded = JSON.parse(localStorage.getItem(storeKey));
-    return { ...fallback, ...loaded };
+    const merged = { ...fallback, ...(loaded && typeof loaded === "object" ? loaded : {}) };
+    merged.playerId = String(merged.playerId || fallback.playerId);
+    localStorage.setItem(playerIdKey, merged.playerId);
+    merged.runs = Array.isArray(merged.runs) ? merged.runs : [];
+    merged.rocketRuns = Array.isArray(merged.rocketRuns) ? merged.rocketRuns : [];
+    merged.displayName = String(merged.displayName || "Guest").slice(0, 32);
+    merged.displayNameLocked = Boolean(merged.displayNameLocked);
+    merged.rankPoints = Math.max(cleanRankPoints(merged.rankPoints), estimateRankPointsFromHistory(merged));
+    return merged;
   } catch {
     return fallback;
   }
 }
 
-function saveProfile() {
+let profileSyncTimer = null;
+
+function compactRemoteProfile() {
+  return {
+    displayName: profile.displayName || "Guest",
+    rankPoints: getRankPoints(),
+    recentSpeedRuns: (profile.runs || []).slice(0, 8).map((run) => ({
+      id: run.id,
+      score: run.score,
+      rounds: run.rounds,
+      correct: run.correct,
+      mistakes: run.mistakes,
+      createdAt: run.createdAt
+    })),
+    recentFlyRuns: (profile.rocketRuns || []).slice(0, 8).map((run) => ({
+      id: run.id,
+      score: run.score,
+      selectedRounds: run.selectedRounds || run.rounds,
+      completedRounds: run.completedRounds,
+      createdAt: run.createdAt,
+      planeClass: run.planeClass
+    }))
+  };
+}
+
+function mergeServerProfile(player = {}, options = {}) {
+  if (!player || typeof player !== "object") return;
+  if (player.playerId) {
+    profile.playerId = String(player.playerId);
+    localStorage.setItem(playerIdKey, profile.playerId);
+  }
+  if (player.displayNameLocked || (player.displayName && player.displayName !== "Guest")) {
+    profile.displayName = String(player.displayName || profile.displayName || "Guest").slice(0, 32);
+    profile.displayNameLocked = Boolean(player.displayNameLocked);
+  }
+  profile.rankPoints = Math.max(getRankPoints(), cleanRankPoints(player.rankPoints));
+  if (options.persist !== false) saveProfile({ remote: false });
+}
+
+function scheduleProfileSync(delay = 900) {
+  if (!profile?.playerId) return;
+  clearTimeout(profileSyncTimer);
+  profileSyncTimer = window.setTimeout(syncServerProfile, delay);
+}
+
+async function syncServerProfile() {
+  if (!profile?.playerId) return null;
+  try {
+    const response = await fetch(`${flyApiBase}/api/fly/player`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        playerId: profile.playerId,
+        displayName: profile.displayName || "Guest",
+        rankPoints: getRankPoints(),
+        profile: compactRemoteProfile()
+      })
+    });
+    if (!response.ok) throw new Error("profile sync failed");
+    const data = await response.json();
+    mergeServerProfile(data.player, { persist: false });
+    localStorage.setItem(storeKey, JSON.stringify(profile));
+    window.FlagGuard?.syncProfile?.(profile);
+    return data.player || null;
+  } catch (error) {
+    console.warn("Player profile sync skipped", error);
+    return null;
+  }
+}
+
+async function loadServerProfile() {
+  if (!profile?.playerId) return null;
+  try {
+    const response = await fetch(`${flyApiBase}/api/fly/player?playerId=${encodeURIComponent(profile.playerId)}`);
+    if (!response.ok) throw new Error("profile load failed");
+    const data = await response.json();
+    mergeServerProfile(data.player, { persist: true });
+    renderProfile();
+    renderTables();
+    return data.player || null;
+  } catch (error) {
+    console.warn("Player profile unavailable", error);
+    return null;
+  }
+}
+
+function addRankPoints(points) {
+  profile.rankPoints = cleanRankPoints(getRankPoints() + cleanRankPoints(points));
+}
+
+function saveProfile(options = {}) {
   localStorage.setItem(storeKey, JSON.stringify(profile));
   window.FlagGuard?.syncProfile?.(profile);
+  if (options.remote !== false) scheduleProfileSync();
 }
 
 let profile = loadProfile();
@@ -1125,6 +1270,7 @@ function endRun() {
     maxCombo: state.maxCombo,
     levelReached: Math.min(4, 1 + Math.floor(state.maxCombo / 4))
   };
+  addRankPoints(run.score);
   profile.runs = [run, ...(profile.runs || [])].slice(0, 50);
   saveProfile();
   renderResult(run);
@@ -1141,6 +1287,7 @@ function saveRocketSessionResult(title, summary) {
   const session = {
     id: crypto.randomUUID(),
     mode: "rocket",
+    playerId: profile.playerId,
     displayName: profile.displayName || "Guest",
     createdAt: new Date().toISOString(),
     title,
@@ -1166,11 +1313,13 @@ function saveRocketSessionResult(title, summary) {
   window.FlagGuard?.finishRun?.(session).then((officialResult) => {
     if (officialResult) {
       session.officialResult = officialResult;
+      mergeServerProfile(officialResult.player, { persist: false });
       saveProfile();
       refreshOfficialFlyLeaderboard();
       renderTables();
     }
   });
+  addRankPoints(session.score);
   profile.rocketRuns = [session, ...(profile.rocketRuns || [])].slice(0, 40);
   saveProfile();
   renderTables();
@@ -1180,7 +1329,7 @@ function saveRocketSessionResult(title, summary) {
 function renderStats() {
   if (!state) return;
   const best = getBestRun();
-  const rankScore = Math.max(getBestOverallScore(), state?.score || 0);
+  const rankScore = getRankPoints() + cleanRankPoints(state?.score || 0);
   const rank = getRank(rankScore);
   const next = ranks[Math.min(ranks.length - 1, rank.index + 1)];
   const points = rankScore;
@@ -1336,9 +1485,10 @@ function buildLocalLeaderboardEntries(flagRuns, flyRuns, officialFlyRuns = []) {
     mode: "Fly",
     displayName: run.displayName || "Guest",
     score: run.finalScore || 0,
-    plane: "",
+    plane: escapeHtml(run.planeClass || ""),
     result: `${run.rounds || 0} rounds`,
-    details: run.elapsedMs ? formatDuration(run.elapsedMs) : "Submitted"
+    details: `<button class="mini-btn" type="button">View</button>`,
+    run
   }));
   return [...officialFlyEntries, ...flagEntries, ...flyEntries]
     .sort((a, b) => (b.score || 0) - (a.score || 0) || String(a.mode).localeCompare(String(b.mode)))
@@ -1388,7 +1538,7 @@ function loadOfficialFlyLeaderboard() {
   fetch(`${flyApiBase}/api/fly/leaderboard`)
     .then((response) => response.ok ? response.json() : Promise.reject(new Error("official fly leaderboard unavailable")))
     .then((data) => {
-      officialFlyLeaders = Array.isArray(data.leaders) ? data.leaders : [];
+      officialFlyLeaders = Array.isArray(data.leaders) ? data.leaders.map(normalizeOfficialFlyRun) : [];
       officialFlyLeadersLoading = false;
       officialFlyLeadersError = false;
       setPrivateApiStatus(true);
@@ -1422,31 +1572,63 @@ function toggleRunDetails(row, data, columns, type = "run") {
   detail.innerHTML = `<td colspan="${columns}">${type === "leaderboard" ? renderPlayerDetails(data) : type === "rocket-run" ? renderRocketRunDetails(data) : type === "official-fly" ? renderOfficialFlyDetails(data) : renderRunDetails(data)}</td>`;
   row.classList.add("expanded");
   row.after(detail);
-  if (type === "rocket-run") {
-    setupRocketRouteInspector(detail, data);
+  if (type === "rocket-run" || type === "official-fly") {
+    setupRocketRouteInspector(detail, type === "official-fly" ? normalizeOfficialFlyRun(data) : data);
   }
 }
 
+function normalizeOfficialFlyRun(run = {}) {
+  const payload = run.payload && typeof run.payload === "object" ? run.payload : {};
+  return {
+    ...payload,
+    ...run,
+    id: run.runId || payload.id,
+    mode: "rocket",
+    displayName: run.displayName || payload.displayName || "Guest",
+    score: Number(run.finalScore ?? payload.score ?? run.score) || 0,
+    finalScore: Number(run.finalScore ?? payload.score ?? run.score) || 0,
+    selectedRounds: Number(run.selectedRounds ?? payload.selectedRounds ?? payload.rounds ?? run.rounds) || 0,
+    rounds: Number(run.selectedRounds ?? payload.selectedRounds ?? payload.rounds ?? run.rounds) || 0,
+    completedRounds: Number(run.completedRounds ?? payload.completedRounds) || 0,
+    longestRun: Number(payload.longestRun ?? payload.logs?.length ?? run.completedRounds) || 0,
+    planeClass: run.planeClass || payload.planeClass || "",
+    elapsedMs: run.elapsedMs || payload.elapsedMs || 0,
+    finishedAt: run.finishedAt || payload.finishedAt || payload.createdAt,
+    createdAt: payload.createdAt || run.finishedAt,
+    mapW: payload.mapW || ROCKET_MAP_W,
+    mapH: payload.mapH || ROCKET_MAP_H,
+    logs: Array.isArray(payload.logs) ? payload.logs : Array.isArray(run.logs) ? run.logs : []
+  };
+}
+
 function renderOfficialFlyDetails(run = {}) {
-  const selectedRounds = run.selectedRounds || run.rounds || 0;
-  const completedRounds = run.completedRounds || 0;
-  const submitted = run.finishedAt || run.createdAt;
+  const normalized = normalizeOfficialFlyRun(run);
+  if ((normalized.logs || []).length) {
+    return renderRocketRunDetails({
+      ...normalized,
+      title: "Official Fly submission",
+      summary: `${normalized.completedRounds}/${normalized.selectedRounds || normalized.rounds} destinations reached`
+    });
+  }
+  const selectedRounds = normalized.selectedRounds || normalized.rounds || 0;
+  const completedRounds = normalized.completedRounds || 0;
+  const submitted = normalized.finishedAt || normalized.createdAt;
   return `
     <div class="run-detail-grid leaderboard-detail">
       <section>
         <span>Official Entry</span>
-        <strong>${escapeHtml(run.displayName || "Guest")}</strong>
+        <strong>${escapeHtml(normalized.displayName || "Guest")}</strong>
         <small>${submitted ? `Submitted ${new Date(submitted).toLocaleString()}` : "Submission time unavailable."}</small>
       </section>
       <section>
         <span>Final Score</span>
-        <strong>${formatScore(run.finalScore || 0)}</strong>
+        <strong>${formatScore(normalized.finalScore || 0)}</strong>
         <small>${completedRounds}/${selectedRounds || 0} destinations reached.</small>
       </section>
       <section>
         <span>Plane</span>
-        <strong>${escapeHtml(run.planeClass || "Unlisted")}</strong>
-        <small>Flight time: ${run.elapsedMs ? formatDuration(run.elapsedMs) : "Unlisted"}.</small>
+        <strong>${escapeHtml(normalized.planeClass || "Unlisted")}</strong>
+        <small>Flight time: ${normalized.elapsedMs ? formatDuration(normalized.elapsedMs) : "Unlisted"}.</small>
       </section>
     </div>
   `;
@@ -1481,6 +1663,9 @@ function renderRocketRunDetails(run) {
       </div>
       <canvas class="rocket-session-map" data-rocket-session-map width="900" height="340" aria-label="Saved rocket route map"></canvas>
       <div class="rocket-route-meta" data-rocket-route-meta></div>
+    </div>
+    <div class="rocket-round-detail-list">
+      ${logs.map(rocketLogDetailHtml).join("") || "<p>No round detail was saved for this run.</p>"}
     </div>
   `;
 }
@@ -1648,7 +1833,6 @@ function formatSeconds(ms) {
 }
 
 function renderProfile() {
-  const best = getBestRun();
   if (els.profileName) els.profileName.textContent = profile.displayName || "Guest";
   if (els.profileBest) els.profileBest.textContent = formatScore(getBestOverallScore());
   if (els.displayNameInput) els.displayNameInput.value = profile.displayName === "Guest" ? "" : profile.displayName;
@@ -1661,8 +1845,11 @@ function getBestRun() {
 }
 
 function getBestOverallScore() {
-  const flagBest = Math.max(0, ...(profile.runs || []).map((run) => Number(run.score) || 0));
-  return Math.max(flagBest, getBestFlyScore());
+  return getRankPoints();
+}
+
+function getRankPoints() {
+  return cleanRankPoints(profile.rankPoints);
 }
 
 function getBestFlyScore() {
@@ -1673,12 +1860,12 @@ function getBestFlyScore() {
 }
 
 function getPlaneClass(input = {}) {
-  const score = Math.max(Number(input.score ?? input.finalScore ?? input.bestScore ?? 0) || 0, getBestOverallScore(), rocketState?.score || 0);
-  const rank = getRank(score);
+  const rank = getRank(getRankPoints());
   return planeClasses.find((plane) => plane.rank === rank.name) || planeClasses[0];
 }
 
 function getPlaneClassName(run = {}) {
+  if (run?.planeClass) return run.planeClass;
   return getPlaneClass(run).name;
 }
 
@@ -1948,7 +2135,13 @@ function showView(name, updateHash = true) {
 }
 
 function syncProfileControls() {
-  if (els.displayNameInput) els.displayNameInput.value = profile.displayName === "Guest" ? "" : profile.displayName;
+  if (!els.displayNameInput) return;
+  const locked = Boolean(profile.displayNameLocked && profile.displayName !== "Guest");
+  els.displayNameInput.value = profile.displayName === "Guest" ? "" : profile.displayName;
+  els.displayNameInput.disabled = locked;
+  els.displayNameInput.title = locked ? "This browser profile name is locked on the Fly server." : "";
+  document.querySelector("#saveName")?.toggleAttribute("disabled", locked);
+  document.querySelector("#guestName")?.toggleAttribute("disabled", locked);
 }
 
 function roundRect(ctx, x, y, w, h, r, fill = false) {
@@ -2019,7 +2212,6 @@ function startRocketRun() {
     sideQuest: pickRocketSideQuest(1),
     sideQuestPulse: 0,
     depots: makeRocketDepots(),
-    clouds: [],
     trail: [],
     routeTrail: [],
     roundLogs: [],
@@ -2053,6 +2245,7 @@ function startRocketRun() {
   };
   if (externalRounds && !tutorialMode) {
     window.FlagGuard?.startRun?.({
+      playerId: profile.playerId,
       displayName: profile.displayName || "Guest",
       rounds: desiredRounds
     });
@@ -2098,6 +2291,7 @@ function prepareRocketBriefing(rounds) {
     els.rocketStart.classList.remove("in-flight");
   }
   window.FlagGuard?.startRun?.({
+    playerId: profile.playerId,
     displayName: profile.displayName || "Guest",
     rounds
   });
@@ -2562,10 +2756,6 @@ function recordRocketRound(success, reason = "route") {
   });
 }
 
-function makeRocketClouds() {
-  return [];
-}
-
 function nextRocketRound(success) {
   if (!rocketState) return;
   if (success) {
@@ -2622,7 +2812,6 @@ function nextRocketRound(success) {
   rocketState.sideQuest = pickRocketSideQuest(rocketState.difficulty);
   rocketState.depots = makeRocketDepots();
   renderRocketDepotIntel();
-  rocketState.clouds = makeRocketClouds();
   rocketState.trail = [];
   rocketState.routeTrail = [];
   rocketState.landingLogs = [];
@@ -2722,10 +2911,6 @@ function updateRocket(dt) {
   const rect = canvas.getBoundingClientRect();
   rocketState.viewW = rect.width;
   rocketState.viewH = rect.height;
-  rocketState.clouds.forEach((cloud) => {
-    cloud.x += cloud.drift * dt;
-    if (cloud.x > rocketState.mapW + cloud.r) cloud.x = -cloud.r;
-  });
   rocketState.feedback = rocketState.feedback.filter((item) => {
     item.life -= dt;
     return item.life > 0;
@@ -2775,8 +2960,7 @@ function updateRocket(dt) {
   const manualPull = control.manual ? Math.max(0, pointerAlongHeading) / 360 : 0;
   const intent = parkingBrake || spaceBrake || noseDecel ? 0 : control.manual ? Math.min(1, manualPull) : 0.82;
   rocketState.ship.throttle += (intent - rocketState.ship.throttle) * Math.min(1, dt * (parkingBrake || spaceBrake || noseDecel ? 3.8 : 2.75));
-  const cloudDrag = 1;
-  const thrust = (720 + speedLevel * 205 + turnLevel * 34) * cloudDrag;
+  const thrust = 720 + speedLevel * 205 + turnLevel * 34;
   rocketState.ship.vx += Math.cos(rocketState.ship.angle) * thrust * rocketState.ship.throttle * dt;
   rocketState.ship.vy += Math.sin(rocketState.ship.angle) * thrust * rocketState.ship.throttle * dt;
   const brake = parkingBrake ? 0.048 + speedLevel * 0.006 : spaceBrake ? 0.034 : noseDecel ? 0.018 : 0;
@@ -2788,7 +2972,7 @@ function updateRocket(dt) {
     rocketState.ship.vy = rocketState.ship.vy / currentSpeed * 30;
     currentSpeed = 30;
   }
-  const maxSpeed = (520 + speedLevel * 145 + turnLevel * 22 + rocketState.difficulty * 24) * cloudDrag;
+  const maxSpeed = 520 + speedLevel * 145 + turnLevel * 22 + rocketState.difficulty * 24;
   if (currentSpeed > maxSpeed) {
     rocketState.ship.vx = rocketState.ship.vx / currentSpeed * maxSpeed;
     rocketState.ship.vy = rocketState.ship.vy / currentSpeed * maxSpeed;
@@ -3970,24 +4154,6 @@ function drawRocketSideQuest(ctx, camX, camY) {
   ctx.restore();
 }
 
-function drawRocketClouds(ctx, camX, camY) {
-  rocketState.clouds.forEach((cloud) => {
-    const x = cloud.x - camX;
-    const y = cloud.y - camY;
-    if (x < -cloud.r || x > rocketState.viewW + cloud.r || y < -cloud.r || y > rocketState.viewH + cloud.r) return;
-    ctx.save();
-    const grad = ctx.createRadialGradient(x, y, cloud.r * 0.12, x, y, cloud.r);
-    grad.addColorStop(0, "rgba(245,250,255,.9)");
-    grad.addColorStop(0.55, "rgba(205,220,230,.72)");
-    grad.addColorStop(1, "rgba(205,220,230,0)");
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.ellipse(x, y, cloud.r * 1.25, cloud.r * 0.6, Math.sin(cloud.seed) * 0.3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  });
-}
-
 function drawRocketRunway(ctx, camX, camY) {
   if (rocketState.phase !== "takeoff") return;
   const x = rocketState.start.x - camX;
@@ -4646,25 +4812,43 @@ function getRocketLogDepotCountries(log) {
   return [...new Set((log?.landings || []).map((landing) => landing.country).filter(Boolean))];
 }
 
-function renderRocketResultRow(log) {
-  const row = document.createElement("article");
+function formatRocketLandingLine(landing = {}) {
+  const speed = Number(landing.speed || 0);
+  const altitude = Number(landing.altitude || 0);
+  const label = landing.success ? "refueled" : "missed";
+  return `${label} ${landing.depot || "depot"}${landing.country ? `, ${landing.country}` : ""}: ${landing.km || 0} km, ${speed.toFixed(0)} m/s, ${altitude.toFixed(0)} m`;
+}
+
+function rocketLogDetailHtml(log = {}) {
   const status = log.success ? "reached" : "missed";
   const landings = log.landings || [];
   const depotCountries = getRocketLogDepotCountries(log);
   const landingText = landings.length
-    ? landings.map((landing) => `${landing.success ? "refueled" : "penalty"} ${landing.depot}${landing.country ? `, ${landing.country}` : ""}: ${landing.km} km, ${landing.speed.toFixed(0)} m/s, ${landing.altitude.toFixed(0)} m`).join(" | ")
+    ? landings.map(formatRocketLandingLine).join(" | ")
     : "no fuel depot checkpoint";
   const scoreText = (log.scoreEvents || []).length
     ? log.scoreEvents.map((event) => `${event.type}: +${formatScore(event.points)} (${event.detail})`).join(" | ")
     : "no score events recorded";
-  row.className = `rocket-result-row ${status}`;
-  row.innerHTML = `
-    <strong>Round ${log.round}: ${log.flag ? `<img src="${log.flag}" alt="${log.target} flag">` : ""}${log.target}</strong>
-    <span>${status.toUpperCase()} - ${log.reason} - ${log.success ? `reached ${log.target}` : `missed ${log.target}`} - ${Math.max(0, log.time).toFixed(1)}s left - fuel ${log.fuel.toFixed(0)}% - TP +${log.techEarned || 0}</span>
-    <small>Fuel depots: ${landings.length}${depotCountries.length ? ` (${depotCountries.join(", ")})` : ""}</small>
-    <small>${scoreText}</small>
-    <small>${landingText}</small>
+  const flag = log.flag ? `<img src="${escapeHtml(log.flag)}" alt="${escapeHtml(log.target || "target")} flag">` : "";
+  const target = escapeHtml(log.target || "Unknown");
+  const reason = escapeHtml(log.reason || "route");
+  const fuel = Number(log.fuel || 0);
+  const time = Number(log.time || 0);
+  return `
+    <article class="rocket-result-row ${status}">
+      <strong>Round ${log.round || "?"}: ${flag}${target}</strong>
+      <span class="${log.success ? "round-good" : "round-bad"}">${status.toUpperCase()} - ${reason} - ${log.success ? `reached ${target}` : `missed ${target}`} - ${Math.max(0, time).toFixed(1)}s left - fuel ${fuel.toFixed(0)}% - TP +${log.techEarned || 0}</span>
+      <small class="${landings.length ? "round-good" : "round-bad"}">Fuel depots: ${landings.length}${depotCountries.length ? ` (${escapeHtml(depotCountries.join(", "))})` : ""}</small>
+      <small class="${(log.scoreEvents || []).length ? "round-good" : "round-bad"}">${escapeHtml(scoreText)}</small>
+      <small>${escapeHtml(landingText)}</small>
+    </article>
   `;
+}
+
+function renderRocketResultRow(log) {
+  const template = document.createElement("template");
+  template.innerHTML = rocketLogDetailHtml(log).trim();
+  const row = template.content.firstElementChild;
   return row;
 }
 
@@ -4740,14 +4924,14 @@ function renderRocketRouteMeta(meta, logs, selected) {
   if (!log) return;
   const events = (log.scoreEvents || []).map((event) => `${event.type} +${formatScore(event.points)}`).join(" | ") || "No score event";
   const landings = (log.landings || []).length
-    ? log.landings.map((landing) => `${landing.depot}: ${landing.km} km, ${landing.speed.toFixed(0)} m/s`).join(" | ")
+    ? log.landings.map((landing) => `${landing.depot}: ${landing.km || 0} km, ${Number(landing.speed || 0).toFixed(0)} m/s`).join(" | ")
     : "No depot stop";
   meta.innerHTML = `
     <strong>Round ${log.round}: ${escapeHtml(log.target || "Unknown")}</strong>
-    <span>${log.success ? "Reached" : "Missed"} | ${escapeHtml(log.reason || "route")} | ${Math.max(0, log.time || 0).toFixed(1)}s left</span>
+    <span class="${log.success ? "round-good" : "round-bad"}">${log.success ? "Reached" : "Missed"} | ${escapeHtml(log.reason || "route")} | ${Math.max(0, log.time || 0).toFixed(1)}s left</span>
     <span>Fuel ${Number(log.fuel || 0).toFixed(0)}% | Score ${formatScore(log.score || 0)}</span>
-    <span>${escapeHtml(events)}</span>
-    <span>${escapeHtml(landings)}</span>
+    <span class="${(log.scoreEvents || []).length ? "round-good" : "round-bad"}">${escapeHtml(events)}</span>
+    <span class="${(log.landings || []).length ? "round-good" : "round-bad"}">${escapeHtml(landings)}</span>
   `;
 }
 
@@ -5398,13 +5582,17 @@ document.querySelector("#profileOpen")?.addEventListener("click", () => {
   showView("profile");
 });
 document.querySelector("#saveName")?.addEventListener("click", () => {
+  if (profile.displayNameLocked && profile.displayName !== "Guest") return;
   const clean = els.displayNameInput.value.trim().replace(/[^a-z0-9 _-]/gi, "").slice(0, 18);
   profile.displayName = clean || "Guest";
+  profile.displayNameLocked = profile.displayName !== "Guest";
   saveProfile();
   renderProfile();
 });
 document.querySelector("#guestName")?.addEventListener("click", () => {
+  if (profile.displayNameLocked && profile.displayName !== "Guest") return;
   profile.displayName = "Guest";
+  profile.displayNameLocked = false;
   saveProfile();
   renderProfile();
 });
@@ -5413,6 +5601,7 @@ window.addEventListener("resize", resizeRocketCanvas);
 renderProfile();
 renderTables();
 loadOfficialFlyLeaderboard();
+loadServerProfile();
 loadRocketCatalog();
 loadRocketWorldMap();
 loadRocketBoundaryLines();

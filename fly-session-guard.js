@@ -60,7 +60,10 @@
 
   function protectedProfile(profile) {
     return {
+      playerId: String(profile?.playerId || "").slice(0, 80),
       displayName: String(profile?.displayName || "Guest").slice(0, 32),
+      displayNameLocked: Boolean(profile?.displayNameLocked),
+      rankPoints: Math.max(0, Math.round(Number(profile?.rankPoints) || 0)),
       runs: Array.isArray(profile?.runs) ? profile.runs.map((run) => ({
         id: run.id,
         score: Number(run.score) || 0,
@@ -119,6 +122,8 @@
       if (completedRounds < 0 || completedRounds > Math.max(1, rounds)) return "stored fly run completion count is invalid";
     }
     const runs = Array.isArray(profile?.runs) ? profile.runs : [];
+    const rankPoints = Math.round(Number(profile?.rankPoints) || 0);
+    if (rankPoints < 0 || rankPoints > 1000000000) return "stored rank points are impossible";
     for (const run of runs) {
       const score = Math.round(Number(run.score) || 0);
       const rounds = Math.trunc(Number(run.rounds) || 0);
@@ -289,13 +294,13 @@
     return data;
   }
 
-  function startRun({ displayName, rounds }) {
+  function startRun({ playerId, displayName, rounds }) {
     runStartedAt = Date.now();
     serverRun = null;
     serverRunPromise = null;
     sessionStorage.removeItem(SERVER_RUN_KEY);
     if (tampered || !ALLOWED_ROUNDS.includes(Number(rounds))) return;
-    serverRunPromise = postJson(`${getFlyApiBase()}/api/fly/run/start`, { displayName, rounds })
+    serverRunPromise = postJson(`${getFlyApiBase()}/api/fly/run/start`, { playerId, displayName, rounds })
       .then((run) => {
         serverRun = run;
         sessionStorage.setItem(SERVER_RUN_KEY, JSON.stringify(run));
@@ -320,6 +325,7 @@
     return postJson(`${getFlyApiBase()}/api/fly/run/finish`, {
       runId: credentials.runId,
       token: credentials.token,
+      playerId: session.playerId,
       displayName: session.displayName,
       session
     })

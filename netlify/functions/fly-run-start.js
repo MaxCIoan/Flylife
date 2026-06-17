@@ -1,6 +1,6 @@
 import { query } from "../../db/index.js";
 import { ALLOWED_ROUNDS } from "../../lib/fly-scoring.js";
-import { cleanDisplayName, emptyResponse, jsonResponse, readRequestJson } from "./_shared.js";
+import { cleanDisplayName, cleanPlayerId, emptyResponse, jsonResponse, readRequestJson } from "./_shared.js";
 
 export default async (request) => {
   if (request.method === "OPTIONS") return emptyResponse();
@@ -13,16 +13,35 @@ export default async (request) => {
 
     const runId = crypto.randomUUID();
     const token = crypto.randomUUID();
-    const displayName = cleanDisplayName(body.displayName);
+    const playerId = cleanPlayerId(body.playerId);
+    const requestedName = cleanDisplayName(body.displayName);
+    const shouldLockName = requestedName !== "Guest";
+
+    const { rows: players } = await query(
+      `insert into fly_players (player_id, display_name, display_name_locked)
+       values ($1, $2, $3)
+       on conflict (player_id) do update
+       set display_name = case
+             when fly_players.display_name_locked then fly_players.display_name
+             else excluded.display_name
+           end,
+           display_name_locked = fly_players.display_name_locked or excluded.display_name_locked,
+           updated_at = now()
+       returning display_name as "displayName",
+                 display_name_locked as "displayNameLocked",
+                 rank_points as "rankPoints"`,
+      [playerId, requestedName, shouldLockName]
+    );
+    const player = players[0] || { displayName: requestedName, displayNameLocked: shouldLockName, rankPoints: 0 };
 
     const { rows } = await query(
-      `insert into fly_runs (run_id, token, display_name, mode, rounds, payload)
-       values ($1, $2, $3, 'rocket', $4, '{}'::jsonb)
-       returning run_id as "runId", token, display_name as "displayName", rounds, started_at as "startedAt"`,
-      [runId, token, displayName, rounds]
+      `insert into fly_runs (run_id, token, player_id, display_name, mode, rounds, payload)
+       values ($1, $2, $3, $4, 'rocket', $5, '{}'::jsonb)
+       returning run_id as "runId", token, player_id as "playerId", display_name as "displayName", rounds, started_at as "startedAt"`,
+      [runId, token, playerId, player.displayName, rounds]
     );
 
-    return jsonResponse(200, rows[0]);
+    return jsonResponse(200, { ...rows[0], player: { playerId, ...player } });
   } catch (error) {
     console.error("fly-run-start failed", error);
     return jsonResponse(500, { error: error instanceof Error ? error.message : "fly run start failed" });

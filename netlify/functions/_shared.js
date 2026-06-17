@@ -46,3 +46,14 @@ export function cleanDisplayName(value) {
     .slice(0, 32);
   return name || "Guest";
 }
+
+export function cleanPlayerId(value) {
+  const id = String(value || "")
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .slice(0, 80);
+  return id || crypto.randomUUID();
+}
+
+export function cleanRankPoints(value) {
+  return Math.max(0, Math.min(1000000000, Math.round(Number(value) || 0)));
+}

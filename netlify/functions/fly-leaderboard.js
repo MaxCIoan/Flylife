@@ -7,14 +7,17 @@ export default async (request) => {
 
   try {
     const { rows: leaders } = await query(
-      `select display_name as "displayName",
+      `select run_id as "runId",
+              player_id as "playerId",
+              display_name as "displayName",
               rounds,
               coalesce((payload->>'selectedRounds')::int, rounds) as "selectedRounds",
               coalesce((payload->>'completedRounds')::int, 0) as "completedRounds",
               coalesce(payload->>'planeClass', '') as "planeClass",
               final_score as "finalScore",
               elapsed_ms as "elapsedMs",
-              finished_at as "finishedAt"
+              finished_at as "finishedAt",
+              payload
        from fly_runs
        where status = 'completed' and tampered = false and final_score > 0
          and display_name not in ('CodexProbe', 'CodexPartialProbe')

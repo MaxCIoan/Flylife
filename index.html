@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Flag Hunter</title>
-  <link rel="stylesheet" href="styles.css?v=20260615k">
+  <link rel="stylesheet" href="styles.css?v=20260617a">
 </head>
 <body>
   <div class="private-api-status" id="privateApiStatus" aria-hidden="true"></div>
@@ -92,7 +92,7 @@
           </section>
           <section class="activity-card compact">
             <h2>Saved Scores</h2>
-            <p>Runs are saved in this browser. Fly can also submit to the Netlify score API when the deployed backend is available.</p>
+            <p>Runs are saved in this browser. Fly can also sync this browser profile and submit scores when the Netlify API is available.</p>
           </section>
         </aside>
       </section>
@@ -399,7 +399,7 @@
 
           <section class="manual-card">
             <h2>Round Levels</h2>
-            <p>Fly sessions support 10, 15, 20, and 50 destination rounds. Longer selections can produce higher rank scores but demand more fuel planning.</p>
+            <p>Fly sessions support 10, 15, 20, and 50 destination rounds. Every saved score adds cumulative rank points for long-term plane unlocks.</p>
             <div class="manual-grid">
               <div><b>10 Rounds</b><span>Quick route practice.</span></div>
               <div><b>15 Rounds</b><span>Balanced route run.</span></div>
@@ -417,7 +417,7 @@
       <button class="close-btn" value="cancel" aria-label="Close">×</button>
       <span class="eyebrow">Account</span>
       <h1>Create your hunter</h1>
-      <p>This local prototype stores your display name and runs in this browser. Firebase Auth can replace this without changing the game flow.</p>
+      <p>This browser gets one Fly player profile. Saving a display name locks it to that profile and syncs rank points through the Fly API.</p>
       <label>
         Display name
         <input id="displayNameInput" maxlength="18" autocomplete="nickname" placeholder="Explorer">
@@ -429,7 +429,7 @@
     </form>
   </dialog>
 
-  <script src="fly-session-guard.js?v=20260615k"></script>
-  <script src="app.js?v=20260615k"></script>
+  <script src="fly-session-guard.js?v=20260617a"></script>
+  <script src="app.js?v=20260617a"></script>
 </body>
 </html>
