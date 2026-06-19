@@ -217,7 +217,7 @@ const ROCKET_TAKEOFF_SPEED = 65;
 const ROCKET_CRUISE_ALTITUDE = 70;
 const ROCKET_RUNWAY_LOCK_ALTITUDE = 12;
 const ROCKET_ROUTE_TRAIL_MAX = 7200;
-const ROCKET_LOG_TRACE_MAX = 900;
+const ROCKET_LOG_TRACE_MAX = 260;
 const ROCKET_HUD_INTERVAL_MS = 120;
 const ROCKET_NAV_CHECK_INTERVAL = 0.14;
 const ROCKET_TINY_COUNTRY_DOT_MAX = 30;
@@ -815,6 +815,41 @@ function rocketCountryColor(name) {
   return palette[hash % palette.length];
 }
 
+function compactStoredRocketTrace(trace = []) {
+  const points = (Array.isArray(trace) ? trace : [])
+    .map((point) => ({
+      x: Math.round(Number(point?.x)),
+      y: Math.round(Number(point?.y)),
+      wrap: Boolean(point?.wrap),
+      ...(point?.kind ? { kind: point.kind } : {})
+    }))
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+  if (points.length <= ROCKET_LOG_TRACE_MAX) return points;
+  const stride = Math.max(1, Math.ceil(points.length / ROCKET_LOG_TRACE_MAX));
+  const compacted = [];
+  points.forEach((point, index) => {
+    if (index === 0 || index === points.length - 1 || point.kind || index % stride === 0) {
+      compacted.push(point);
+    }
+  });
+  if (compacted.length <= ROCKET_LOG_TRACE_MAX) return compacted;
+  return compacted.filter((point, index) => point.kind || index === 0 || index === compacted.length - 1 || index % Math.ceil(compacted.length / ROCKET_LOG_TRACE_MAX) === 0)
+    .slice(0, ROCKET_LOG_TRACE_MAX);
+}
+
+function compactRocketRunHistory(runs = []) {
+  return (Array.isArray(runs) ? runs : []).slice(0, 40).map((run) => ({
+    ...run,
+    logs: Array.isArray(run.logs)
+      ? run.logs.map((log) => ({
+        ...log,
+        trace: compactStoredRocketTrace(log.trace),
+        landings: Array.isArray(log.landings) ? log.landings.slice(0, 8) : []
+      }))
+      : []
+  }));
+}
+
 function loadProfile() {
   const fallback = {
     playerId: getLocalPlayerId(),
@@ -830,10 +865,11 @@ function loadProfile() {
     merged.playerId = String(merged.playerId || fallback.playerId);
     localStorage.setItem(playerIdKey, merged.playerId);
     merged.runs = Array.isArray(merged.runs) ? merged.runs : [];
-    merged.rocketRuns = Array.isArray(merged.rocketRuns) ? merged.rocketRuns : [];
+    merged.rocketRuns = compactRocketRunHistory(merged.rocketRuns);
     merged.displayName = String(merged.displayName || "Guest").slice(0, 32);
     merged.displayNameLocked = Boolean(merged.displayNameLocked);
     merged.rankPoints = Math.max(cleanRankPoints(merged.rankPoints), estimateRankPointsFromHistory(merged));
+    localStorage.setItem(storeKey, JSON.stringify(merged));
     return merged;
   } catch {
     return fallback;
@@ -918,7 +954,7 @@ async function loadServerProfile() {
     const data = await response.json();
     mergeServerProfile(data.player, { persist: true });
     renderProfile();
-    renderTables();
+    renderTablesIfDataView();
     return data.player || null;
   } catch (error) {
     console.warn("Player profile unavailable", error);
@@ -931,6 +967,7 @@ function addRankPoints(points) {
 }
 
 function saveProfile(options = {}) {
+  profile.rocketRuns = compactRocketRunHistory(profile.rocketRuns);
   localStorage.setItem(storeKey, JSON.stringify(profile));
   window.FlagGuard?.syncProfile?.(profile);
   if (options.remote !== false) scheduleProfileSync();
@@ -1463,13 +1500,13 @@ function saveRocketSessionResult(title, summary) {
       mergeServerProfile(officialResult.player, { persist: false });
       saveProfile();
       refreshOfficialFlyLeaderboard();
-      renderTables();
+      renderTablesIfDataView();
     }
   });
   addRankPoints(session.score);
   profile.rocketRuns = [session, ...(profile.rocketRuns || [])].slice(0, 40);
   saveProfile();
-  renderTables();
+  renderTablesIfDataView();
   return session;
 }
 
@@ -1681,7 +1718,7 @@ function loadOfficialFlyLeaderboard() {
   officialFlyLeadersLoaded = true;
   officialFlyLeadersLoading = true;
   officialFlyLeadersError = false;
-  renderTables();
+  if (isViewActive("leaderboard")) renderTables();
   fetch(`${flyApiBase}/api/fly/leaderboard`)
     .then((response) => response.ok ? response.json() : Promise.reject(new Error("official fly leaderboard unavailable")))
     .then((data) => {
@@ -1689,20 +1726,20 @@ function loadOfficialFlyLeaderboard() {
       officialFlyLeadersLoading = false;
       officialFlyLeadersError = false;
       setPrivateApiStatus(true);
-      renderTables();
+      if (isViewActive("leaderboard")) renderTables();
     })
     .catch(() => {
       officialFlyLeaders = [];
       officialFlyLeadersLoading = false;
       officialFlyLeadersError = true;
       setPrivateApiStatus(false);
-      renderTables();
+      if (isViewActive("leaderboard")) renderTables();
     });
 }
 
 function refreshOfficialFlyLeaderboard() {
   officialFlyLeadersLoaded = false;
-  loadOfficialFlyLeaderboard();
+  if (isViewActive("leaderboard")) loadOfficialFlyLeaderboard();
 }
 
 function toggleRunDetails(row, data, columns, type = "run") {
@@ -1726,6 +1763,7 @@ function toggleRunDetails(row, data, columns, type = "run") {
 
 function normalizeOfficialFlyRun(run = {}) {
   const payload = run.payload && typeof run.payload === "object" ? run.payload : {};
+  const logs = Array.isArray(payload.logs) ? payload.logs : Array.isArray(run.logs) ? run.logs : [];
   return {
     ...payload,
     ...run,
@@ -1744,7 +1782,11 @@ function normalizeOfficialFlyRun(run = {}) {
     createdAt: payload.createdAt || run.finishedAt,
     mapW: payload.mapW || ROCKET_MAP_W,
     mapH: payload.mapH || ROCKET_MAP_H,
-    logs: Array.isArray(payload.logs) ? payload.logs : Array.isArray(run.logs) ? run.logs : []
+    logs: logs.map((log) => ({
+      ...log,
+      trace: compactStoredRocketTrace(log.trace),
+      landings: Array.isArray(log.landings) ? log.landings.slice(0, 8) : []
+    }))
   };
 }
 
@@ -2279,6 +2321,33 @@ function showView(name, updateHash = true) {
   if (updateHash && location.hash !== `#${name}`) {
     history.replaceState(null, "", `#${name}`);
   }
+}
+
+function prepareViewData(name) {
+  if (name === "leaderboard") {
+    if (officialFlyLeadersLoaded) renderTables();
+    else loadOfficialFlyLeaderboard();
+  } else if (name === "runs") {
+    renderTables();
+  }
+}
+
+function showPreparedView(name, updateHash = true) {
+  showView(name, updateHash);
+  prepareViewData(name);
+}
+
+function isViewActive(name) {
+  const viewMap = {
+    runs: "runsView",
+    leaderboard: "leaderboardView"
+  };
+  const id = viewMap[name];
+  return Boolean(id && document.querySelector(`#${id}`)?.classList.contains("active"));
+}
+
+function renderTablesIfDataView() {
+  if (isViewActive("runs") || isViewActive("leaderboard")) renderTables();
 }
 
 function syncProfileControls() {
@@ -6258,15 +6327,13 @@ document.querySelectorAll(".nav-btn").forEach((button) => {
       startRocketRun();
       return;
     }
-    renderTables();
-    showView(button.dataset.view);
+    showPreparedView(button.dataset.view);
   });
 });
 
 document.querySelectorAll("[data-view-jump]").forEach((button) => {
   button.addEventListener("click", () => {
-    renderTables();
-    showView(button.dataset.viewJump);
+    showPreparedView(button.dataset.viewJump);
   });
 });
 document.querySelectorAll("[data-setup-view]").forEach((button) => {
@@ -6276,8 +6343,7 @@ document.querySelectorAll("[data-setup-view]").forEach((button) => {
       showFlagSetup();
       return;
     }
-    renderTables();
-    showView(target);
+    showPreparedView(target);
   });
 });
 document.querySelectorAll("[data-rocket-jump]").forEach((button) => {
@@ -6289,8 +6355,7 @@ document.querySelectorAll("[data-rocket-jump]").forEach((button) => {
       showFlagSetup();
       return;
     }
-    renderTables();
-    showView(target);
+    showPreparedView(target);
   });
 });
 document.querySelectorAll("[data-rocket-rounds]").forEach((button) => {
@@ -6386,8 +6451,7 @@ document.querySelectorAll("[data-pause-view]").forEach((button) => {
       showFlagSetup();
       return;
     }
-    renderTables();
-    showView(target);
+    showPreparedView(target);
   });
 });
 document.querySelectorAll("[data-tech]").forEach((button) => {
@@ -6489,8 +6553,6 @@ document.querySelector("#guestName")?.addEventListener("click", () => {
 window.addEventListener("resize", resizeFireworksCanvas);
 window.addEventListener("resize", resizeRocketCanvas);
 renderProfile();
-renderTables();
-loadOfficialFlyLeaderboard();
 loadServerProfile();
 loadRocketCatalog();
 loadRocketWorldMap();
@@ -6505,8 +6567,7 @@ if (bootParams.get("simulateAgents") === "1") {
   showView("rocket", false);
   startRocketRun();
 } else if (["runs", "leaderboard", "profile", "results"].includes(initialView)) {
-  renderTables();
-  showView(initialView, false);
+  showPreparedView(initialView, false);
 } else {
   showFlagSetup();
 }
