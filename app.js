@@ -213,6 +213,9 @@ const ROCKET_IMAGERY_LAYER = "BlueMarble_ShadedRelief_Bathymetry";
 const ROCKET_IMAGERY_WMS_URL = "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi";
 const ROCKET_CLOSE_CAMERA_ZOOM = 2.05;
 const ROCKET_ISLAND_RELIEF_MIN_ZOOM = 1.1;
+const ROCKET_TAKEOFF_SPEED = 65;
+const ROCKET_CRUISE_ALTITUDE = 70;
+const ROCKET_RUNWAY_LOCK_ALTITUDE = 12;
 const ROCKET_HUD_INTERVAL_MS = 120;
 const ROCKET_NAV_CHECK_INTERVAL = 0.14;
 const ROCKET_TINY_COUNTRY_DOT_MAX = 30;
@@ -663,6 +666,11 @@ function normalizeRocketBoundaryFeature(feature) {
 }
 
 function invalidateRocketMapCache() {
+  if (isRocketFastTakeoffMap() && rocketMapCache) {
+    rocketState.mapCacheDirty = true;
+    rocketMiniMapCache = null;
+    return;
+  }
   rocketMapCache = null;
   rocketMiniMapCache = null;
 }
@@ -2348,7 +2356,8 @@ function startRocketRun() {
     targetIdeal: makeRocketTargetIdeal(),
     sideQuest: pickRocketSideQuest(1),
     sideQuestPulse: 0,
-    depots: makeRocketDepots(),
+    depots: [],
+    roundDepotCountries: [],
     trail: [],
     routeTrail: [],
     roundLogs: [],
@@ -2365,6 +2374,7 @@ function startRocketRun() {
     nextHudAt: 0,
     hudKey: "",
     techHudKey: "",
+    mapCacheDirty: false,
     sonarPingTimer: 0,
     sonarPingIndex: 0,
     sonarPing: null,
@@ -2380,6 +2390,8 @@ function startRocketRun() {
     last: performance.now(),
     difficulty: 1
   };
+  rocketState.depots = makeRocketDepots();
+  rocketState.roundDepotCountries = getRocketDepotCountryList(rocketState.depots);
   if (externalRounds && !tutorialMode) {
     window.FlagGuard?.startRun?.({
       playerId: profile.playerId,
@@ -2457,7 +2469,7 @@ const rocketTutorialSteps = [
   {
     phase: "takeoff",
     title: "Takeoff Roll",
-    text: "The plane starts moving immediately. Build speed to 105 m/s, then climb above 120 m. Watch speed, altitude, and time.",
+    text: `The plane starts moving immediately. Build speed to ${ROCKET_TAKEOFF_SPEED} m/s, then climb above ${ROCKET_CRUISE_ALTITUDE} m. Watch speed, altitude, and time.`,
     arrow: "center"
   },
   {
@@ -2546,7 +2558,7 @@ function beginRocketTakeoff() {
   rocketState.trail = [];
   rocketState.ship.vx = Math.cos(rocketState.ship.angle) * 8;
   rocketState.ship.vy = Math.sin(rocketState.ship.angle) * 8;
-  els.rocketMessage.textContent = "Takeoff started. Build speed, then climb above 120 m.";
+  els.rocketMessage.textContent = `Takeoff started. Build speed, then climb above ${ROCKET_CRUISE_ALTITUDE} m.`;
   if (els.rocketStart) els.rocketStart.textContent = "Restart Flight Run";
   playTakeoffSound();
   startPropellerSound();
@@ -2560,7 +2572,7 @@ function engageRocketTakeoff() {
   rocketState.ship.vx = Math.cos(rocketState.ship.angle) * 8;
   rocketState.ship.vy = Math.sin(rocketState.ship.angle) * 8;
   rocketState.last = performance.now();
-  els.rocketMessage.textContent = "Takeoff started. Build speed, then climb above 120 m.";
+  els.rocketMessage.textContent = `Takeoff started. Build speed, then climb above ${ROCKET_CRUISE_ALTITUDE} m.`;
   playTakeoffSound();
 }
 
@@ -2584,12 +2596,12 @@ function updateRocketTargetCard(show) {
     const value = 1200 + rocketState.difficulty * 700;
     els.rocketTargetMiniValue.textContent = `Worth ${formatScore(value)} + timer bonus`;
   }
-  const code = rocketState.target.code || flags.find((flag) => flag.name === rocketState.target.name)?.code;
-  if (code) {
-    els.rocketTargetFlag.src = getFlagUrl(code);
+  const flagUrl = getRocketTargetFlagUrl(rocketState.target);
+  if (flagUrl) {
+    els.rocketTargetFlag.src = flagUrl;
     els.rocketTargetFlag.alt = `${rocketState.target.name} flag`;
     if (els.rocketTargetMiniFlag) {
-      els.rocketTargetMiniFlag.src = getFlagUrl(code);
+      els.rocketTargetMiniFlag.src = flagUrl;
       els.rocketTargetMiniFlag.alt = `${rocketState.target.name} flag`;
     }
   } else {
@@ -2600,6 +2612,12 @@ function updateRocketTargetCard(show) {
       els.rocketTargetMiniFlag.alt = "";
     }
   }
+}
+
+function getRocketTargetFlagUrl(target = {}) {
+  if (target.flag) return target.flag;
+  const code = target.code || flags.find((flag) => flag.name === target.name)?.code;
+  return code ? getFlagUrl(code) : "";
 }
 
 function randomRocketStart() {
@@ -2713,12 +2731,14 @@ function makeRocketDepots() {
   return depots;
 }
 
+function getRocketDepotCountryList(depots = []) {
+  return [...new Set((depots || []).map((depot) => depot.country).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+}
+
 function renderRocketDepotIntel() {
   if (!els.rocketDepotCountries) return;
-  const countries = [...new Set((rocketState?.depots || [])
-    .filter((depot) => !depot.used && depot.country)
-    .map((depot) => depot.country))]
-    .sort((a, b) => a.localeCompare(b));
+  const countries = getRocketDepotCountryList((rocketState?.depots || []).filter((depot) => !depot.used));
   els.rocketDepotCountries.replaceChildren(...(countries.length ? countries : ["Unknown country intel"]).map((name) => {
     const item = document.createElement("b");
     item.textContent = name;
@@ -2875,10 +2895,15 @@ function recordRocketRound(success, reason = "route") {
     .filter((_, index) => index % 3 === 0)
     .slice(-280)
     .map((point) => ({ x: point.x, y: point.y, wrap: Boolean(point.wrap) }));
+  const landings = [...(rocketState.landingLogs || [])];
+  const visitedDepotCountries = getRocketDepotCountryList(landings);
+  const depotCountries = rocketState.roundDepotCountries?.length
+    ? [...rocketState.roundDepotCountries]
+    : getRocketDepotCountryList([...(rocketState.depots || []), ...landings]);
   rocketState.roundLogs.push({
     round: rocketState.round,
     target: rocketState.target?.name || "Unknown",
-    flag: rocketState.target?.flag || "",
+    flag: getRocketTargetFlagUrl(rocketState.target),
     targetX: rocketState.target?.x || 0,
     targetY: rocketState.target?.y || 0,
     success,
@@ -2889,7 +2914,9 @@ function recordRocketRound(success, reason = "route") {
     fuel: rocketState.fuel,
     time: rocketState.time,
     trace,
-    landings: [...(rocketState.landingLogs || [])]
+    depotCountries,
+    visitedDepotCountries,
+    landings
   });
 }
 
@@ -2948,6 +2975,7 @@ function nextRocketRound(success) {
   rememberRocketTarget(rocketState.target);
   rocketState.sideQuest = pickRocketSideQuest(rocketState.difficulty);
   rocketState.depots = makeRocketDepots();
+  rocketState.roundDepotCountries = getRocketDepotCountryList(rocketState.depots);
   renderRocketDepotIntel();
   rocketState.trail = [];
   rocketState.routeTrail = [];
@@ -2965,6 +2993,7 @@ function nextRocketRound(success) {
   rocketState.navCheckTimer = 0;
   rocketState.hudKey = "";
   rocketState.techHudKey = "";
+  rocketState.mapCacheDirty = false;
   rocketState.sonarPingTimer = 0;
   rocketState.sonarPingIndex = 0;
   rocketState.sonarPing = null;
@@ -3073,7 +3102,7 @@ function updateRocket(dt) {
   }
   const dx = control.dx;
   const dy = control.dy;
-  const runwayLocked = rocketState.phase === "takeoff" && rocketState.ship.altitude < 16;
+  const runwayLocked = rocketState.phase === "takeoff" && rocketState.ship.altitude < ROCKET_RUNWAY_LOCK_ALTITUDE;
   const desired = runwayLocked ? rocketState.ship.angle : control.manual ? Math.atan2(dy, dx) : rocketState.ship.angle;
   let turn = desired - rocketState.ship.angle;
   while (turn > Math.PI) turn -= Math.PI * 2;
@@ -3129,7 +3158,7 @@ function updateRocket(dt) {
     rocketState.telemetry.peakDecel = Math.max(rocketState.telemetry.peakDecel || 0, -(rocketState.accel || 0));
     rocketState.telemetry.peakTurn = Math.max(rocketState.telemetry.peakTurn || 0, Math.abs(turn) * turnRate);
   }
-  const liftSpeed = 105;
+  const liftSpeed = ROCKET_TAKEOFF_SPEED;
   const climbIntent = Math.max(-0.35, Math.min(1, -dy / 220));
   const verticalUpgrade = 1 + turnLevel * 0.16 + speedLevel * 0.05;
   if (currentSpeed > liftSpeed && rocketState.ship.throttle > 0.45) {
@@ -3139,7 +3168,7 @@ function updateRocket(dt) {
     rocketState.ship.altitude -= descentRate * dt;
   }
   rocketState.ship.altitude = Math.max(0, Math.min(6200, rocketState.ship.altitude));
-  if (rocketState.phase === "takeoff" && rocketState.ship.altitude > 120) {
+  if (rocketState.phase === "takeoff" && rocketState.ship.altitude > ROCKET_CRUISE_ALTITUDE) {
     rocketState.phase = "cruise";
     els.rocketMessage.textContent = `Airborne. Navigate by country shape and the briefing flag. Optional beacon: ${rocketState.sideQuest.capital}, ${rocketState.sideQuest.name}.`;
     rocketFeedback("Cruise unlocked", "#45f875", "success");
@@ -3321,6 +3350,12 @@ function completeRocketDepotLanding(depot, dist, landingSnapshot = {}) {
   const researchEarned = landing.perfect ? 10 : landing.good ? 5 : 3;
   awardRocketTechPoints(researchEarned);
   rocketState.landingLogs.push({ ...landing, success: true, country: depot.country });
+  rocketState.scoreEvents.push({
+    round: rocketState.round,
+    type: `Fuel depot${depot.country ? `: ${depot.country}` : ""}`,
+    points: landing.points,
+    detail: `${landing.parts?.join(", ") || "depot refuel"}; +${researchEarned} TP; fuel +${fuelEarned}`
+  });
   renderRocketDepotIntel();
   const landingName = landing.perfect ? "Perfect depot descent" : landing.good ? "Clean depot descent" : "Depot refuel";
   showRocketMissionPopup({
@@ -3594,12 +3629,25 @@ function drawRocketSetupBackground(ctx, rect) {
 function drawRocketMap(ctx, rect, camX, camY) {
   const snap = getRocketStaticCacheSnap();
   const pixelScale = getRocketMapCachePixelScale();
+  const detailMode = getRocketMapDetailMode();
   const cacheX = Math.floor(camX / snap) * snap;
   const cacheY = Math.floor(camY / snap) * snap;
   const cacheW = Math.ceil(rect.width + snap * 2);
   const cacheH = Math.ceil(rect.height + snap * 2);
   const boundaryStep = getRocketBoundaryPointStep();
-  if (!rocketMapCache || rocketMapCache.x !== cacheX || rocketMapCache.y !== cacheY || rocketMapCache.w !== cacheW || rocketMapCache.h !== cacheH || rocketMapCache.pixelScale !== pixelScale || rocketMapCache.features !== rocketWorldFeatures || rocketMapCache.boundaries !== rocketBoundaryLines || rocketMapCache.overlay !== rocketCountryOverlayEnabled || rocketMapCache.boundaryStep !== boundaryStep) {
+  const cacheCoversView = rocketMapCacheCovers(rocketMapCache, camX, camY, rect);
+  const structuralMismatch = !rocketMapCache
+    || Boolean(rocketState.mapCacheDirty)
+    || rocketMapCache.w !== cacheW
+    || rocketMapCache.h !== cacheH
+    || rocketMapCache.pixelScale !== pixelScale
+    || rocketMapCache.detailMode !== detailMode
+    || rocketMapCache.features !== rocketWorldFeatures
+    || rocketMapCache.boundaries !== rocketBoundaryLines
+    || rocketMapCache.overlay !== rocketCountryOverlayEnabled
+    || rocketMapCache.boundaryStep !== boundaryStep;
+  const canUseWarmTakeoffCache = isRocketFastTakeoffMap() && cacheCoversView;
+  if (!rocketMapCache || !cacheCoversView || (structuralMismatch && !canUseWarmTakeoffCache)) {
     const canvas = rocketMapCache?.canvas || document.createElement("canvas");
     canvas.width = Math.max(1, Math.ceil(cacheW * pixelScale));
     canvas.height = Math.max(1, Math.ceil(cacheH * pixelScale));
@@ -3607,10 +3655,11 @@ function drawRocketMap(ctx, rect, camX, camY) {
     cacheCtx.setTransform(pixelScale, 0, 0, pixelScale, 0, 0);
     cacheCtx.imageSmoothingEnabled = true;
     cacheCtx.imageSmoothingQuality = "high";
-    drawRocketStaticMap(cacheCtx, { width: cacheW, height: cacheH }, cacheX, cacheY);
-    rocketMapCache = { canvas, x: cacheX, y: cacheY, w: cacheW, h: cacheH, pixelScale, features: rocketWorldFeatures, boundaries: rocketBoundaryLines, overlay: rocketCountryOverlayEnabled, boundaryStep };
+    drawRocketStaticMap(cacheCtx, { width: cacheW, height: cacheH }, cacheX, cacheY, detailMode);
+    rocketMapCache = { canvas, x: cacheX, y: cacheY, w: cacheW, h: cacheH, pixelScale, detailMode, features: rocketWorldFeatures, boundaries: rocketBoundaryLines, overlay: rocketCountryOverlayEnabled, boundaryStep };
+    rocketState.mapCacheDirty = false;
   }
-  ctx.drawImage(rocketMapCache.canvas, cacheX - camX, cacheY - camY, rocketMapCache.w, rocketMapCache.h);
+  ctx.drawImage(rocketMapCache.canvas, rocketMapCache.x - camX, rocketMapCache.y - camY, rocketMapCache.w, rocketMapCache.h);
   ctx.save();
   ctx.translate(-camX, -camY);
   const reveal = ctx.createRadialGradient(rocketState.ship.x, rocketState.ship.y, 120, rocketState.ship.x, rocketState.ship.y, 1000);
@@ -3621,7 +3670,25 @@ function drawRocketMap(ctx, rect, camX, camY) {
   ctx.restore();
 }
 
+function rocketMapCacheCovers(cache, camX, camY, rect) {
+  if (!cache) return false;
+  const margin = isRocketFastTakeoffMap() ? 16 : 96;
+  return cache.x <= camX - margin
+    && cache.y <= camY - margin
+    && cache.x + cache.w >= camX + rect.width + margin
+    && cache.y + cache.h >= camY + rect.height + margin;
+}
+
+function isRocketFastTakeoffMap() {
+  return Boolean(rocketState?.active && rocketState.phase === "takeoff");
+}
+
+function getRocketMapDetailMode() {
+  return isRocketFastTakeoffMap() ? "takeoff-fast" : "full";
+}
+
 function getRocketStaticCacheSnap() {
+  if (isRocketFastTakeoffMap()) return ROCKET_STATIC_CACHE_SNAP;
   return (rocketState?.cameraZoom || 1) >= 1.18 ? 512 : ROCKET_STATIC_CACHE_SNAP;
 }
 
@@ -3629,15 +3696,16 @@ function getRocketMapCachePixelScale() {
   const zoom = rocketState?.cameraZoom || 1;
   if (zoom < 1.18) return 1;
   const memory = Number(navigator.deviceMemory) || 4;
+  if (isRocketFastTakeoffMap()) return memory <= 2 ? 1 : 1.25;
   if (memory <= 2) return 1.25;
   if (memory <= 4) return 1.5;
   return 2;
 }
 
-function drawRocketStaticMap(ctx, rect, camX, camY) {
+function drawRocketStaticMap(ctx, rect, camX, camY, detailMode = "full") {
   drawRocketSatelliteBase(ctx, rect, camX, camY);
   drawRocketImageryDetailTiles(ctx, rect, camX, camY);
-  drawRocketTerrainDetailTiles(ctx, rect, camX, camY);
+  if (detailMode !== "takeoff-fast") drawRocketTerrainDetailTiles(ctx, rect, camX, camY);
   ctx.save();
   ctx.translate(-camX, -camY);
 
@@ -4962,7 +5030,7 @@ function drawRocketShip(ctx, x, y, angle) {
   ctx.fill();
   ctx.restore();
 
-  ctx.fillStyle = speed > 105 ? "rgba(34,217,242,.2)" : "rgba(255,211,61,.18)";
+  ctx.fillStyle = speed > ROCKET_TAKEOFF_SPEED ? "rgba(34,217,242,.2)" : "rgba(255,211,61,.18)";
   ctx.beginPath();
   ctx.moveTo(-96, 0);
   ctx.lineTo(-136, -12);
@@ -4991,7 +5059,7 @@ function drawRocketDashboard(ctx, rect) {
   ctx.font = "800 13px system-ui";
   ctx.textAlign = "left";
   ctx.fillText(rocketState.phase.toUpperCase(), x + 292, y + 56);
-  const takeoffReady = speed >= 105 && rocketState.ship.altitude < 120;
+  const takeoffReady = speed >= ROCKET_TAKEOFF_SPEED && rocketState.ship.altitude < ROCKET_CRUISE_ALTITUDE;
   if (rocketState.phase === "briefing") {
     ctx.fillStyle = "#d9e6f3";
     ctx.fillText("READY", x + 292, y + 76);
@@ -5428,9 +5496,15 @@ function showRocketRoundSummary(log) {
   if (els.techTreeOverlay) els.techTreeOverlay.hidden = true;
   stopPropellerSound();
   const depotCountries = getRocketLogDepotCountries(log);
+  const allDepotCountries = getRocketLogAllDepotCountries(log);
   const landings = log.landings || [];
   els.rocketResultTitle.textContent = `Round ${log.round} Failed`;
-  els.rocketResultSummary.textContent = `${log.reason === "out of fuel" ? "Fuel exhausted" : "Time expired"} before reaching ${log.target}. TP earned this round: ${log.techEarned || 0}. Fuel depots: ${landings.length}${depotCountries.length ? ` (${depotCountries.join(", ")})` : ""}.`;
+  els.rocketResultSummary.innerHTML = `
+    <span class="rocket-summary-target">${rocketLogFlagHtml(log)}<b>${escapeHtml(log.target || "Unknown")}</b></span>
+    ${escapeHtml(log.reason === "out of fuel" ? "Fuel exhausted" : "Time expired")} before destination.
+    TP earned this round: ${log.techEarned || 0}.
+    Fuel depots visited: ${landings.length}${allDepotCountries.length ? ` / ${allDepotCountries.length}` : ""}${depotCountries.length ? ` (${escapeHtml(depotCountries.join(", "))})` : ""}.
+  `;
   if (els.rocketResultRestart) {
     const isFinal = (rocketState.roundLogs || []).length >= rocketState.desiredRounds;
     els.rocketResultRestart.textContent = isFinal ? "View Final Run" : "Next Round";
@@ -5462,27 +5536,40 @@ function renderRocketResultDetails(logOverride = null) {
 }
 
 function getRocketLogDepotCountries(log) {
-  return [...new Set((log?.landings || []).map((landing) => landing.country).filter(Boolean))];
+  if (log?.visitedDepotCountries?.length) return [...log.visitedDepotCountries];
+  return getRocketDepotCountryList(log?.landings || []);
+}
+
+function getRocketLogAllDepotCountries(log) {
+  if (log?.depotCountries?.length) return [...log.depotCountries];
+  return getRocketLogDepotCountries(log);
+}
+
+function rocketLogFlagHtml(log = {}) {
+  const flag = log.flag || getRocketTargetFlagUrl({ name: log.target });
+  return flag ? `<img src="${escapeHtml(flag)}" alt="${escapeHtml(log.target || "target")} flag">` : "";
 }
 
 function formatRocketLandingLine(landing = {}) {
   const speed = Number(landing.speed || 0);
   const altitude = Number(landing.altitude || 0);
   const label = landing.success ? "refueled" : "missed";
-  return `${label} ${landing.depot || "depot"}${landing.country ? `, ${landing.country}` : ""}: ${landing.km || 0} km, ${speed.toFixed(0)} m/s, ${altitude.toFixed(0)} m`;
+  const points = Number.isFinite(Number(landing.points)) ? `, +${formatScore(Number(landing.points))} pts` : "";
+  return `${label} ${landing.depot || "depot"}${landing.country ? `, ${landing.country}` : ""}: ${landing.km || 0} km, ${speed.toFixed(0)} m/s, ${altitude.toFixed(0)} m${points}`;
 }
 
 function rocketLogDetailHtml(log = {}) {
   const status = log.success ? "reached" : "missed";
   const landings = log.landings || [];
   const depotCountries = getRocketLogDepotCountries(log);
+  const allDepotCountries = getRocketLogAllDepotCountries(log);
   const landingText = landings.length
     ? landings.map(formatRocketLandingLine).join(" | ")
     : "no fuel depot checkpoint";
   const scoreText = (log.scoreEvents || []).length
     ? log.scoreEvents.map((event) => `${event.type}: +${formatScore(event.points)} (${event.detail})`).join(" | ")
     : "no score events recorded";
-  const flag = log.flag ? `<img src="${escapeHtml(log.flag)}" alt="${escapeHtml(log.target || "target")} flag">` : "";
+  const flag = rocketLogFlagHtml(log);
   const target = escapeHtml(log.target || "Unknown");
   const reason = escapeHtml(log.reason || "route");
   const fuel = Number(log.fuel || 0);
@@ -5491,7 +5578,8 @@ function rocketLogDetailHtml(log = {}) {
     <article class="rocket-result-row ${status}">
       <strong>Round ${log.round || "?"}: ${flag}${target}</strong>
       <span class="${log.success ? "round-good" : "round-bad"}">${status.toUpperCase()} - ${reason} - ${log.success ? `reached ${target}` : `missed ${target}`} - ${Math.max(0, time).toFixed(1)}s left - fuel ${fuel.toFixed(0)}% - TP +${log.techEarned || 0}</span>
-      <small class="${landings.length ? "round-good" : "round-bad"}">Fuel depots: ${landings.length}${depotCountries.length ? ` (${escapeHtml(depotCountries.join(", "))})` : ""}</small>
+      <small class="${landings.length ? "round-good" : "round-bad"}">Fuel depots visited: ${landings.length}${allDepotCountries.length ? ` / ${allDepotCountries.length}` : ""}${depotCountries.length ? ` (${escapeHtml(depotCountries.join(", "))})` : ""}</small>
+      ${allDepotCountries.length ? `<small>Round depot countries: ${escapeHtml(allDepotCountries.join(", "))}</small>` : ""}
       <small class="${(log.scoreEvents || []).length ? "round-good" : "round-bad"}">${escapeHtml(scoreText)}</small>
       <small>${escapeHtml(landingText)}</small>
     </article>
@@ -5577,12 +5665,15 @@ function renderRocketRouteMeta(meta, logs, selected) {
   if (!log) return;
   const events = (log.scoreEvents || []).map((event) => `${event.type} +${formatScore(event.points)}`).join(" | ") || "No score event";
   const landings = (log.landings || []).length
-    ? log.landings.map((landing) => `${landing.depot}: ${landing.km || 0} km, ${Number(landing.speed || 0).toFixed(0)} m/s`).join(" | ")
+    ? log.landings.map(formatRocketLandingLine).join(" | ")
     : "No depot stop";
+  const allDepotCountries = getRocketLogAllDepotCountries(log);
+  const visitedDepotCountries = getRocketLogDepotCountries(log);
   meta.innerHTML = `
-    <strong>Round ${log.round}: ${escapeHtml(log.target || "Unknown")}</strong>
+    <strong>Round ${log.round}: ${rocketLogFlagHtml(log)}${escapeHtml(log.target || "Unknown")}</strong>
     <span class="${log.success ? "round-good" : "round-bad"}">${log.success ? "Reached" : "Missed"} | ${escapeHtml(log.reason || "route")} | ${Math.max(0, log.time || 0).toFixed(1)}s left</span>
     <span>Fuel ${Number(log.fuel || 0).toFixed(0)}% | Score ${formatScore(log.score || 0)}</span>
+    <span class="${visitedDepotCountries.length ? "round-good" : "round-bad"}">Fuel depots visited ${visitedDepotCountries.length}${allDepotCountries.length ? ` / ${allDepotCountries.length}` : ""}${visitedDepotCountries.length ? `: ${escapeHtml(visitedDepotCountries.join(", "))}` : ""}</span>
     <span class="${(log.scoreEvents || []).length ? "round-good" : "round-bad"}">${escapeHtml(events)}</span>
     <span class="${(log.landings || []).length ? "round-good" : "round-bad"}">${escapeHtml(landings)}</span>
   `;

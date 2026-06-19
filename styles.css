@@ -1287,6 +1287,23 @@ body:has(#rocketView.active) .topbar {
   line-height: 1.5;
 }
 
+.rocket-summary-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-right: 0.35rem;
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.rocket-summary-target img,
+.rocket-route-meta img {
+  width: 2rem;
+  height: 1.25rem;
+  object-fit: cover;
+  border-radius: 0.2rem;
+}
+
 .rocket-result-details {
   display: grid;
   gap: 0.55rem;
@@ -1479,6 +1496,9 @@ body:has(#rocketView.active) .topbar {
 }
 
 .rocket-route-meta strong {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   color: #ffffff;
 }
 
