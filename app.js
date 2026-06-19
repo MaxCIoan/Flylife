@@ -216,6 +216,8 @@ const ROCKET_ISLAND_RELIEF_MIN_ZOOM = 1.1;
 const ROCKET_TAKEOFF_SPEED = 65;
 const ROCKET_CRUISE_ALTITUDE = 70;
 const ROCKET_RUNWAY_LOCK_ALTITUDE = 12;
+const ROCKET_ROUTE_TRAIL_MAX = 7200;
+const ROCKET_LOG_TRACE_MAX = 900;
 const ROCKET_HUD_INTERVAL_MS = 120;
 const ROCKET_NAV_CHECK_INTERVAL = 0.14;
 const ROCKET_TINY_COUNTRY_DOT_MAX = 30;
@@ -1451,7 +1453,7 @@ function saveRocketSessionResult(title, summary) {
     planeClass,
     logs: rocketState.roundLogs.map((log) => ({
       ...log,
-      trace: (log.trace || []).slice(-260),
+      trace: (log.trace || []).slice(0, ROCKET_LOG_TRACE_MAX),
       landings: (log.landings || []).slice(0, 8)
     }))
   };
@@ -2891,11 +2893,8 @@ function showRocketMissionPopup({ title, kind, points, speed, altitude, descentD
 function recordRocketRound(success, reason = "route") {
   if (!rocketState || rocketState.roundLogged) return;
   rocketState.roundLogged = true;
-  const trace = (rocketState.routeTrail || [])
-    .filter((_, index) => index % 3 === 0)
-    .slice(-280)
-    .map((point) => ({ x: point.x, y: point.y, wrap: Boolean(point.wrap) }));
   const landings = [...(rocketState.landingLogs || [])];
+  const trace = buildRocketRoundTrace(rocketState.routeTrail || [], landings);
   const visitedDepotCountries = getRocketDepotCountryList(landings);
   const depotCountries = rocketState.roundDepotCountries?.length
     ? [...rocketState.roundDepotCountries]
@@ -2918,6 +2917,97 @@ function recordRocketRound(success, reason = "route") {
     visitedDepotCountries,
     landings
   });
+}
+
+function buildRocketRoundTrace(routeTrail = [], landings = []) {
+  const fallback = [{ x: rocketState?.ship?.x || 0, y: rocketState?.ship?.y || 0 }];
+  let source = (routeTrail.length ? routeTrail : fallback)
+    .filter((point) => Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y)));
+  if (!source.length) source = fallback;
+  const maxImportant = 2 + (landings || []).length * 2;
+  const maxBase = Math.max(80, ROCKET_LOG_TRACE_MAX - maxImportant);
+  const stride = Math.max(1, Math.ceil(source.length / maxBase));
+  const points = [];
+  source.forEach((point, index) => {
+    if (index === 0 || index === source.length - 1 || index % stride === 0 || point.kind) {
+      points.push(normalizeRocketTracePoint({ ...point, order: index }));
+    }
+  });
+  landings.forEach((landing, landingIndex) => {
+    const landingOrder = findNearestRocketTraceIndex(source, landing.x, landing.y);
+    if (Number.isFinite(Number(landing.x)) && Number.isFinite(Number(landing.y))) {
+      points.push(normalizeRocketTracePoint({
+        x: landing.x,
+        y: landing.y,
+        kind: "depot",
+        order: landingOrder + 0.05 + landingIndex * 0.001
+      }));
+    }
+    if (Number.isFinite(Number(landing.depotX)) && Number.isFinite(Number(landing.depotY))) {
+      points.push(normalizeRocketTracePoint({
+        x: landing.depotX,
+        y: landing.depotY,
+        kind: "depot-center",
+        order: landingOrder + 0.06 + landingIndex * 0.001
+      }));
+    }
+  });
+  return simplifyRocketTrace(points)
+    .slice(0, ROCKET_LOG_TRACE_MAX)
+    .map(({ x, y, wrap, kind }) => ({
+      x,
+      y,
+      wrap: Boolean(wrap),
+      ...(kind ? { kind } : {})
+    }));
+}
+
+function normalizeRocketTracePoint(point = {}) {
+  const x = Number(point.x);
+  const y = Number(point.y);
+  const order = Number(point.order);
+  return {
+    x: Math.max(0, Math.min(ROCKET_MAP_W, Math.round(Number.isFinite(x) ? x : 0))),
+    y: Math.max(0, Math.min(ROCKET_MAP_H, Math.round(Number.isFinite(y) ? y : 0))),
+    wrap: Boolean(point.wrap),
+    kind: point.kind || undefined,
+    ...(Number.isFinite(order) ? { order } : {})
+  };
+}
+
+function findNearestRocketTraceIndex(source = [], x, y) {
+  const targetX = Number(x);
+  const targetY = Number(y);
+  if (!source.length || !Number.isFinite(targetX) || !Number.isFinite(targetY)) {
+    return Math.max(0, source.length - 1);
+  }
+  let bestIndex = 0;
+  let bestDist = Infinity;
+  source.forEach((point, index) => {
+    const dx = Number(point.x) - targetX;
+    const dy = Number(point.y) - targetY;
+    const dist = dx * dx + dy * dy;
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestIndex = index;
+    }
+  });
+  return bestIndex;
+}
+
+function simplifyRocketTrace(points = []) {
+  const sorted = points
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+    .map((point, sequence) => ({ ...point, sequence }))
+    .sort((a, b) => ((a.order ?? a.sequence) - (b.order ?? b.sequence)) || (a.sequence - b.sequence));
+  const result = [];
+  sorted.forEach((point) => {
+    const last = result[result.length - 1];
+    if (last && Math.hypot(point.x - last.x, point.y - last.y) < 6 && !point.kind) return;
+    const { sequence, ...cleanPoint } = point;
+    result.push(cleanPoint);
+  });
+  return result;
 }
 
 function nextRocketRound(success) {
@@ -3199,7 +3289,7 @@ function updateRocket(dt) {
   if (rocketState.ship.y > rocketState.mapH) { rocketState.ship.y = rocketState.mapH; rocketState.ship.vy = Math.min(0, rocketState.ship.vy); hitMapEdge = true; }
   if (hitMapEdge) {
     rocketState.trail = [];
-    rocketState.routeTrail.push({ x: rocketState.ship.x, y: rocketState.ship.y, angle: rocketState.ship.angle });
+    pushRocketRoutePoint("edge");
     els.rocketMessage.textContent = "Map edge reached. Turn back toward the world map.";
   }
   if (updateRocketObjectiveFlyThrough()) return;
@@ -3349,7 +3439,16 @@ function completeRocketDepotLanding(depot, dist, landingSnapshot = {}) {
   rocketState.fuel = Math.min(100, rocketState.fuel + fuelEarned + rocketState.tech.fuel * 4);
   const researchEarned = landing.perfect ? 10 : landing.good ? 5 : 3;
   awardRocketTechPoints(researchEarned);
-  rocketState.landingLogs.push({ ...landing, success: true, country: depot.country });
+  pushRocketRoutePoint("depot");
+  rocketState.landingLogs.push({
+    ...landing,
+    success: true,
+    country: depot.country,
+    x: rocketState.ship.x,
+    y: rocketState.ship.y,
+    depotX: depot.x,
+    depotY: depot.y
+  });
   rocketState.scoreEvents.push({
     round: rocketState.round,
     type: `Fuel depot${depot.country ? `: ${depot.country}` : ""}`,
@@ -3439,6 +3538,7 @@ function completeRocketTargetLanding(dist, landingSnapshot = {}) {
     "success"
   );
   playLandingSound(true, true);
+  pushRocketRoutePoint("target");
   rocketState.active = false;
   rocketState.pendingNextRound = { success: true, delay: 1.55 };
 }
@@ -3519,8 +3619,7 @@ function updateRocketTrail(dt, rect) {
   const turned = last ? Math.abs(ship.angle - last.angle) : Infinity;
   if (!last || moved > 18 || turned > 0.18) {
     rocketState.trail.push({ x: ship.x, y: ship.y, angle: ship.angle, life: 5.5, maxLife: 5.5 });
-    rocketState.routeTrail.push({ x: ship.x, y: ship.y, angle: ship.angle });
-    rocketState.routeTrail = rocketState.routeTrail.slice(-900);
+    pushRocketRoutePoint();
   }
   const camX = ship.x - rect.width / 2;
   const camY = ship.y - rect.height / 2;
@@ -3531,6 +3630,21 @@ function updateRocketTrail(dt, rect) {
     point.life = visible ? point.maxLife : point.life - dt * 0.7;
   });
   rocketState.trail = rocketState.trail.filter((point) => point.life > 0).slice(-360);
+}
+
+function pushRocketRoutePoint(kind = "") {
+  if (!rocketState?.ship) return;
+  if (!rocketState.routeTrail) rocketState.routeTrail = [];
+  const point = {
+    x: rocketState.ship.x,
+    y: rocketState.ship.y,
+    angle: rocketState.ship.angle
+  };
+  if (kind) point.kind = kind;
+  rocketState.routeTrail.push(point);
+  if (rocketState.routeTrail.length > ROCKET_ROUTE_TRAIL_MAX) {
+    rocketState.routeTrail.splice(0, rocketState.routeTrail.length - ROCKET_ROUTE_TRAIL_MAX);
+  }
 }
 
 function resizeRocketCanvas() {
@@ -5800,11 +5914,43 @@ function drawRocketLogMap(canvas, logs, mapW, mapH, selected = "all") {
       ctx.font = "800 10px system-ui";
       ctx.fillText(String(log.round), tx + 7, ty - 5);
     }
+    if (selected === "all" || isSelected) {
+      drawRocketLogDepotMarkers(ctx, log, scaleX, scaleY, dim);
+    }
     ctx.globalAlpha = 1;
   });
   ctx.strokeStyle = "rgba(255,255,255,.24)";
   ctx.lineWidth = 2;
   ctx.strokeRect(1, 1, w - 2, h - 2);
+}
+
+function drawRocketLogDepotMarkers(ctx, log, scaleX, scaleY, dim = false) {
+  const landings = (log?.landings || [])
+    .map((landing, index) => {
+      const x = Number.isFinite(Number(landing.x)) ? Number(landing.x) : Number(landing.depotX);
+      const y = Number.isFinite(Number(landing.y)) ? Number(landing.y) : Number(landing.depotY);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+      return { x: x * scaleX, y: y * scaleY, index };
+    })
+    .filter(Boolean);
+  if (!landings.length) return;
+  ctx.save();
+  ctx.globalAlpha = dim ? 0.2 : 0.95;
+  ctx.font = "800 9px system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  landings.forEach((landing) => {
+    ctx.fillStyle = "rgba(5, 18, 26, .82)";
+    ctx.strokeStyle = "#45f875";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(landing.x, landing.y, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#dfffea";
+    ctx.fillText(`D${landing.index + 1}`, landing.x, landing.y - 11);
+  });
+  ctx.restore();
 }
 
 function buyRocketTech(kind) {
