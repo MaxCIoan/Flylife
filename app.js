@@ -3193,19 +3193,41 @@ function updateRocket(dt) {
   const noseDecel = Boolean(control.decelerating);
   const decelStrength = noseDecel ? Math.max(0.1, Math.min(1.4, control.decelStrength || 0.35)) : 0;
   const parkingBrake = rocketState.parked || rocketState.parkingHold > 0;
+  if (noseDecel) {
+    rocketState.controlAirbrakeHold = Math.min(1.8, (rocketState.controlAirbrakeHold || 0) + dt * (0.55 + decelStrength * 0.9));
+  } else {
+    rocketState.controlAirbrakeHold = Math.max(0, (rocketState.controlAirbrakeHold || 0) - dt * (0.28 + speedLevel * 0.04));
+  }
+  const airbrakeHold = rocketState.controlAirbrakeHold || 0;
   const manualPull = control.manual ? Math.min(1, Math.max(0, control.throttleDistance || 0) / Math.max(1, ROCKET_CONTROL_RADIUS - ROCKET_NOSE_DECEL_RADIUS)) : 0;
-  const intent = parkingBrake ? 0 : spaceBrake ? 0.16 : noseDecel ? Math.max(0.14, 0.38 - decelStrength * 0.16) : control.manual ? Math.max(0.46, Math.min(0.94, 0.52 + manualPull * 0.42)) : 0.7;
-  rocketState.ship.throttle += (intent - rocketState.ship.throttle) * Math.min(1, dt * (parkingBrake || spaceBrake || noseDecel ? 2.8 : 3.5));
+  const spoolTarget = parkingBrake ? 0 : spaceBrake ? 0.08 : noseDecel ? 0 : control.manual ? manualPull : 0.48;
+  const currentSpool = Number.isFinite(rocketState.engineSpool) ? rocketState.engineSpool : 0.35;
+  const spoolRate = spoolTarget > currentSpool ? 0.45 + speedLevel * 0.08 : 3.2;
+  rocketState.engineSpool = currentSpool + (spoolTarget - currentSpool) * Math.min(1, dt * spoolRate);
+  const intent = parkingBrake ? 0 : spaceBrake ? 0.12 : noseDecel ? Math.max(0.06, 0.22 - decelStrength * 0.1) : control.manual ? Math.max(0.32, Math.min(0.94, 0.36 + rocketState.engineSpool * 0.58)) : 0.62 + rocketState.engineSpool * 0.16;
+  rocketState.ship.throttle += (intent - rocketState.ship.throttle) * Math.min(1, dt * (parkingBrake || spaceBrake || noseDecel ? 3.4 : 2.2 + speedLevel * 0.12));
   const thrust = 580 + speedLevel * 118 + turnLevel * 22;
   rocketState.ship.vx += Math.cos(rocketState.ship.angle) * thrust * rocketState.ship.throttle * dt;
   rocketState.ship.vy += Math.sin(rocketState.ship.angle) * thrust * rocketState.ship.throttle * dt;
   const preDragSpeed = Math.hypot(rocketState.ship.vx, rocketState.ship.vy);
   const speedDrag = Math.max(0, preDragSpeed - 420) / 1900;
-  const brakeDrag = parkingBrake ? 3.6 + speedLevel * 0.16 : spaceBrake ? 0.72 : noseDecel ? 0.16 + decelStrength * 1.05 : 0;
+  const brakeDrag = parkingBrake ? 3.6 + speedLevel * 0.16 : spaceBrake ? 0.72 : noseDecel ? 0.18 + decelStrength * 0.7 + airbrakeHold * 0.46 : 0;
   const dragFactor = Math.exp(-(0.36 + speedDrag + brakeDrag) * dt);
   rocketState.ship.vx *= dragFactor;
   rocketState.ship.vy *= dragFactor;
   let currentSpeed = Math.hypot(rocketState.ship.vx, rocketState.ship.vy);
+  if ((noseDecel || airbrakeHold > 0.03) && currentSpeed > 0.5) {
+    const airbrakeDecel = noseDecel
+      ? 30 + decelStrength * 58 + airbrakeHold * 32
+      : airbrakeHold * 16;
+    const minAirSpeed = onGround ? 0 : 24;
+    const nextSpeed = Math.max(minAirSpeed, currentSpeed - airbrakeDecel * dt);
+    if (nextSpeed < currentSpeed) {
+      rocketState.ship.vx = rocketState.ship.vx / currentSpeed * nextSpeed;
+      rocketState.ship.vy = rocketState.ship.vy / currentSpeed * nextSpeed;
+      currentSpeed = nextSpeed;
+    }
+  }
   const maxSpeed = 470 + speedLevel * 92 + turnLevel * 14 + rocketState.difficulty * 18;
   if (currentSpeed > maxSpeed) {
     rocketState.ship.vx = rocketState.ship.vx / currentSpeed * maxSpeed;
@@ -3238,7 +3260,7 @@ function updateRocket(dt) {
   }
   const liftSpeed = ROCKET_TAKEOFF_SPEED;
   const climbIntent = control.steering ? Math.max(-0.35, Math.min(1, -dy / 220)) : 0;
-  updateRocketManeuverCue(control, { spaceBrake, noseDecel, decelStrength, turn, climbIntent });
+  updateRocketManeuverCue(control, { spaceBrake, noseDecel, decelStrength, airbrakeHold, turn, climbIntent });
   const verticalUpgrade = 1 + turnLevel * 0.1 + speedLevel * 0.025;
   if (currentSpeed > liftSpeed && rocketState.ship.throttle > 0.45) {
     rocketState.ship.altitude += (currentSpeed - liftSpeed) * (0.21 + climbIntent * 0.46) * verticalUpgrade * dt;
@@ -3292,14 +3314,17 @@ function updateRocket(dt) {
   }
 }
 
-function updateRocketManeuverCue(control, { spaceBrake, noseDecel, decelStrength, turn, climbIntent }) {
+function updateRocketManeuverCue(control, { spaceBrake, noseDecel, decelStrength, airbrakeHold, turn, climbIntent }) {
   let label = "AUTOPILOT";
   let color = "#8fd3ff";
   if (spaceBrake) {
     label = "AIRBRAKE";
     color = "#ff5d52";
   } else if (noseDecel) {
-    label = decelStrength > 0.65 ? "DECELERATING" : "SLOWING DOWN";
+    label = decelStrength + airbrakeHold * 0.35 > 0.75 ? "DECELERATING" : "SLOWING DOWN";
+    color = "#ff5d52";
+  } else if (airbrakeHold > 0.18) {
+    label = "AIRBRAKE BLEED";
     color = "#ff5d52";
   } else if (control.steering && climbIntent > 0.22) {
     label = "CLIMBING";
@@ -4446,7 +4471,7 @@ function drawRocketPointerTrace(ctx, rect) {
   }
   ctx.save();
   ctx.strokeStyle = cue.color;
-  ctx.lineWidth = Math.min(5, 3 + (rocketState.controlDecelStrength || 0) * 1.2);
+  ctx.lineWidth = Math.min(5.5, 3 + ((rocketState.controlDecelStrength || 0) + (rocketState.controlAirbrakeHold || 0) * 0.45) * 1.2);
   ctx.setLineDash([12, 9]);
   ctx.beginPath();
   ctx.moveTo(noseX, noseY);
@@ -6169,7 +6194,7 @@ els.rocketCanvas?.addEventListener("click", (event) => {
   rocketState.mouse.inside = true;
   rocketState.mouse.x = x;
   rocketState.mouse.y = y;
-  els.rocketMessage.textContent = "Manual steering engaged. Inner ring slows, outer ring accelerates; exit the ring for straight autopilot.";
+  els.rocketMessage.textContent = "Manual steering engaged. Inner ring airbrakes, outer ring spools acceleration; exit the ring for straight autopilot.";
   rocketFeedback("Manual control", "#45f875", "info");
 });
 document.querySelector("#authOpen")?.addEventListener("click", () => els.authDialog?.showModal());
