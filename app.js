@@ -203,8 +203,10 @@ const ROCKET_STATIC_CACHE_SNAP = 768;
 const ROCKET_IMAGERY_TILE_SIZE = 512;
 const ROCKET_IMAGERY_CACHE_MAX = 72;
 const ROCKET_IMAGERY_MAX_LOADS = 4;
-const ROCKET_ATLAS_TILE_VERSION = "20260620a";
-const ROCKET_FIXED_CAMERA_ZOOM = 1.35;
+const ROCKET_ATLAS_TILE_VERSION = "20260620b";
+const ROCKET_FIXED_CAMERA_ZOOM = 1.65;
+const ROCKET_NOSE_DECEL_RADIUS = 118;
+const ROCKET_STEER_ARM_RADIUS = 148;
 const ROCKET_TAKEOFF_SPEED = 65;
 const ROCKET_CRUISE_ALTITUDE = 70;
 const ROCKET_RUNWAY_LOCK_ALTITUDE = 12;
@@ -3166,7 +3168,7 @@ function updateRocket(dt) {
   const dx = control.dx;
   const dy = control.dy;
   const runwayLocked = rocketState.phase === "takeoff" && rocketState.ship.altitude < ROCKET_RUNWAY_LOCK_ALTITUDE;
-  const desired = runwayLocked ? rocketState.ship.angle : control.manual ? Math.atan2(dy, dx) : rocketState.ship.angle;
+  const desired = runwayLocked ? rocketState.ship.angle : control.steering ? Math.atan2(dy, dx) : rocketState.ship.angle;
   let turn = desired - rocketState.ship.angle;
   while (turn > Math.PI) turn -= Math.PI * 2;
   while (turn < -Math.PI) turn += Math.PI * 2;
@@ -3175,25 +3177,24 @@ function updateRocket(dt) {
   const turnRate = 3.15 + turnLevel * 0.62;
   if (runwayLocked) {
     rocketState.ship.bank += (0 - rocketState.ship.bank) * Math.min(1, dt * 8);
-  } else {
+  } else if (control.steering) {
     const maxTurnStep = turnRate * dt;
     rocketState.ship.angle += Math.max(-maxTurnStep, Math.min(maxTurnStep, turn));
     rocketState.ship.bank += (Math.max(-1, Math.min(1, turn * 2.4)) - rocketState.ship.bank) * Math.min(1, dt * 9);
+  } else {
+    rocketState.ship.bank += (0 - rocketState.ship.bank) * Math.min(1, dt * 7);
   }
   const onGround = rocketState.ship.altitude <= 8;
-  const headingX = Math.cos(rocketState.ship.angle);
-  const headingY = Math.sin(rocketState.ship.angle);
-  const pointerAlongHeading = control.manual ? dx * headingX + dy * headingY : 0;
   const spaceBrake = Boolean(rocketState.keys?.Space);
-  const noseDecel = control.manual && pointerAlongHeading >= 0 && control.distance < 56;
+  const noseDecel = Boolean(control.decelerating);
   const parkingBrake = rocketState.parked || rocketState.parkingHold > 0;
-  const manualPull = control.manual ? Math.max(0, pointerAlongHeading) / 360 : 0;
-  const intent = parkingBrake || spaceBrake || noseDecel ? 0 : control.manual ? Math.max(0.48, Math.min(1, 0.62 + manualPull * 0.38)) : 0.82;
+  const manualPull = control.manual ? Math.max(0, control.throttleDistance || 0) / 420 : 0;
+  const intent = parkingBrake || spaceBrake ? 0 : noseDecel ? 0.18 : control.manual ? Math.max(0.52, Math.min(1, 0.58 + manualPull * 0.42)) : 0.82;
   rocketState.ship.throttle += (intent - rocketState.ship.throttle) * Math.min(1, dt * (parkingBrake || spaceBrake || noseDecel ? 4.2 : 4.4));
   const thrust = 720 + speedLevel * 205 + turnLevel * 34;
   rocketState.ship.vx += Math.cos(rocketState.ship.angle) * thrust * rocketState.ship.throttle * dt;
   rocketState.ship.vy += Math.sin(rocketState.ship.angle) * thrust * rocketState.ship.throttle * dt;
-  const brake = parkingBrake ? 0.048 + speedLevel * 0.006 : spaceBrake ? 0.034 : noseDecel ? 0.018 : 0;
+  const brake = parkingBrake ? 0.048 + speedLevel * 0.006 : spaceBrake ? 0.034 : noseDecel ? 0.011 : 0;
   rocketState.ship.vx *= Math.max(0.86, 0.994 - brake);
   rocketState.ship.vy *= Math.max(0.86, 0.994 - brake);
   let currentSpeed = Math.hypot(rocketState.ship.vx, rocketState.ship.vy);
@@ -3223,7 +3224,7 @@ function updateRocket(dt) {
     rocketState.telemetry.peakTurn = Math.max(rocketState.telemetry.peakTurn || 0, Math.abs(turn) * turnRate);
   }
   const liftSpeed = ROCKET_TAKEOFF_SPEED;
-  const climbIntent = Math.max(-0.35, Math.min(1, -dy / 220));
+  const climbIntent = control.steering ? Math.max(-0.35, Math.min(1, -dy / 220)) : 0;
   const verticalUpgrade = 1 + turnLevel * 0.16 + speedLevel * 0.05;
   if (currentSpeed > liftSpeed && rocketState.ship.throttle > 0.45) {
     rocketState.ship.altitude += (currentSpeed - liftSpeed) * (0.38 + climbIntent * 0.75) * verticalUpgrade * dt;
@@ -3555,6 +3556,8 @@ function getRocketControlVector(rect, dt = 0.016) {
   const rawDx = rocketState.mouse.x - center.x;
   const rawDy = rocketState.mouse.y - center.y;
   const distance = Math.hypot(rawDx, rawDy);
+  const headingX = Math.cos(rocketState.ship.angle);
+  const headingY = Math.sin(rocketState.ship.angle);
   const inZone = Boolean(rocketState.mouse.inside);
   if (!rocketState.mouse.hasSmooth || !rocketState.mouse.inside) {
     rocketState.mouse.smoothX = rocketState.mouse.x;
@@ -3579,19 +3582,46 @@ function getRocketControlVector(rect, dt = 0.016) {
       dy: Math.sin(rocketState.ship.angle) * 180,
       manual: false,
       inZone,
-      distance
+      distance,
+      steering: false,
+      decelerating: false,
+      throttleDistance: 0
     };
   }
-  if (distance < 8) {
+  if (distance < ROCKET_NOSE_DECEL_RADIUS) {
     return {
-      dx: Math.cos(rocketState.ship.angle) * 180,
-      dy: Math.sin(rocketState.ship.angle) * 180,
+      dx: headingX * 180,
+      dy: headingY * 180,
       manual: true,
       inZone,
-      distance
+      distance,
+      steering: false,
+      decelerating: true,
+      throttleDistance: 0
     };
   }
-  return { dx: smoothDx, dy: smoothDy, manual: true, inZone, distance };
+  if (distance < ROCKET_STEER_ARM_RADIUS) {
+    return {
+      dx: headingX * 180,
+      dy: headingY * 180,
+      manual: true,
+      inZone,
+      distance,
+      steering: false,
+      decelerating: false,
+      throttleDistance: 0
+    };
+  }
+  return {
+    dx: smoothDx,
+    dy: smoothDy,
+    manual: true,
+    inZone,
+    distance,
+    steering: true,
+    decelerating: false,
+    throttleDistance: distance - ROCKET_STEER_ARM_RADIUS
+  };
 }
 
 function updateRocketTrail(dt, rect) {
@@ -3916,10 +3946,10 @@ function getRocketBoundaryPath(line) {
 function drawRocketSatelliteBase(ctx, rect, camX, camY) {
   ctx.fillStyle = "#071827";
   ctx.fillRect(0, 0, rect.width, rect.height);
-  drawRocketNaturalEarthTiles(ctx, rect, camX, camY);
+  drawRocketBlueMarbleTiles(ctx, rect, camX, camY);
 }
 
-function drawRocketNaturalEarthTiles(ctx, rect, camX, camY) {
+function drawRocketBlueMarbleTiles(ctx, rect, camX, camY) {
   const tileSize = ROCKET_IMAGERY_TILE_SIZE;
   const minTileX = Math.max(0, Math.floor(camX / tileSize));
   const maxTileX = Math.min(Math.ceil(rocketState.mapW / tileSize) - 1, Math.floor((camX + rect.width) / tileSize));
@@ -3997,7 +4027,7 @@ function startRocketImageryPendingLoads() {
 }
 
 function makeRocketImageryTileUrl(tx, ty) {
-  return `assets/natural-earth-tiles/ne2_${tx}_${ty}.jpg?v=${ROCKET_ATLAS_TILE_VERSION}`;
+  return `assets/blue-marble-tiles/bmng_${tx}_${ty}.jpg?v=${ROCKET_ATLAS_TILE_VERSION}`;
 }
 
 function trimRocketImageryTileCache() {
@@ -4294,8 +4324,7 @@ function drawRocketPointerTrace(ctx, rect) {
   const dx = mx - rect.width / 2;
   const dy = my - rect.height / 2;
   const distance = Math.hypot(dx, dy);
-  const along = dx * Math.cos(rocketState.ship.angle) + dy * Math.sin(rocketState.ship.angle);
-  const decelCue = along >= 0 && distance < 115;
+  const decelCue = distance < ROCKET_NOSE_DECEL_RADIUS;
   const brakeCue = Boolean(rocketState.keys?.Space);
   ctx.save();
   ctx.strokeStyle = brakeCue || decelCue ? "#ff6848" : color;
@@ -4567,6 +4596,19 @@ function drawRocketControlZone(ctx, x, y) {
   ctx.arc(x, y, 330, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
+  if (manual) {
+    ctx.strokeStyle = "rgba(255,104,72,.55)";
+    ctx.fillStyle = "rgba(255,104,72,.045)";
+    ctx.setLineDash([7, 10]);
+    ctx.beginPath();
+    ctx.arc(x, y, ROCKET_NOSE_DECEL_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(255,211,61,.5)";
+    ctx.beginPath();
+    ctx.arc(x, y, ROCKET_STEER_ARM_RADIUS, 0, Math.PI * 2);
+    ctx.stroke();
+  }
   ctx.setLineDash([]);
   ctx.textAlign = "center";
   ctx.font = "900 12px system-ui";
