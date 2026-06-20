@@ -201,10 +201,12 @@ let rocketImageryActiveLoads = 0;
 const rocketMiniMapImage = new Image();
 const ROCKET_STATIC_CACHE_SNAP = 768;
 const ROCKET_IMAGERY_TILE_SIZE = 512;
-const ROCKET_IMAGERY_CACHE_MAX = 72;
-const ROCKET_IMAGERY_MAX_LOADS = 4;
-const ROCKET_ATLAS_TILE_VERSION = "20260620b";
-const ROCKET_FIXED_CAMERA_ZOOM = 1.65;
+const ROCKET_IMAGERY_CACHE_MAX = 144;
+const ROCKET_IMAGERY_MAX_LOADS = 6;
+const ROCKET_ATLAS_TILE_VERSION = "20260620c";
+const ROCKET_FIXED_CAMERA_ZOOM = 1.85;
+const ROCKET_IMAGERY_PRELOAD_PAD = 2;
+const ROCKET_IMAGERY_AHEAD_STEPS = 8;
 const ROCKET_NOSE_DECEL_RADIUS = 118;
 const ROCKET_STEER_ARM_RADIUS = 148;
 const ROCKET_TAKEOFF_SPEED = 65;
@@ -3740,6 +3742,7 @@ function drawRocketSetupBackground(ctx, rect) {
 }
 
 function drawRocketMap(ctx, rect, camX, camY) {
+  queueRocketImageryPreload(rect, camX, camY);
   const snap = getRocketStaticCacheSnap();
   const pixelScale = getRocketMapCachePixelScale();
   const detailMode = getRocketMapDetailMode();
@@ -3807,8 +3810,11 @@ function getRocketStaticCacheSnap() {
 
 function getRocketMapCachePixelScale() {
   const memory = Number(navigator.deviceMemory) || 4;
-  if (isRocketFastTakeoffMap() || memory <= 4) return 1;
-  return 1.15;
+  const zoom = rocketState?.cameraZoom || 1;
+  if (isRocketFastTakeoffMap()) return Math.min(1.35, Math.max(1.12, zoom * 0.72));
+  if (memory <= 4) return Math.min(1.45, Math.max(1.12, zoom * 0.78));
+  if (memory <= 8) return Math.min(1.7, Math.max(1.22, zoom * 0.92));
+  return Math.min(1.95, Math.max(1.35, zoom));
 }
 
 function drawRocketStaticMap(ctx, rect, camX, camY, detailMode = "full") {
@@ -3979,14 +3985,68 @@ function drawRocketBlueMarbleTiles(ctx, rect, camX, camY) {
   drawRocketPolarEdge(ctx, rect, camY);
 }
 
-function getRocketImageryTile(tx, ty) {
+function queueRocketImageryPreload(rect, camX, camY) {
+  if (!rocketState?.ship) return;
+  rocketImageryTileCache.forEach((tile) => { tile.priority = 0; });
+  const tileSize = ROCKET_IMAGERY_TILE_SIZE;
+  const cols = Math.ceil(rocketState.mapW / tileSize);
+  const rows = Math.ceil(rocketState.mapH / tileSize);
+  const minTileX = Math.max(0, Math.floor(camX / tileSize));
+  const maxTileX = Math.min(cols - 1, Math.floor((camX + rect.width) / tileSize));
+  const minTileY = Math.max(0, Math.floor(camY / tileSize));
+  const maxTileY = Math.min(rows - 1, Math.floor((camY + rect.height) / tileSize));
+
+  for (let ty = minTileY; ty <= maxTileY; ty += 1) {
+    for (let tx = minTileX; tx <= maxTileX; tx += 1) {
+      getRocketImageryTile(tx, ty, 1200);
+    }
+  }
+
+  const speed = Math.hypot(rocketState.ship.vx || 0, rocketState.ship.vy || 0);
+  const headingLen = speed > 40 ? speed : 1;
+  const headingX = speed > 40 ? rocketState.ship.vx / headingLen : Math.cos(rocketState.ship.angle);
+  const headingY = speed > 40 ? rocketState.ship.vy / headingLen : Math.sin(rocketState.ship.angle);
+  const aheadSteps = Math.min(ROCKET_IMAGERY_AHEAD_STEPS, Math.max(3, Math.ceil(speed / 115)));
+  const laneHalf = speed > 560 ? 3 : 2;
+  for (let step = 1; step <= aheadSteps; step += 1) {
+    const aheadX = rocketState.ship.x + headingX * tileSize * step * 0.82;
+    const aheadY = rocketState.ship.y + headingY * tileSize * step * 0.82;
+    const centerTx = Math.floor(aheadX / tileSize);
+    const centerTy = Math.floor(aheadY / tileSize);
+    for (let oy = -laneHalf; oy <= laneHalf; oy += 1) {
+      for (let ox = -laneHalf; ox <= laneHalf; ox += 1) {
+        if (Math.abs(ox) + Math.abs(oy) > laneHalf) continue;
+        const tx = centerTx + ox;
+        const ty = centerTy + oy;
+        if (tx < 0 || tx >= cols || ty < 0 || ty >= rows) continue;
+        const offsetCost = Math.abs(ox) * 18 + Math.abs(oy) * 22;
+        getRocketImageryTile(tx, ty, 980 - step * 44 - offsetCost);
+      }
+    }
+  }
+
+  const pad = ROCKET_IMAGERY_PRELOAD_PAD + (speed > 620 ? 1 : 0);
+  for (let ty = Math.max(0, minTileY - pad); ty <= Math.min(rows - 1, maxTileY + pad); ty += 1) {
+    for (let tx = Math.max(0, minTileX - pad); tx <= Math.min(cols - 1, maxTileX + pad); tx += 1) {
+      const outsideX = tx < minTileX ? minTileX - tx : tx > maxTileX ? tx - maxTileX : 0;
+      const outsideY = ty < minTileY ? minTileY - ty : ty > maxTileY ? ty - maxTileY : 0;
+      const ring = Math.max(outsideX, outsideY);
+      if (!ring) continue;
+      getRocketImageryTile(tx, ty, 700 - ring * 70);
+    }
+  }
+  startRocketImageryPendingLoads();
+}
+
+function getRocketImageryTile(tx, ty, priority = 0) {
   const key = `${tx}:${ty}`;
   let tile = rocketImageryTileCache.get(key);
   if (!tile) {
-    tile = { tx, ty, status: "idle", image: null, used: 0, retryAt: 0 };
+    tile = { tx, ty, status: "idle", image: null, used: 0, priority: 0, retryAt: 0 };
     rocketImageryTileCache.set(key, tile);
   }
   tile.used = ++rocketImageryTileSerial;
+  tile.priority = Math.max(tile.priority || 0, priority);
   if ((tile.status === "idle" || (tile.status === "error" && performance.now() > tile.retryAt)) && rocketImageryActiveLoads < ROCKET_IMAGERY_MAX_LOADS) {
     startRocketImageryTileLoad(tile);
   }
@@ -4004,15 +4064,16 @@ function startRocketImageryTileLoad(tile) {
     rocketImageryActiveLoads = Math.max(0, rocketImageryActiveLoads - 1);
     tile.status = "loaded";
     tile.image = image;
+    tile.priority = 0;
     startRocketImageryPendingLoads();
-    invalidateRocketMapCache();
+    invalidateRocketMapCacheForTile(tile);
   };
   image.onerror = () => {
     rocketImageryActiveLoads = Math.max(0, rocketImageryActiveLoads - 1);
     tile.status = "error";
     tile.retryAt = performance.now() + 60000;
+    tile.priority = 0;
     startRocketImageryPendingLoads();
-    invalidateRocketMapCache();
   };
   image.src = makeRocketImageryTileUrl(tile.tx, tile.ty);
 }
@@ -4021,9 +4082,21 @@ function startRocketImageryPendingLoads() {
   if (rocketImageryActiveLoads >= ROCKET_IMAGERY_MAX_LOADS) return;
   [...rocketImageryTileCache.values()]
     .filter((tile) => tile.status === "idle" || (tile.status === "error" && performance.now() > tile.retryAt))
-    .sort((a, b) => b.used - a.used)
+    .sort((a, b) => (b.priority - a.priority) || (b.used - a.used))
     .slice(0, ROCKET_IMAGERY_MAX_LOADS - rocketImageryActiveLoads)
     .forEach(startRocketImageryTileLoad);
+}
+
+function invalidateRocketMapCacheForTile(tile) {
+  if (!rocketMapCache) return;
+  const tileSize = ROCKET_IMAGERY_TILE_SIZE;
+  const x = tile.tx * tileSize;
+  const y = tile.ty * tileSize;
+  const overlaps = x < rocketMapCache.x + rocketMapCache.w
+    && x + tileSize > rocketMapCache.x
+    && y < rocketMapCache.y + rocketMapCache.h
+    && y + tileSize > rocketMapCache.y;
+  if (overlaps) invalidateRocketMapCache();
 }
 
 function makeRocketImageryTileUrl(tx, ty) {
@@ -4034,7 +4107,7 @@ function trimRocketImageryTileCache() {
   if (rocketImageryTileCache.size <= ROCKET_IMAGERY_CACHE_MAX) return;
   [...rocketImageryTileCache.entries()]
     .filter(([, tile]) => tile.status !== "loading")
-    .sort((a, b) => a[1].used - b[1].used)
+    .sort((a, b) => (a[1].priority - b[1].priority) || (a[1].used - b[1].used))
     .slice(0, Math.max(0, rocketImageryTileCache.size - ROCKET_IMAGERY_CACHE_MAX))
     .forEach(([key]) => rocketImageryTileCache.delete(key));
 }
