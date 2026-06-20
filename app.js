@@ -4479,8 +4479,7 @@ function startRocketImageryTileLoad(tile) {
   rocketImageryActiveLoads += 1;
   const image = new Image();
   image.decoding = "async";
-  image.loading = "lazy";
-  if ("fetchPriority" in image) image.fetchPriority = tile.priority >= 1000 ? "high" : "low";
+  if ("fetchPriority" in image) image.fetchPriority = tile.priority >= 900 ? "high" : "auto";
   image.onload = () => {
     rocketImageryActiveLoads = Math.max(0, rocketImageryActiveLoads - 1);
     tile.status = "loaded";
@@ -4494,7 +4493,7 @@ function startRocketImageryTileLoad(tile) {
     rocketImageryActiveLoads = Math.max(0, rocketImageryActiveLoads - 1);
     tile.status = "error";
     tile.startedAt = 0;
-    tile.retryAt = performance.now() + Math.min(15000, 900 + (tile.attempts || 1) * 850);
+    tile.retryAt = performance.now() + Math.min(8000, 500 + (tile.attempts || 1) * 650);
     tile.priority = Math.max(tile.priority || 0, 1200);
     startRocketImageryPendingLoads();
     scheduleRocketTileMapRefresh();
