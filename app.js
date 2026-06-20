@@ -210,6 +210,7 @@ let rocketImageryTileSerial = 0;
 let rocketImageryActiveLoads = 0;
 let rocketImageryLastPreloadAt = 0;
 let rocketMapTileRefreshTimer = 0;
+let rocketImageryRetrySerial = 0;
 const rocketMiniMapImage = new Image();
 const ROCKET_STATIC_CACHE_SNAP = 768;
 const ROCKET_IMAGERY_TILE_SIZE = 512;
@@ -4306,19 +4307,26 @@ function drawRocketBlueMarbleTiles(ctx, rect, camX, camY) {
   const maxTileX = Math.min(Math.ceil(rocketState.mapW / tileSize) - 1, Math.floor((camX + rect.width) / tileSize));
   const minTileY = Math.max(0, Math.floor(camY / tileSize));
   const maxTileY = Math.min(Math.ceil(rocketState.mapH / tileSize) - 1, Math.floor((camY + rect.height) / tileSize));
+  let visibleTiles = 0;
+  let paintedTiles = 0;
+  let loadingTiles = 0;
+  let errorTiles = 0;
   ctx.save();
+  ctx.fillStyle = "#030914";
+  ctx.fillRect(0, 0, rect.width, rect.height);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  const base = getRocketBlueWorldMapBase(ROCKET_BLUE_MAP_W, ROCKET_BLUE_MAP_H, rocketState.mapW, rocketState.mapH);
-  const sx = camX / rocketState.mapW * base.width;
-  const sy = camY / rocketState.mapH * base.height;
-  const sw = rect.width / rocketState.mapW * base.width;
-  const sh = rect.height / rocketState.mapH * base.height;
-  ctx.drawImage(base, sx, sy, sw, sh, 0, 0, rect.width, rect.height);
   for (let ty = minTileY; ty <= maxTileY; ty += 1) {
     for (let tx = minTileX; tx <= maxTileX; tx += 1) {
+      visibleTiles += 1;
       const tile = getRocketImageryTile(tx, ty);
-      if (tile?.status !== "loaded" || !tile.image) continue;
+      if (tile?.status === "loaded" && tile.image) {
+        paintedTiles += 1;
+      } else {
+        if (tile?.status === "error") errorTiles += 1;
+        else loadingTiles += 1;
+        continue;
+      }
       const worldX = tx * tileSize;
       const worldY = ty * tileSize;
       const drawW = Math.min(tileSize, rocketState.mapW - worldX);
@@ -4327,11 +4335,50 @@ function drawRocketBlueMarbleTiles(ctx, rect, camX, camY) {
     }
   }
   ctx.restore();
+  rocketState.imageryStatus = { visibleTiles, paintedTiles, loadingTiles, errorTiles, activeLoads: rocketImageryActiveLoads };
+  if (paintedTiles < visibleTiles) {
+    drawRocketImageryLoading(ctx, rect, rocketState.imageryStatus);
+  }
   drawRocketPolarEdge(ctx, rect, camY);
+}
+
+function drawRocketImageryLoading(ctx, rect, status = {}) {
+  const loaded = Number(status.paintedTiles || 0);
+  const total = Math.max(1, Number(status.visibleTiles || 1));
+  const complete = loaded / total;
+  ctx.save();
+  ctx.fillStyle = loaded ? "rgba(3, 9, 20, 0.34)" : "rgba(3, 9, 20, 0.82)";
+  ctx.fillRect(0, 0, rect.width, rect.height);
+  const boxW = Math.min(360, Math.max(230, rect.width * 0.52));
+  const boxH = 96;
+  const x = (rect.width - boxW) / 2;
+  const y = Math.max(24, rect.height * 0.5 - boxH / 2);
+  ctx.fillStyle = "rgba(4, 13, 25, 0.9)";
+  ctx.strokeStyle = "rgba(125, 211, 252, 0.42)";
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, x, y, boxW, boxH, 10);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#f7fbff";
+  ctx.font = "900 15px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText("Satellite world imagery loading", x + boxW / 2, y + 28);
+  ctx.fillStyle = "#9fb6ca";
+  ctx.font = "800 11px system-ui";
+  const retryText = status.errorTiles ? ` | retrying ${status.errorTiles}` : "";
+  ctx.fillText(`${loaded}/${total} visible tiles ready${retryText}`, x + boxW / 2, y + 48);
+  ctx.fillStyle = "rgba(255,255,255,0.14)";
+  roundRect(ctx, x + 24, y + 66, boxW - 48, 10, 5);
+  ctx.fill();
+  ctx.fillStyle = "#45f875";
+  roundRect(ctx, x + 24, y + 66, Math.max(8, (boxW - 48) * complete), 10, 5);
+  ctx.fill();
+  ctx.restore();
 }
 
 function queueRocketImageryPreload(rect, camX, camY) {
   if (!rocketState?.ship) return;
+  rescueRocketImageryLoads();
   const now = performance.now();
   const speed = Math.hypot(rocketState.ship.vx || 0, rocketState.ship.vy || 0);
   const preloadInterval = isRocketFastTakeoffMap() ? 170 : speed > 650 ? 95 : 130;
@@ -4387,6 +4434,21 @@ function queueRocketImageryPreload(rect, camX, camY) {
   startRocketImageryPendingLoads();
 }
 
+function rescueRocketImageryLoads() {
+  const now = performance.now();
+  let changed = false;
+  rocketImageryTileCache.forEach((tile) => {
+    if (tile.status === "loading" && tile.startedAt && now - tile.startedAt > 18000) {
+      rocketImageryActiveLoads = Math.max(0, rocketImageryActiveLoads - 1);
+      tile.status = "error";
+      tile.retryAt = now + 900;
+      tile.priority = Math.max(tile.priority || 0, 1200);
+      changed = true;
+    }
+  });
+  if (changed) startRocketImageryPendingLoads();
+}
+
 function getRocketImageryTile(tx, ty, priority = 0) {
   const key = `${tx}:${ty}`;
   let tile = rocketImageryTileCache.get(key);
@@ -4412,6 +4474,8 @@ function getRocketImageryLoadLimit() {
 
 function startRocketImageryTileLoad(tile) {
   tile.status = "loading";
+  tile.startedAt = performance.now();
+  tile.attempts = (tile.attempts || 0) + 1;
   rocketImageryActiveLoads += 1;
   const image = new Image();
   image.decoding = "async";
@@ -4422,17 +4486,20 @@ function startRocketImageryTileLoad(tile) {
     tile.status = "loaded";
     tile.image = image;
     tile.priority = 0;
+    tile.startedAt = 0;
     startRocketImageryPendingLoads();
     invalidateRocketMapCacheForTile(tile);
   };
   image.onerror = () => {
     rocketImageryActiveLoads = Math.max(0, rocketImageryActiveLoads - 1);
     tile.status = "error";
-    tile.retryAt = performance.now() + 60000;
-    tile.priority = 0;
+    tile.startedAt = 0;
+    tile.retryAt = performance.now() + Math.min(15000, 900 + (tile.attempts || 1) * 850);
+    tile.priority = Math.max(tile.priority || 0, 1200);
     startRocketImageryPendingLoads();
+    scheduleRocketTileMapRefresh();
   };
-  image.src = makeRocketImageryTileUrl(tile.tx, tile.ty);
+  image.src = makeRocketImageryTileUrl(tile.tx, tile.ty, tile.attempts > 1 ? ++rocketImageryRetrySerial : 0);
 }
 
 function startRocketImageryPendingLoads() {
@@ -4466,8 +4533,9 @@ function scheduleRocketTileMapRefresh() {
   }, delay);
 }
 
-function makeRocketImageryTileUrl(tx, ty) {
-  return `assets/blue-marble-tiles/bmng_${tx}_${ty}.jpg?v=${ROCKET_ATLAS_TILE_VERSION}`;
+function makeRocketImageryTileUrl(tx, ty, retry = 0) {
+  const retryParam = retry ? `&retry=${retry}` : "";
+  return `assets/blue-marble-tiles/bmng_${tx}_${ty}.jpg?v=${ROCKET_ATLAS_TILE_VERSION}${retryParam}`;
 }
 
 function trimRocketImageryTileCache() {
