@@ -131,7 +131,7 @@
               <span>Round</span>
               <strong><span id="rocketRound">1</span> / <span id="rocketRoundGoal">3</span></strong>
             </div>
-            <p id="rocketMessage">Manual control only works near the plane. Click the plane to toggle control; outside the map it keeps flying straight.</p>
+            <p id="rocketMessage">Manual control works inside the ring. Inner ring decelerates, outer ring accelerates and steers; outside the ring it keeps flying straight.</p>
           </div>
         </aside>
         <div class="rocket-stage" id="rocketStage">
@@ -170,7 +170,7 @@
           <canvas id="rocketCanvas" width="1200" height="760" aria-label="Rocket world map"></canvas>
           <div class="rocket-intel-box" id="rocketDepotIntel" aria-live="polite">
             <span>Fuel depot countries</span>
-            <label class="rocket-overlay-toggle"><input id="rocketCountryOverlay" type="checkbox" checked> Country overlay</label>
+            <label class="rocket-overlay-toggle" hidden><input id="rocketCountryOverlay" type="checkbox"> Country overlay</label>
             <div id="rocketDepotCountries"></div>
           </div>
           <div class="rocket-result-overlay" id="rocketResultOverlay" hidden>
@@ -350,7 +350,7 @@
             <p>Fly the plane across the country map, manage fuel, and land in the assigned destination country or at a fuel depot. The final score is real math from the route events listed below.</p>
             <ul>
               <li>Press Begin Takeoff to start moving immediately. Build about 65 m/s, then climb above 70 m to enter cruise.</li>
-              <li>Manual steering works near the plane. Click the plane to release manual control; outside the control zone, autopilot holds a straight heading.</li>
+              <li>Manual steering works inside the ring. The inner half-area slows down, the outer ring accelerates and steers, and outside the ring autopilot holds a straight heading.</li>
               <li>Destination landing points use country-center distance, entry speed, entry altitude, and descent drop over the sampling second.</li>
               <li>After a destination succeeds, route-completion points are added: 1,200 base + timer bonus + difficulty bonus + fuel bonus.</li>
               <li>Fuel depots add fuel, points, and tech points based on the same landing quality inputs.</li>

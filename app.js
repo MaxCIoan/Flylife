@@ -203,12 +203,13 @@ const ROCKET_STATIC_CACHE_SNAP = 768;
 const ROCKET_IMAGERY_TILE_SIZE = 512;
 const ROCKET_IMAGERY_CACHE_MAX = 144;
 const ROCKET_IMAGERY_MAX_LOADS = 6;
-const ROCKET_ATLAS_TILE_VERSION = "20260620c";
+const ROCKET_ATLAS_TILE_VERSION = "20260620d";
 const ROCKET_FIXED_CAMERA_ZOOM = 1.85;
 const ROCKET_IMAGERY_PRELOAD_PAD = 2;
 const ROCKET_IMAGERY_AHEAD_STEPS = 8;
-const ROCKET_NOSE_DECEL_RADIUS = 118;
-const ROCKET_STEER_ARM_RADIUS = 148;
+const ROCKET_CONTROL_RADIUS = 230;
+const ROCKET_NOSE_DECEL_RADIUS = Math.round(ROCKET_CONTROL_RADIUS / Math.SQRT2);
+const ROCKET_STEER_ARM_RADIUS = ROCKET_NOSE_DECEL_RADIUS;
 const ROCKET_TAKEOFF_SPEED = 65;
 const ROCKET_CRUISE_ALTITUDE = 70;
 const ROCKET_RUNWAY_LOCK_ALTITUDE = 12;
@@ -219,7 +220,7 @@ const ROCKET_NAV_CHECK_INTERVAL = 0.14;
 const ROCKET_TINY_COUNTRY_DOT_MAX = 30;
 rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260617b";
 rocketMiniMapImage.addEventListener("load", () => { rocketMiniMapCache = null; });
-let rocketCountryOverlayEnabled = localStorage.getItem("flagHunterRocketCountryOverlay") !== "0";
+let rocketCountryOverlayEnabled = false;
 
 let officialFlyLeaders = [];
 let officialFlyLeadersLoaded = false;
@@ -3176,7 +3177,7 @@ function updateRocket(dt) {
   while (turn < -Math.PI) turn += Math.PI * 2;
   const turnLevel = rocketState.tech.turn || 0;
   const speedLevel = rocketState.tech.speed || 0;
-  const turnRate = 3.15 + turnLevel * 0.62;
+  const turnRate = 3.05 + turnLevel * 0.54;
   if (runwayLocked) {
     rocketState.ship.bank += (0 - rocketState.ship.bank) * Math.min(1, dt * 8);
   } else if (control.steering) {
@@ -3191,24 +3192,32 @@ function updateRocket(dt) {
   const noseDecel = Boolean(control.decelerating);
   const parkingBrake = rocketState.parked || rocketState.parkingHold > 0;
   const manualPull = control.manual ? Math.max(0, control.throttleDistance || 0) / 420 : 0;
-  const intent = parkingBrake || spaceBrake ? 0 : noseDecel ? 0.18 : control.manual ? Math.max(0.52, Math.min(1, 0.58 + manualPull * 0.42)) : 0.82;
-  rocketState.ship.throttle += (intent - rocketState.ship.throttle) * Math.min(1, dt * (parkingBrake || spaceBrake || noseDecel ? 4.2 : 4.4));
-  const thrust = 720 + speedLevel * 205 + turnLevel * 34;
+  const intent = parkingBrake ? 0 : spaceBrake ? 0.16 : noseDecel ? 0.24 : control.manual ? Math.max(0.46, Math.min(0.94, 0.52 + manualPull * 0.42)) : 0.7;
+  rocketState.ship.throttle += (intent - rocketState.ship.throttle) * Math.min(1, dt * (parkingBrake || spaceBrake || noseDecel ? 2.8 : 3.5));
+  const thrust = 580 + speedLevel * 118 + turnLevel * 22;
   rocketState.ship.vx += Math.cos(rocketState.ship.angle) * thrust * rocketState.ship.throttle * dt;
   rocketState.ship.vy += Math.sin(rocketState.ship.angle) * thrust * rocketState.ship.throttle * dt;
-  const brake = parkingBrake ? 0.048 + speedLevel * 0.006 : spaceBrake ? 0.034 : noseDecel ? 0.011 : 0;
-  rocketState.ship.vx *= Math.max(0.86, 0.994 - brake);
-  rocketState.ship.vy *= Math.max(0.86, 0.994 - brake);
+  const preDragSpeed = Math.hypot(rocketState.ship.vx, rocketState.ship.vy);
+  const speedDrag = Math.max(0, preDragSpeed - 420) / 1900;
+  const brakeDrag = parkingBrake ? 3.6 + speedLevel * 0.16 : spaceBrake ? 0.72 : noseDecel ? 0.36 : 0;
+  const dragFactor = Math.exp(-(0.36 + speedDrag + brakeDrag) * dt);
+  rocketState.ship.vx *= dragFactor;
+  rocketState.ship.vy *= dragFactor;
   let currentSpeed = Math.hypot(rocketState.ship.vx, rocketState.ship.vy);
-  if (spaceBrake && currentSpeed < 30 && currentSpeed > 0) {
-    rocketState.ship.vx = rocketState.ship.vx / currentSpeed * 30;
-    rocketState.ship.vy = rocketState.ship.vy / currentSpeed * 30;
-    currentSpeed = 30;
-  }
-  const maxSpeed = 520 + speedLevel * 145 + turnLevel * 22 + rocketState.difficulty * 24;
+  const maxSpeed = 470 + speedLevel * 92 + turnLevel * 14 + rocketState.difficulty * 18;
   if (currentSpeed > maxSpeed) {
     rocketState.ship.vx = rocketState.ship.vx / currentSpeed * maxSpeed;
     rocketState.ship.vy = rocketState.ship.vy / currentSpeed * maxSpeed;
+    currentSpeed = maxSpeed;
+  }
+  if (currentSpeed > 90) {
+    const forwardSpeed = rocketState.ship.vx * Math.cos(rocketState.ship.angle) + rocketState.ship.vy * Math.sin(rocketState.ship.angle);
+    const sideX = rocketState.ship.vx - Math.cos(rocketState.ship.angle) * forwardSpeed;
+    const sideY = rocketState.ship.vy - Math.sin(rocketState.ship.angle) * forwardSpeed;
+    const sideDamping = Math.exp(-(0.22 + turnLevel * 0.035) * dt);
+    rocketState.ship.vx = Math.cos(rocketState.ship.angle) * forwardSpeed + sideX * sideDamping;
+    rocketState.ship.vy = Math.sin(rocketState.ship.angle) * forwardSpeed + sideY * sideDamping;
+    currentSpeed = Math.hypot(rocketState.ship.vx, rocketState.ship.vy);
   }
   if (parkingBrake && onGround && currentSpeed < 7) {
     rocketState.ship.vx = 0;
@@ -3227,11 +3236,11 @@ function updateRocket(dt) {
   }
   const liftSpeed = ROCKET_TAKEOFF_SPEED;
   const climbIntent = control.steering ? Math.max(-0.35, Math.min(1, -dy / 220)) : 0;
-  const verticalUpgrade = 1 + turnLevel * 0.16 + speedLevel * 0.05;
+  const verticalUpgrade = 1 + turnLevel * 0.1 + speedLevel * 0.025;
   if (currentSpeed > liftSpeed && rocketState.ship.throttle > 0.45) {
-    rocketState.ship.altitude += (currentSpeed - liftSpeed) * (0.38 + climbIntent * 0.75) * verticalUpgrade * dt;
+    rocketState.ship.altitude += (currentSpeed - liftSpeed) * (0.21 + climbIntent * 0.46) * verticalUpgrade * dt;
   } else {
-    const descentRate = (18 + Math.max(0, liftSpeed - currentSpeed) * 0.28 + (1 - rocketState.ship.throttle) * 20) * verticalUpgrade;
+    const descentRate = (16 + Math.max(0, liftSpeed - currentSpeed) * 0.24 + (1 - rocketState.ship.throttle) * 17) * verticalUpgrade;
     rocketState.ship.altitude -= descentRate * dt;
   }
   rocketState.ship.altitude = Math.max(0, Math.min(6200, rocketState.ship.altitude));
@@ -3560,7 +3569,7 @@ function getRocketControlVector(rect, dt = 0.016) {
   const distance = Math.hypot(rawDx, rawDy);
   const headingX = Math.cos(rocketState.ship.angle);
   const headingY = Math.sin(rocketState.ship.angle);
-  const inZone = Boolean(rocketState.mouse.inside);
+  const inZone = Boolean(rocketState.mouse.inside && distance <= ROCKET_CONTROL_RADIUS);
   if (!rocketState.mouse.hasSmooth || !rocketState.mouse.inside) {
     rocketState.mouse.smoothX = rocketState.mouse.x;
     rocketState.mouse.smoothY = rocketState.mouse.y;
@@ -3965,6 +3974,7 @@ function drawRocketBlueMarbleTiles(ctx, rect, camX, camY) {
   ctx.save();
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
+  ctx.filter = "saturate(1.12) contrast(1.08) brightness(1.03)";
   for (let ty = minTileY; ty <= maxTileY; ty += 1) {
     for (let tx = minTileX; tx <= maxTileX; tx += 1) {
       const tile = getRocketImageryTile(tx, ty);
@@ -3977,6 +3987,7 @@ function drawRocketBlueMarbleTiles(ctx, rect, camX, camY) {
       painted = true;
     }
   }
+  ctx.filter = "none";
   ctx.restore();
   if (!painted) {
     ctx.fillStyle = "#061827";
@@ -4397,6 +4408,7 @@ function drawRocketPointerTrace(ctx, rect) {
   const dx = mx - rect.width / 2;
   const dy = my - rect.height / 2;
   const distance = Math.hypot(dx, dy);
+  if (distance > ROCKET_CONTROL_RADIUS) return;
   const decelCue = distance < ROCKET_NOSE_DECEL_RADIUS;
   const brakeCue = Boolean(rocketState.keys?.Space);
   ctx.save();
@@ -4412,7 +4424,7 @@ function drawRocketPointerTrace(ctx, rect) {
   ctx.textAlign = "center";
   if (brakeCue || decelCue) {
     ctx.fillStyle = "#ffb199";
-    ctx.fillText(brakeCue ? "SPACE AIRBRAKE: floor 30 m/s" : "DECEL: cursor close to nose", rect.width / 2, rect.height / 2 + 86);
+    ctx.fillText(brakeCue ? "SPACE AIRBRAKE" : "DECEL", rect.width / 2, rect.height / 2 + 86);
   }
   ctx.fillStyle = brakeCue || decelCue ? "#ff6848" : color;
   ctx.beginPath();
@@ -4666,7 +4678,7 @@ function drawRocketControlZone(ctx, x, y) {
   ctx.lineWidth = 2;
   ctx.setLineDash([10, 12]);
   ctx.beginPath();
-  ctx.arc(x, y, 330, 0, Math.PI * 2);
+  ctx.arc(x, y, ROCKET_CONTROL_RADIUS, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
   if (manual) {
@@ -4686,7 +4698,7 @@ function drawRocketControlZone(ctx, x, y) {
   ctx.textAlign = "center";
   ctx.font = "900 12px system-ui";
   ctx.fillStyle = manual ? "#45f875" : "#b35cff";
-  ctx.fillText(manual ? "MANUAL CONTROL" : "AUTOPILOT STRAIGHT", x, y - 346);
+  ctx.fillText(manual ? "MANUAL CONTROL" : "AUTOPILOT STRAIGHT", x, y - ROCKET_CONTROL_RADIUS - 16);
   ctx.restore();
 }
 
@@ -5805,10 +5817,14 @@ function initRocketAudioControls() {
 
 function initRocketMapControls() {
   if (!els.rocketCountryOverlay) return;
-  els.rocketCountryOverlay.checked = rocketCountryOverlayEnabled;
+  rocketCountryOverlayEnabled = false;
+  els.rocketCountryOverlay.checked = false;
+  els.rocketCountryOverlay.disabled = true;
+  els.rocketCountryOverlay.closest(".rocket-overlay-toggle")?.setAttribute("hidden", "");
   els.rocketCountryOverlay.addEventListener("change", () => {
-    rocketCountryOverlayEnabled = els.rocketCountryOverlay.checked;
-    localStorage.setItem("flagHunterRocketCountryOverlay", rocketCountryOverlayEnabled ? "1" : "0");
+    rocketCountryOverlayEnabled = false;
+    els.rocketCountryOverlay.checked = false;
+    localStorage.setItem("flagHunterRocketCountryOverlay", "0");
     invalidateRocketMapCache();
     drawRocket();
   });
@@ -6075,11 +6091,11 @@ els.rocketCanvas?.addEventListener("pointermove", (event) => {
   rocketState.mouse.y = event.clientY - rect.top;
   rocketState.mouse.inside = true;
   const distanceFromPlane = Math.hypot(rocketState.mouse.x - rect.width / 2, rocketState.mouse.y - rect.height / 2);
-  if (rocketState.parked && rocketState.phase !== "briefing" && distanceFromPlane > 240) {
+  if (rocketState.parked && rocketState.phase !== "briefing" && distanceFromPlane > ROCKET_CONTROL_RADIUS + 10) {
     rocketState.restartTakeoffOnReentry = true;
-    els.rocketMessage.textContent = "Takeoff restart armed. Move the pointer back over the map to roll.";
+    els.rocketMessage.textContent = "Takeoff restart armed. Move the pointer back inside the ring to roll.";
   }
-  if (rocketState.restartTakeoffOnReentry && rocketState.parked && rocketState.phase !== "briefing" && distanceFromPlane < 210) {
+  if (rocketState.restartTakeoffOnReentry && rocketState.parked && rocketState.phase !== "briefing" && distanceFromPlane < ROCKET_CONTROL_RADIUS - 20) {
     rocketState.restartTakeoffOnReentry = false;
     rocketState.parked = false;
     rocketState.parkingHold = 0;
@@ -6102,7 +6118,7 @@ els.rocketCanvas?.addEventListener("pointerleave", () => {
   if (rocketState.parked || Math.hypot(rocketState.ship.vx, rocketState.ship.vy) < 7) {
     rocketState.parked = true;
     rocketState.restartTakeoffOnReentry = true;
-    els.rocketMessage.textContent = "Plane stopped. Move the pointer back over the map to restart the takeoff roll.";
+    els.rocketMessage.textContent = "Plane stopped. Move the pointer back inside the ring to restart the takeoff roll.";
     rocketFeedback("Ready to restart takeoff", "#ffd33d", "info");
     return;
   }
@@ -6123,7 +6139,7 @@ els.rocketCanvas?.addEventListener("click", (event) => {
   rocketState.mouse.inside = true;
   rocketState.mouse.x = x;
   rocketState.mouse.y = y;
-  els.rocketMessage.textContent = "Manual steering engaged. Move the pointer anywhere on the map to steer.";
+  els.rocketMessage.textContent = "Manual steering engaged. Stay inside the ring to steer; exit the ring for straight autopilot.";
   rocketFeedback("Manual control", "#45f875", "info");
 });
 document.querySelector("#authOpen")?.addEventListener("click", () => els.authDialog?.showModal());

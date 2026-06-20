@@ -5,6 +5,6 @@ Global JPEG: https://assets.science.nasa.gov/content/dam/science/esd/eo/images/b
 Collection page: https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/base-topography-bathymetry/
 
 The original raster is NASA Blue Marble imagery. These 512px JPEG tiles were
-generated from the 21600 x 10800 source at JPEG quality 94 so the game can load
+generated from the 21600 x 10800 source at JPEG quality 98 so the game can load
 nearby satellite detail without live WMS requests or decoding one massive world
 image in the browser.
