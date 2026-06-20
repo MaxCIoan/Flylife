@@ -1187,18 +1187,26 @@ function syncRocketAudioVolumes() {
 }
 
 function getRocketEngineStyle(value) {
-  const style = String(value || "classic");
-  return ["classic", "alien", "future"].includes(style) ? style : "classic";
+  const style = String(value || "alien");
+  return ["classic", "alien", "future"].includes(style) ? style : "alien";
 }
 
 function getCurrentRocketEngineStyle() {
   return getRocketEngineStyle(els.rocketEngineStyle?.value || els.profileEngineStyle?.value || localStorage.getItem("flagHunterEngineStyle"));
 }
 
+function migrateRocketEngineStyleDefault() {
+  if (localStorage.getItem("flagHunterEngineDefaultV2") === "1") return;
+  const stored = localStorage.getItem("flagHunterEngineStyle");
+  if (!stored || stored === "classic") localStorage.setItem("flagHunterEngineStyle", "alien");
+  localStorage.setItem("flagHunterEngineDefaultV2", "1");
+}
+
 function getRocketAudioSettings() {
+  migrateRocketEngineStyleDefault();
   return {
     radio: Number(localStorage.getItem("flagHunterRadioVolume") ?? els.rocketRadioVolume?.value ?? 0.55),
-    engine: Number(localStorage.getItem("flagHunterEngineVolume") ?? els.rocketEngineVolume?.value ?? 0.28),
+    engine: Number(localStorage.getItem("flagHunterEngineVolume") ?? els.rocketEngineVolume?.value ?? 0.36),
     fx: Number(localStorage.getItem("flagHunterFxVolume") ?? els.rocketFxVolume?.value ?? 0.72),
     sonic: Number(localStorage.getItem("flagHunterSonicVolume") ?? els.rocketSonicVolume?.value ?? 0.78),
     engineStyle: getRocketEngineStyle(localStorage.getItem("flagHunterEngineStyle") ?? els.rocketEngineStyle?.value ?? els.profileEngineStyle?.value),
@@ -6831,16 +6839,16 @@ function getRocketEngineProfile(style, speed = 0, throttle = 0, forces = {}) {
   if (style === "alien") {
     return {
       oscType: "triangle",
-      target: 48 + throttle * 94 + Math.min(80, speed * 0.13),
+      target: 54 + throttle * 116 + Math.min(96, speed * 0.15),
       filterType: "bandpass",
-      filterQ: 8,
-      filterFreq: 520 + throttle * 1550 + controlAmount * 1220 + speed * 0.54,
-      noiseGain: 0.004 + throttle * 0.022,
-      lfoFreq: 7 + controlAmount * 13 + throttle * 4,
-      lfoDepth: 14 + controlAmount * 14,
-      alienFreq: 118 + bank * 180 + Math.min(170, vertical * 0.25) + Math.min(110, accel * 0.18) + braking * 90,
-      alienFilter: 480 + controlAmount * 1700 + speed * 0.26,
-      alienGain: 0.014 + controlAmount * 0.086
+      filterQ: 4.2,
+      filterFreq: 430 + throttle * 1900 + controlAmount * 1550 + speed * 0.46,
+      noiseGain: 0.012 + throttle * 0.035,
+      lfoFreq: 8 + controlAmount * 18 + throttle * 7,
+      lfoDepth: 18 + controlAmount * 18,
+      alienFreq: 92 + bank * 240 + Math.min(210, vertical * 0.3) + Math.min(150, accel * 0.22) + braking * 120,
+      alienFilter: 420 + controlAmount * 2300 + speed * 0.34,
+      alienGain: 0.045 + controlAmount * 0.13
     };
   }
   if (style === "future") {
@@ -6908,7 +6916,7 @@ function startPropellerSound() {
   alienControlFilter.type = "bandpass";
   alienControlFilter.frequency.value = profile.alienFilter;
   alienControlFilter.Q.value = 7;
-  alienControlGain.gain.value = Math.min(0.018, profile.alienGain * 0.24);
+  alienControlGain.gain.value = Math.min(0.058, profile.alienGain * 0.68);
   alienControlOsc.connect(alienControlFilter).connect(alienControlGain).connect(engineGain);
   propOsc.start();
   propLfo.start();
@@ -6954,6 +6962,32 @@ function stopPropellerSound() {
   alienControlOsc = null;
   alienControlGain = null;
   alienControlFilter = null;
+}
+
+function playEngineStylePreview(style = getCurrentRocketEngineStyle()) {
+  unlockRocketAudio();
+  if (!audioContext || !engineGain) return;
+  const profile = getRocketEngineProfile(getRocketEngineStyle(style), 240, 0.64, { bank: 0.35, verticalSpeed: 180, accel: 160 });
+  const now = audioContext.currentTime;
+  const filter = audioContext.createBiquadFilter();
+  const gain = audioContext.createGain();
+  filter.type = profile.filterType;
+  filter.Q.value = profile.filterQ;
+  filter.frequency.setValueAtTime(profile.filterFreq * 0.82, now);
+  filter.frequency.exponentialRampToValueAtTime(Math.max(90, profile.filterFreq * 1.22), now + 0.34);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(style === "alien" ? 0.11 : 0.07, now + 0.035);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.58);
+  [profile.target, profile.alienFreq].forEach((frequency, index) => {
+    const osc = audioContext.createOscillator();
+    osc.type = index === 0 ? profile.oscType : "sine";
+    osc.frequency.setValueAtTime(Math.max(24, frequency), now);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(22, frequency * (style === "alien" ? 0.74 : 0.9)), now + 0.42);
+    osc.connect(filter);
+    osc.start(now + index * 0.025);
+    osc.stop(now + 0.62 + index * 0.03);
+  });
+  filter.connect(gain).connect(engineGain);
 }
 
 function playSonicBoom(strength = 1, variant = 0) {
@@ -7314,6 +7348,8 @@ els.rocketRadioMute?.addEventListener("click", () => {
     if (propOsc) {
       stopPropellerSound();
       startPropellerSound();
+    } else {
+      playEngineStylePreview(style);
     }
   });
 });
