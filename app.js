@@ -222,6 +222,8 @@ const ROCKET_LOG_TRACE_MAX = 720;
 const ROCKET_HUD_INTERVAL_MS = 120;
 const ROCKET_NAV_CHECK_INTERVAL = 0.14;
 const ROCKET_TINY_COUNTRY_DOT_MAX = 30;
+const ROCKET_BLUE_MAP_W = 2880;
+const ROCKET_BLUE_MAP_H = 1440;
 rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260617b";
 rocketMiniMapImage.addEventListener("load", () => { rocketMiniMapCache = null; });
 let rocketCountryOverlayEnabled = false;
@@ -431,6 +433,7 @@ function loadRocketWorldMap() {
         .map((feature) => normalizeRocketCountry(feature))
         .filter(Boolean);
       invalidateRocketMapCache();
+      scheduleRocketBlueMapWarmup();
     })
     .catch(() => {
       rocketWorldFeatures = null;
@@ -769,7 +772,16 @@ function projectRocketRing(ring) {
   return warped ? [] : points;
 }
 
-function getRocketBlueWorldMapBase(w = 1440, h = 720, mapW = ROCKET_MAP_W, mapH = ROCKET_MAP_H) {
+function scheduleRocketBlueMapWarmup() {
+  const warm = () => getRocketBlueWorldMapBase(ROCKET_BLUE_MAP_W, ROCKET_BLUE_MAP_H);
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(warm, { timeout: 1800 });
+  } else {
+    window.setTimeout(warm, 250);
+  }
+}
+
+function getRocketBlueWorldMapBase(w = ROCKET_BLUE_MAP_W, h = ROCKET_BLUE_MAP_H, mapW = ROCKET_MAP_W, mapH = ROCKET_MAP_H) {
   const featureKey = rocketWorldFeatures || mapCountries;
   if (rocketBlueWorldMapCache
     && rocketBlueWorldMapCache.w === w
@@ -2466,6 +2478,9 @@ function startRocketRun() {
     landingHold: { time: 0, ready: false, entrySpeed: 0, entryAltitude: 0 },
     objectiveZone: null,
     accel: 0,
+    verticalSpeed: 0,
+    sonicBand: 0,
+    sonicShock: null,
     lastSpeed: 0,
     desiredRounds,
     round: 1,
@@ -3247,6 +3262,9 @@ function nextRocketRound(success) {
   rocketState.sonarPingTimer = 0;
   rocketState.sonarPingIndex = 0;
   rocketState.sonarPing = null;
+  rocketState.verticalSpeed = 0;
+  rocketState.sonicBand = 0;
+  rocketState.sonicShock = null;
   rocketState.targetScanUntil = 0;
   rocketState.restartTakeoffOnReentry = false;
   rocketState.active = false;
@@ -3343,6 +3361,10 @@ function updateRocket(dt) {
   if (rocketState.flash) {
     rocketState.flash.life -= dt;
     if (rocketState.flash.life <= 0) rocketState.flash = null;
+  }
+  if (rocketState.sonicShock) {
+    rocketState.sonicShock.life -= dt;
+    if (rocketState.sonicShock.life <= 0) rocketState.sonicShock = null;
   }
   if (rocketState.badLandingCooldown > 0) {
     rocketState.badLandingCooldown -= dt;
@@ -3467,6 +3489,16 @@ function updateRocket(dt) {
     braking: Boolean(spaceBrake || noseDecel || airbrakeHold > 0.08),
     climbIntent
   };
+  const sonicBand = currentSpeed > 1180 || (currentSpeed > 980 && rocketState.ship.altitude > 1400) ? 2 : currentSpeed > 780 ? 1 : 0;
+  if (sonicBand > (rocketState.sonicBand || 0)) {
+    rocketState.sonicShock = { life: 0.62, maxLife: 0.62, strength: sonicBand };
+    playSonicBoom(sonicBand);
+  }
+  if (sonicBand < (rocketState.sonicBand || 0) && currentSpeed < (sonicBand ? 1050 : 690)) {
+    rocketState.sonicBand = sonicBand;
+  } else if (sonicBand > (rocketState.sonicBand || 0)) {
+    rocketState.sonicBand = sonicBand;
+  }
   if (rocketState.phase === "takeoff" && rocketState.ship.altitude > ROCKET_CRUISE_ALTITUDE) {
     rocketState.phase = "cruise";
     els.rocketMessage.textContent = `Airborne. Navigate by country shape and the briefing flag. Optional beacon: ${rocketState.sideQuest.capital}, ${rocketState.sideQuest.name}.`;
@@ -4987,10 +5019,10 @@ function drawRocketFlightForces(ctx, rect) {
   const cy = rect.height / 2;
   const accent = getRocketPlaneAccent();
   const intensity = Math.max(
-    Math.min(1, speed / 760),
-    Math.min(1, Math.abs(accel) / 260),
-    Math.min(1, Math.abs(vertical) / 420),
-    Math.min(1, Math.abs(bank))
+    Math.min(1, speed / 980),
+    Math.min(1, Math.abs(accel) / 360),
+    Math.min(1, Math.abs(vertical) / 620),
+    Math.min(1, Math.abs(bank) * 0.82)
   );
   if (intensity < 0.08) return;
 
@@ -4998,16 +5030,16 @@ function drawRocketFlightForces(ctx, rect) {
   ctx.translate(cx, cy);
   ctx.rotate(rocketState.ship.angle);
   ctx.globalCompositeOperation = "lighter";
-  ctx.filter = "blur(8px)";
-  const wakeCount = 4 + Math.round(intensity * 5);
+  ctx.filter = "blur(6px)";
+  const wakeCount = 3 + Math.round(intensity * 4);
   for (let index = 0; index < wakeCount; index += 1) {
-    const y = (index - (wakeCount - 1) / 2) * 18 + Math.sin(performance.now() / 210 + index) * 7;
-    const x = -82 - index * (18 + intensity * 10);
-    const length = 46 + intensity * 95 + index * 8;
-    const width = 10 + intensity * 18;
+    const y = (index - (wakeCount - 1) / 2) * 13 + Math.sin(performance.now() / 210 + index) * 4;
+    const x = -74 - index * (12 + intensity * 7);
+    const length = 34 + intensity * 58 + index * 5;
+    const width = 7 + intensity * 10;
     const glow = ctx.createRadialGradient(x, y, 2, x - length * 0.44, y + bank * 16, length);
-    glow.addColorStop(0, hexToRgba(accent, 0.34));
-    glow.addColorStop(0.46, hexToRgba(accent, 0.15));
+    glow.addColorStop(0, hexToRgba(accent, 0.25));
+    glow.addColorStop(0.46, hexToRgba(accent, 0.1));
     glow.addColorStop(1, hexToRgba(accent, 0));
     ctx.fillStyle = glow;
     ctx.beginPath();
@@ -5015,15 +5047,15 @@ function drawRocketFlightForces(ctx, rect) {
     ctx.fill();
   }
   if (forces.braking || accel < -60) {
-    ctx.globalAlpha = Math.min(0.72, 0.2 + Math.abs(accel) / 460);
-    [-38, 38].forEach((y) => {
-      const glow = ctx.createRadialGradient(14, y, 1, -28, y + bank * 10, 72);
-      glow.addColorStop(0, "rgba(255,104,72,.46)");
-      glow.addColorStop(0.42, "rgba(255,104,72,.2)");
+    ctx.globalAlpha = Math.min(0.48, 0.14 + Math.abs(accel) / 700);
+    [-30, 30].forEach((y) => {
+      const glow = ctx.createRadialGradient(10, y, 1, -24, y + bank * 8, 52);
+      glow.addColorStop(0, "rgba(255,104,72,.32)");
+      glow.addColorStop(0.42, "rgba(255,104,72,.14)");
       glow.addColorStop(1, "rgba(255,104,72,0)");
       ctx.fillStyle = glow;
       ctx.beginPath();
-      ctx.ellipse(-22, y + bank * 12, 72, 18, bank * 0.24, 0, Math.PI * 2);
+      ctx.ellipse(-20, y + bank * 9, 52, 12, bank * 0.24, 0, Math.PI * 2);
       ctx.fill();
     });
   }
@@ -5032,23 +5064,45 @@ function drawRocketFlightForces(ctx, rect) {
   if (Math.abs(vertical) > 60) {
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
-    ctx.filter = "blur(10px)";
+    ctx.filter = "blur(7px)";
     const direction = vertical > 0 ? -1 : 1;
     const color = vertical > 0 ? "#b35cff" : "#22d9f2";
-    const alpha = Math.min(0.54, 0.12 + Math.abs(vertical) / 780);
-    for (let index = 0; index < 5; index += 1) {
-      const offset = (index - 2) * 34 + Math.sin(performance.now() / 170 + index) * 7;
+    const alpha = Math.min(0.36, 0.08 + Math.abs(vertical) / 1050);
+    for (let index = 0; index < 4; index += 1) {
+      const offset = (index - 1.5) * 25 + Math.sin(performance.now() / 170 + index) * 5;
       const px = cx + offset + bank * 12;
-      const py = cy + direction * (48 + index * 8);
-      const glow = ctx.createRadialGradient(px, py, 2, px, py + direction * 42, 78);
+      const py = cy + direction * (38 + index * 6);
+      const glow = ctx.createRadialGradient(px, py, 2, px, py + direction * 28, 52);
       glow.addColorStop(0, hexToRgba(color, alpha));
       glow.addColorStop(0.5, hexToRgba(color, alpha * 0.32));
       glow.addColorStop(1, hexToRgba(color, 0));
       ctx.fillStyle = glow;
       ctx.beginPath();
-      ctx.ellipse(px, py + direction * 36, 22 + intensity * 16, 78 + intensity * 40, bank * 0.16, 0, Math.PI * 2);
+      ctx.ellipse(px, py + direction * 26, 14 + intensity * 10, 48 + intensity * 24, bank * 0.16, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.restore();
+  }
+  if (rocketState.sonicShock) {
+    const shock = rocketState.sonicShock;
+    const p = 1 - Math.max(0, shock.life) / Math.max(0.01, shock.maxLife);
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rocketState.ship.angle);
+    ctx.globalCompositeOperation = "lighter";
+    ctx.filter = "blur(4px)";
+    ctx.globalAlpha = (1 - p) * (shock.strength > 1 ? 0.58 : 0.38);
+    ctx.strokeStyle = shock.strength > 1 ? "#d6b8ff" : "#8be9ff";
+    ctx.lineWidth = 5 + shock.strength * 2;
+    ctx.beginPath();
+    ctx.ellipse(-18, 0, 46 + p * 210, 22 + p * 82, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha *= 0.7;
+    ctx.beginPath();
+    ctx.moveTo(-54 - p * 120, -34 - p * 24);
+    ctx.lineTo(44 + p * 36, 0);
+    ctx.lineTo(-54 - p * 120, 34 + p * 24);
+    ctx.stroke();
     ctx.restore();
   }
 }
@@ -5097,11 +5151,22 @@ function drawRocketBiplaneWing(ctx, x, span, chord, accent, lift = 0) {
 }
 
 function drawRocketShip(ctx, x, y, angle) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(angle);
-  ctx.scale(0.43, 0.43);
   const speed = Math.hypot(rocketState.ship.vx, rocketState.ship.vy);
+  const forces = rocketState.flightForces || {};
+  const takeoffRumble = rocketState.phase === "takeoff" && rocketState.ship.altitude < ROCKET_CRUISE_ALTITUDE
+    ? Math.min(1, speed / Math.max(1, ROCKET_TAKEOFF_SPEED)) * (0.35 + (rocketState.ship.throttle || 0) * 0.65)
+    : 0;
+  const forceRumble = Math.min(1, Math.abs(forces.accel || 0) / 480 + Math.abs(forces.verticalSpeed || 0) / 900 + Math.abs(forces.bank || 0) * 0.28);
+  const sonicRumble = Math.max(0, Math.min(1, (speed - 760) / 520));
+  const shake = Math.min(1.2, takeoffRumble * 0.75 + forceRumble * 0.45 + sonicRumble * 0.5);
+  const t = performance.now();
+  const jitterX = Math.sin(t * 0.074) * shake * 2.4 + Math.sin(t * 0.031) * shake * 1.2;
+  const jitterY = Math.cos(t * 0.083) * shake * 1.7;
+  const jitterAngle = Math.sin(t * 0.052) * shake * 0.018;
+  ctx.save();
+  ctx.translate(x + jitterX, y + jitterY);
+  ctx.rotate(angle + jitterAngle);
+  ctx.scale(0.43 + sonicRumble * 0.015, 0.43 + takeoffRumble * 0.01);
   const spin = performance.now() * (0.01 + rocketState.ship.throttle * 0.06);
   const bank = rocketState.ship.bank || 0;
   const accent = getRocketPlaneAccent();
@@ -5535,7 +5600,9 @@ function drawGauge(ctx, x, y, label, value, max, color, valueText = "") {
 }
 
 function drawRocketMiniMap(ctx, rect) {
-  const w = 190, h = 96, x = rect.width - w - 18, y = 18;
+  const w = Math.min(240, Math.max(176, Math.round(rect.width * 0.28)));
+  const h = Math.round(w * 0.508);
+  const x = rect.width - w - 18, y = 18;
   const base = getRocketMiniMapBase(w, h);
   ctx.drawImage(base, x, y);
   ctx.save();
@@ -5561,7 +5628,7 @@ function getRocketMiniMapBase(w, h) {
   ctx.clearRect(0, 0, w, h);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(getRocketBlueWorldMapBase(1440, 720, rocketState.mapW, rocketState.mapH), 0, 0, w, h);
+  ctx.drawImage(getRocketBlueWorldMapBase(ROCKET_BLUE_MAP_W, ROCKET_BLUE_MAP_H, rocketState.mapW, rocketState.mapH), 0, 0, w, h);
   ctx.fillStyle = "rgba(3,9,15,.12)";
   ctx.fillRect(0, 0, w, h);
   ctx.strokeStyle = "rgba(177,226,255,.32)";
@@ -6191,8 +6258,10 @@ function makeRocketRouteView(log = {}, mapW = ROCKET_MAP_W, mapH = ROCKET_MAP_H)
 
 function zoomRocketLogView(view, mapW, mapH, point, factor = 1.5) {
   const next = normalizeRocketLogView(view, mapW, mapH);
+  const targetZoom = Math.max(1, Math.min(8, next.zoom * factor));
+  if (Math.abs(targetZoom - next.zoom) < 0.001) return next;
   return makeRocketLogView(mapW, mapH, {
-    zoom: next.zoom * factor,
+    zoom: targetZoom,
     cx: point.x,
     cy: point.y
   });
@@ -6361,7 +6430,7 @@ function drawRocketLogMap(canvas, logs, mapW, mapH, selected = "all", view = nul
   const h = canvas.height;
   const viewport = getRocketLogViewport(canvas, mapW, mapH, view);
   ctx.clearRect(0, 0, w, h);
-  const base = getRocketBlueWorldMapBase(1440, 720, mapW, mapH);
+  const base = getRocketBlueWorldMapBase(ROCKET_BLUE_MAP_W, ROCKET_BLUE_MAP_H, mapW, mapH);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   const sx = viewport.minX / mapW * base.width;
@@ -6560,7 +6629,7 @@ function startPropellerSound() {
   lfoGain.gain.value = 9;
   propFilter.type = "lowpass";
   propFilter.frequency.value = 620;
-  propNoiseGain.gain.value = 0.035;
+  propNoiseGain.gain.value = 0.026;
   propLfo.connect(lfoGain).connect(propOsc.frequency);
   propOsc.connect(propFilter).connect(engineGain);
   propNoise.connect(propNoiseGain).connect(propFilter);
@@ -6572,7 +6641,7 @@ function startPropellerSound() {
   alienControlFilter.type = "bandpass";
   alienControlFilter.frequency.value = 620;
   alienControlFilter.Q.value = 7;
-  alienControlGain.gain.value = 0.0001;
+  alienControlGain.gain.value = 0.002;
   alienControlOsc.connect(alienControlFilter).connect(alienControlGain).connect(fxGain);
   propOsc.start();
   propLfo.start();
@@ -6588,7 +6657,7 @@ function updatePropellerSound() {
   const target = 34 + throttle * 70 + Math.min(90, speed * 0.18);
   propOsc.frequency.setTargetAtTime(target, audioContext.currentTime, 0.08);
   propFilter.frequency.setTargetAtTime(440 + throttle * 1200 + speed * 1.3, audioContext.currentTime, 0.08);
-  if (propNoiseGain) propNoiseGain.gain.setTargetAtTime(0.015 + throttle * 0.06, audioContext.currentTime, 0.08);
+  if (propNoiseGain) propNoiseGain.gain.setTargetAtTime(0.01 + throttle * 0.043, audioContext.currentTime, 0.08);
   if (alienControlOsc && alienControlGain && alienControlFilter) {
     const bank = Math.abs(Number(forces.bank || rocketState.ship.bank || 0));
     const vertical = Math.abs(Number(forces.verticalSpeed || rocketState.verticalSpeed || 0));
@@ -6598,7 +6667,7 @@ function updatePropellerSound() {
     const controlFreq = 150 + bank * 140 + Math.min(150, vertical * 0.22) + Math.min(90, accel * 0.16) + braking * 75;
     alienControlOsc.frequency.setTargetAtTime(controlFreq, audioContext.currentTime, 0.08);
     alienControlFilter.frequency.setTargetAtTime(520 + controlAmount * 1200 + speed * 0.32, audioContext.currentTime, 0.1);
-    alienControlGain.gain.setTargetAtTime(0.002 + controlAmount * 0.024, audioContext.currentTime, 0.12);
+    alienControlGain.gain.setTargetAtTime(0.006 + controlAmount * 0.052, audioContext.currentTime, 0.1);
   }
 }
 
@@ -6618,6 +6687,56 @@ function stopPropellerSound() {
   alienControlOsc = null;
   alienControlGain = null;
   alienControlFilter = null;
+}
+
+function playSonicBoom(strength = 1) {
+  unlockRocketAudio();
+  if (!audioContext || !fxGain) return;
+  const now = audioContext.currentTime;
+  const duration = strength > 1 ? 0.72 : 0.48;
+  const buffer = audioContext.createBuffer(1, Math.floor(audioContext.sampleRate * duration), audioContext.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let index = 0; index < data.length; index += 1) {
+    const t = index / data.length;
+    data[index] = (Math.random() * 2 - 1) * Math.pow(1 - t, 2.8);
+  }
+  const burst = audioContext.createBufferSource();
+  burst.buffer = buffer;
+  const filter = audioContext.createBiquadFilter();
+  filter.type = strength > 1 ? "bandpass" : "lowpass";
+  filter.frequency.setValueAtTime(strength > 1 ? 460 : 310, now);
+  filter.frequency.exponentialRampToValueAtTime(strength > 1 ? 1800 : 780, now + 0.16);
+  filter.Q.value = strength > 1 ? 1.8 : 1.1;
+  const gain = audioContext.createGain();
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(strength > 1 ? 0.42 : 0.28, now + 0.018);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+  const delay = audioContext.createDelay(0.5);
+  const feedback = audioContext.createGain();
+  const wet = audioContext.createGain();
+  delay.delayTime.value = strength > 1 ? 0.11 : 0.085;
+  feedback.gain.value = strength > 1 ? 0.23 : 0.14;
+  wet.gain.value = strength > 1 ? 0.18 : 0.1;
+  burst.connect(filter).connect(gain);
+  gain.connect(fxGain);
+  gain.connect(delay);
+  delay.connect(feedback).connect(delay);
+  delay.connect(wet).connect(fxGain);
+  burst.start(now);
+
+  [46, 92, strength > 1 ? 184 : 138].forEach((frequency, index) => {
+    const osc = audioContext.createOscillator();
+    const oscGain = audioContext.createGain();
+    osc.type = index === 0 ? "sine" : "triangle";
+    osc.frequency.setValueAtTime(frequency, now);
+    osc.frequency.exponentialRampToValueAtTime(frequency * (strength > 1 ? 0.52 : 0.68), now + 0.32);
+    oscGain.gain.setValueAtTime(0.0001, now);
+    oscGain.gain.exponentialRampToValueAtTime((strength > 1 ? 0.16 : 0.1) / (index + 1), now + 0.02 + index * 0.012);
+    oscGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.42 + index * 0.04);
+    osc.connect(oscGain).connect(fxGain);
+    osc.start(now);
+    osc.stop(now + 0.5 + index * 0.05);
+  });
 }
 
 function playTakeoffSound() {
@@ -6854,6 +6973,10 @@ document.querySelectorAll("[data-flag-rounds]").forEach((button) => {
 document.querySelector("#playAgain")?.addEventListener("click", showFlagSetup);
 initRocketAudioControls();
 initRocketMapControls();
+window.setTimeout(() => {
+  loadRocketWorldMap();
+  loadRocketCatalog();
+}, 350);
 if (els.rocketRadioSelect) {
   const savedStation = Number(localStorage.getItem("flagHunterRadioStation") || 0);
   if (Number.isFinite(savedStation) && savedStation > 0) selectRocketRadio(savedStation);
