@@ -6,6 +6,7 @@ $fullDir = Join-Path $dist "flylife-itch-full"
 $launcherDir = Join-Path $dist "flylife-itch-launcher"
 $fullZip = Join-Path $dist "flylife-itch-full.zip"
 $launcherZip = Join-Path $dist "flylife-itch-launcher.zip"
+$launchUrl = if ($env:FLYLIFE_ITCH_URL) { $env:FLYLIFE_ITCH_URL } else { "https://flylifeforlife.netlify.app/?itchStatus=1" }
 
 if (Test-Path $dist) {
   Remove-Item -LiteralPath $dist -Recurse -Force
@@ -30,6 +31,7 @@ foreach ($file in $staticFiles) {
 
 Copy-Item -LiteralPath (Join-Path $root "assets") -Destination (Join-Path $fullDir "assets") -Recurse
 Copy-Item -LiteralPath (Join-Path $root "itch-netlify-launcher\index.html") -Destination (Join-Path $launcherDir "index.html")
+(Get-Content -LiteralPath (Join-Path $launcherDir "index.html") -Raw).Replace("__FLYLIFE_LAUNCH_URL__", $launchUrl) | Set-Content -LiteralPath (Join-Path $launcherDir "index.html") -NoNewline
 
 Compress-Archive -Path (Join-Path $fullDir "*") -DestinationPath $fullZip -Force
 Compress-Archive -Path (Join-Path $launcherDir "*") -DestinationPath $launcherZip -Force

@@ -215,7 +215,7 @@ const ROCKET_STATIC_CACHE_SNAP = 768;
 const ROCKET_IMAGERY_TILE_SIZE = 512;
 const ROCKET_IMAGERY_CACHE_MAX = 104;
 const ROCKET_IMAGERY_MAX_LOADS = 4;
-const ROCKET_ATLAS_TILE_VERSION = "20260620d";
+const ROCKET_ATLAS_TILE_VERSION = "20260620itch1";
 const ROCKET_FIXED_CAMERA_ZOOM = 1.85;
 const ROCKET_IMAGERY_PRELOAD_PAD = 1;
 const ROCKET_IMAGERY_AHEAD_STEPS = 6;
@@ -234,7 +234,7 @@ const ROCKET_NAV_CHECK_INTERVAL = 0.14;
 const ROCKET_TINY_COUNTRY_DOT_MAX = 30;
 const ROCKET_BLUE_MAP_W = 2880;
 const ROCKET_BLUE_MAP_H = 1440;
-rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260617b";
+rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260620itch1";
 rocketMiniMapImage.addEventListener("load", () => { rocketMiniMapCache = null; });
 let rocketCountryOverlayEnabled = false;
 
@@ -4306,10 +4306,15 @@ function drawRocketBlueMarbleTiles(ctx, rect, camX, camY) {
   const maxTileX = Math.min(Math.ceil(rocketState.mapW / tileSize) - 1, Math.floor((camX + rect.width) / tileSize));
   const minTileY = Math.max(0, Math.floor(camY / tileSize));
   const maxTileY = Math.min(Math.ceil(rocketState.mapH / tileSize) - 1, Math.floor((camY + rect.height) / tileSize));
-  let painted = false;
   ctx.save();
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
+  const base = getRocketBlueWorldMapBase(ROCKET_BLUE_MAP_W, ROCKET_BLUE_MAP_H, rocketState.mapW, rocketState.mapH);
+  const sx = camX / rocketState.mapW * base.width;
+  const sy = camY / rocketState.mapH * base.height;
+  const sw = rect.width / rocketState.mapW * base.width;
+  const sh = rect.height / rocketState.mapH * base.height;
+  ctx.drawImage(base, sx, sy, sw, sh, 0, 0, rect.width, rect.height);
   for (let ty = minTileY; ty <= maxTileY; ty += 1) {
     for (let tx = minTileX; tx <= maxTileX; tx += 1) {
       const tile = getRocketImageryTile(tx, ty);
@@ -4319,14 +4324,9 @@ function drawRocketBlueMarbleTiles(ctx, rect, camX, camY) {
       const drawW = Math.min(tileSize, rocketState.mapW - worldX);
       const drawH = Math.min(tileSize, rocketState.mapH - worldY);
       ctx.drawImage(tile.image, worldX - camX, worldY - camY, drawW, drawH);
-      painted = true;
     }
   }
   ctx.restore();
-  if (!painted) {
-    ctx.fillStyle = "#061827";
-    ctx.fillRect(0, 0, rect.width, rect.height);
-  }
   drawRocketPolarEdge(ctx, rect, camY);
 }
 
@@ -4414,7 +4414,6 @@ function startRocketImageryTileLoad(tile) {
   tile.status = "loading";
   rocketImageryActiveLoads += 1;
   const image = new Image();
-  image.crossOrigin = "anonymous";
   image.decoding = "async";
   image.loading = "lazy";
   if ("fetchPriority" in image) image.fetchPriority = tile.priority >= 1000 ? "high" : "low";
@@ -6149,10 +6148,24 @@ function setupRocketRouteInspector(root, run) {
   let view = makeRocketLogView(mapW, mapH);
   let dragState = null;
   let suppressNextClick = false;
+  let deferredRouteRedraw = 0;
 
-  function redraw(updateMeta = true) {
-    drawRocketLogMap(canvas, logs, mapW, mapH, selected, view, selectedDepot);
+  function redraw(updateMeta = true, deferCanvas = false) {
     if (updateMeta) renderRocketRouteMeta(meta, logs, selected, selectedDepot);
+    const draw = () => {
+      deferredRouteRedraw = 0;
+      drawRocketLogMap(canvas, logs, mapW, mapH, selected, view, selectedDepot);
+    };
+    if (!deferCanvas) {
+      if (deferredRouteRedraw) {
+        window.clearTimeout(deferredRouteRedraw);
+        deferredRouteRedraw = 0;
+      }
+      draw();
+      return;
+    }
+    if (deferredRouteRedraw) window.clearTimeout(deferredRouteRedraw);
+    deferredRouteRedraw = window.setTimeout(draw, 34);
   }
 
   function selectRoute(value, options = {}) {
@@ -6168,7 +6181,7 @@ function setupRocketRouteInspector(root, run) {
     } else if (options.zoomToRoute) {
       view = makeRocketRouteView(logs[selected], mapW, mapH);
     }
-    redraw();
+    redraw(true, !options.immediate);
   }
 
   if (toolbar) {
@@ -6189,7 +6202,7 @@ function setupRocketRouteInspector(root, run) {
   });
   toolbar?.querySelector("[data-route-action='reset']")?.addEventListener("click", () => {
     view = selected === "all" ? makeRocketLogView(mapW, mapH) : makeRocketRouteView(logs[selected], mapW, mapH);
-    redraw();
+    redraw(true, true);
   });
   if (meta) {
     meta.onclick = (event) => {
@@ -6204,7 +6217,7 @@ function setupRocketRouteInspector(root, run) {
           cy: Number(marker.y)
         });
       }
-      redraw();
+      redraw(true, true);
     };
   }
   canvas.onwheel = (event) => {
@@ -6251,7 +6264,7 @@ function setupRocketRouteInspector(root, run) {
             cy: Number(marker.y)
           });
         }
-        redraw();
+        redraw(true, true);
         return;
       }
     }
@@ -6269,7 +6282,7 @@ function setupRocketRouteInspector(root, run) {
         button.classList.toggle("selected", button.dataset.routeIndex === String(selected));
       });
       view = makeRocketRouteView(logs[selected], mapW, mapH);
-      redraw();
+      redraw(true, true);
       return;
     }
     const point = rocketCanvasEventToMapPoint(canvas, mapW, mapH, event, view);
@@ -6326,7 +6339,7 @@ function setupRocketRouteInspector(root, run) {
     hover.hidden = true;
     dragState = null;
   };
-  selectRoute("all");
+  selectRoute("all", { immediate: true });
 }
 
 function makeRocketLogView(mapW, mapH, overrides = {}) {

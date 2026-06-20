@@ -4,7 +4,6 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Flylife</title>
-    <meta http-equiv="refresh" content="0; url=https://flylifeforlife.netlify.app/?itchStatus=1">
     <style>
       html,
       body {
@@ -27,21 +26,28 @@
       }
 
       a {
+        display: inline-flex;
+        min-height: 3rem;
+        align-items: center;
+        justify-content: center;
+        margin-top: 0.75rem;
+        padding: 0 1.2rem;
+        border: 1px solid rgba(125, 211, 252, 0.55);
+        border-radius: 0.6rem;
+        background: rgba(14, 116, 144, 0.34);
         color: #7dd3fc;
         font-weight: 700;
+        text-decoration: none;
       }
     </style>
-    <script>
-      window.location.replace("https://flylifeforlife.netlify.app/?itchStatus=1");
-    </script>
   </head>
   <body>
     <main>
-      <h1>Opening Flylife</h1>
+      <h1>Flylife</h1>
       <p>
-        If the game does not open automatically,
-        <a href="https://flylifeforlife.netlify.app/?itchStatus=1">open the live version</a>.
+        Launch the full game in a browser tab for the best map and fullscreen performance.
       </p>
+      <a href="__FLYLIFE_LAUNCH_URL__" target="_blank" rel="noopener">Open Flylife</a>
     </main>
   </body>
 </html>

@@ -1,5 +1,6 @@
-*.png
 node_modules/
 .git/
 .netlify/
 flag-hunter-netlify.zip
+dist-itch/
+*.zip
