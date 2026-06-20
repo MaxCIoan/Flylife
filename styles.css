@@ -1050,7 +1050,7 @@ body:has(#rocketView.active) .topbar {
   display: grid;
   justify-items: center;
   gap: 0.85rem;
-  width: min(34rem, calc(100% - 2rem));
+  width: min(42rem, calc(100% - 2rem));
   padding: 1.4rem;
   transform: translate(-50%, -50%);
   border: 1px solid rgba(151, 176, 210, 0.28);
@@ -1087,6 +1087,32 @@ body:has(#rocketView.active) .topbar {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.55rem;
   width: 100%;
+}
+
+.rocket-setup-story {
+  display: grid;
+  gap: 0.42rem;
+  width: 100%;
+  max-height: 13.2rem;
+  overflow: auto;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(255, 211, 61, 0.2);
+  border-radius: 0.65rem;
+  background: rgba(255, 211, 61, 0.055);
+}
+
+.rocket-setup-story b {
+  color: #ffffff;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+}
+
+.rocket-round-setup .rocket-setup-story p {
+  max-width: none;
+  margin: 0;
+  text-align: left;
+  font-size: 0.84rem;
+  line-height: 1.42;
 }
 
 .rocket-round-setup button,
@@ -1283,6 +1309,8 @@ body:has(#rocketView.active) .topbar {
 }
 
 .rocket-result-overlay p {
+  display: grid;
+  gap: 0.25rem;
   color: var(--muted);
   line-height: 1.5;
 }
