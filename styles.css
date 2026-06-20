@@ -1480,6 +1480,7 @@ body:has(#rocketView.active) .topbar {
 }
 
 .rocket-route-inspector {
+  position: relative;
   display: grid;
   gap: 0.75rem;
   padding: 0 1rem 1rem;
@@ -1512,6 +1513,40 @@ body:has(#rocketView.active) .topbar {
   background: rgba(25, 83, 126, 0.94);
 }
 
+.rocket-session-map,
+#rocketResultMap {
+  cursor: crosshair;
+}
+
+.rocket-route-hover {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  gap: 0.12rem;
+  width: min(18rem, calc(100% - 1rem));
+  padding: 0.55rem 0.65rem;
+  border: 1px solid rgba(34, 217, 242, 0.34);
+  border-radius: 0.55rem;
+  color: #d9e6f3;
+  background: rgba(3, 10, 18, 0.92);
+  box-shadow: 0 1rem 2rem rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.rocket-route-hover[hidden] {
+  display: none;
+}
+
+.rocket-route-hover strong {
+  color: #ffffff;
+  font-size: 0.82rem;
+}
+
+.rocket-route-hover span {
+  font-size: 0.74rem;
+  line-height: 1.25;
+}
+
 .rocket-route-meta {
   display: grid;
   gap: 0.28rem;
@@ -1532,6 +1567,43 @@ body:has(#rocketView.active) .topbar {
 
 .rocket-route-meta span {
   line-height: 1.35;
+}
+
+.rocket-depot-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.34rem;
+  align-items: center;
+}
+
+.rocket-depot-dot {
+  display: inline-grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid currentColor;
+  border-radius: 999px;
+  color: #ff6578;
+  background: rgba(255, 61, 90, 0.12);
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.rocket-depot-dot.hit {
+  color: #45f875;
+  background: rgba(69, 248, 117, 0.14);
+}
+
+.rocket-depot-dot.basic {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.rocket-depot-dot.missed {
+  color: #ff3d5a;
+  background: rgba(255, 61, 90, 0.12);
 }
 
 .tech-tree-overlay {
