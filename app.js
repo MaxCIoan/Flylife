@@ -208,15 +208,17 @@ let rocketBlueWorldMapCache = null;
 let rocketImageryTileCache = new Map();
 let rocketImageryTileSerial = 0;
 let rocketImageryActiveLoads = 0;
+let rocketImageryLastPreloadAt = 0;
+let rocketMapTileRefreshTimer = 0;
 const rocketMiniMapImage = new Image();
 const ROCKET_STATIC_CACHE_SNAP = 768;
 const ROCKET_IMAGERY_TILE_SIZE = 512;
-const ROCKET_IMAGERY_CACHE_MAX = 144;
-const ROCKET_IMAGERY_MAX_LOADS = 6;
+const ROCKET_IMAGERY_CACHE_MAX = 104;
+const ROCKET_IMAGERY_MAX_LOADS = 4;
 const ROCKET_ATLAS_TILE_VERSION = "20260620d";
 const ROCKET_FIXED_CAMERA_ZOOM = 1.85;
-const ROCKET_IMAGERY_PRELOAD_PAD = 2;
-const ROCKET_IMAGERY_AHEAD_STEPS = 8;
+const ROCKET_IMAGERY_PRELOAD_PAD = 1;
+const ROCKET_IMAGERY_AHEAD_STEPS = 6;
 const ROCKET_CONTROL_RADIUS = 220;
 const ROCKET_NOSE_DECEL_RADIUS = Math.round(ROCKET_CONTROL_RADIUS / Math.SQRT2);
 const ROCKET_STEER_ARM_RADIUS = 28;
@@ -225,6 +227,8 @@ const ROCKET_CRUISE_ALTITUDE = 70;
 const ROCKET_RUNWAY_LOCK_ALTITUDE = 12;
 const ROCKET_ROUTE_TRAIL_MAX = 7200;
 const ROCKET_LOG_TRACE_MAX = 720;
+const ROCKET_LOG_DRAW_TRACE_MAX = 260;
+const ROCKET_LOG_ALL_TRACE_MAX = 120;
 const ROCKET_HUD_INTERVAL_MS = 120;
 const ROCKET_NAV_CHECK_INTERVAL = 0.14;
 const ROCKET_TINY_COUNTRY_DOT_MAX = 30;
@@ -4328,6 +4332,11 @@ function drawRocketBlueMarbleTiles(ctx, rect, camX, camY) {
 
 function queueRocketImageryPreload(rect, camX, camY) {
   if (!rocketState?.ship) return;
+  const now = performance.now();
+  const speed = Math.hypot(rocketState.ship.vx || 0, rocketState.ship.vy || 0);
+  const preloadInterval = isRocketFastTakeoffMap() ? 170 : speed > 650 ? 95 : 130;
+  if (rocketMapCache && now - rocketImageryLastPreloadAt < preloadInterval) return;
+  rocketImageryLastPreloadAt = now;
   rocketImageryTileCache.forEach((tile) => { tile.priority = 0; });
   const tileSize = ROCKET_IMAGERY_TILE_SIZE;
   const cols = Math.ceil(rocketState.mapW / tileSize);
@@ -4343,12 +4352,11 @@ function queueRocketImageryPreload(rect, camX, camY) {
     }
   }
 
-  const speed = Math.hypot(rocketState.ship.vx || 0, rocketState.ship.vy || 0);
   const headingLen = speed > 40 ? speed : 1;
   const headingX = speed > 40 ? rocketState.ship.vx / headingLen : Math.cos(rocketState.ship.angle);
   const headingY = speed > 40 ? rocketState.ship.vy / headingLen : Math.sin(rocketState.ship.angle);
-  const aheadSteps = Math.min(ROCKET_IMAGERY_AHEAD_STEPS, Math.max(3, Math.ceil(speed / 115)));
-  const laneHalf = speed > 560 ? 3 : 2;
+  const aheadSteps = Math.min(ROCKET_IMAGERY_AHEAD_STEPS, Math.max(2, Math.ceil(speed / 145)));
+  const laneHalf = speed > 700 ? 2 : 1;
   for (let step = 1; step <= aheadSteps; step += 1) {
     const aheadX = rocketState.ship.x + headingX * tileSize * step * 0.82;
     const aheadY = rocketState.ship.y + headingY * tileSize * step * 0.82;
@@ -4366,7 +4374,7 @@ function queueRocketImageryPreload(rect, camX, camY) {
     }
   }
 
-  const pad = ROCKET_IMAGERY_PRELOAD_PAD + (speed > 620 ? 1 : 0);
+  const pad = ROCKET_IMAGERY_PRELOAD_PAD + (speed > 760 ? 1 : 0);
   for (let ty = Math.max(0, minTileY - pad); ty <= Math.min(rows - 1, maxTileY + pad); ty += 1) {
     for (let tx = Math.max(0, minTileX - pad); tx <= Math.min(cols - 1, maxTileX + pad); tx += 1) {
       const outsideX = tx < minTileX ? minTileX - tx : tx > maxTileX ? tx - maxTileX : 0;
@@ -4388,11 +4396,18 @@ function getRocketImageryTile(tx, ty, priority = 0) {
   }
   tile.used = ++rocketImageryTileSerial;
   tile.priority = Math.max(tile.priority || 0, priority);
-  if ((tile.status === "idle" || (tile.status === "error" && performance.now() > tile.retryAt)) && rocketImageryActiveLoads < ROCKET_IMAGERY_MAX_LOADS) {
+  if ((tile.status === "idle" || (tile.status === "error" && performance.now() > tile.retryAt)) && rocketImageryActiveLoads < getRocketImageryLoadLimit()) {
     startRocketImageryTileLoad(tile);
   }
   trimRocketImageryTileCache();
   return tile;
+}
+
+function getRocketImageryLoadLimit() {
+  const memory = Number(navigator.deviceMemory) || 4;
+  if (isRocketFastTakeoffMap()) return Math.min(2, ROCKET_IMAGERY_MAX_LOADS);
+  if (memory <= 4) return Math.min(3, ROCKET_IMAGERY_MAX_LOADS);
+  return ROCKET_IMAGERY_MAX_LOADS;
 }
 
 function startRocketImageryTileLoad(tile) {
@@ -4401,6 +4416,8 @@ function startRocketImageryTileLoad(tile) {
   const image = new Image();
   image.crossOrigin = "anonymous";
   image.decoding = "async";
+  image.loading = "lazy";
+  if ("fetchPriority" in image) image.fetchPriority = tile.priority >= 1000 ? "high" : "low";
   image.onload = () => {
     rocketImageryActiveLoads = Math.max(0, rocketImageryActiveLoads - 1);
     tile.status = "loaded";
@@ -4420,11 +4437,12 @@ function startRocketImageryTileLoad(tile) {
 }
 
 function startRocketImageryPendingLoads() {
-  if (rocketImageryActiveLoads >= ROCKET_IMAGERY_MAX_LOADS) return;
+  const loadLimit = getRocketImageryLoadLimit();
+  if (rocketImageryActiveLoads >= loadLimit) return;
   [...rocketImageryTileCache.values()]
     .filter((tile) => tile.status === "idle" || (tile.status === "error" && performance.now() > tile.retryAt))
     .sort((a, b) => (b.priority - a.priority) || (b.used - a.used))
-    .slice(0, ROCKET_IMAGERY_MAX_LOADS - rocketImageryActiveLoads)
+    .slice(0, loadLimit - rocketImageryActiveLoads)
     .forEach(startRocketImageryTileLoad);
 }
 
@@ -4437,7 +4455,16 @@ function invalidateRocketMapCacheForTile(tile) {
     && x + tileSize > rocketMapCache.x
     && y < rocketMapCache.y + rocketMapCache.h
     && y + tileSize > rocketMapCache.y;
-  if (overlaps) invalidateRocketMapCache();
+  if (overlaps) scheduleRocketTileMapRefresh();
+}
+
+function scheduleRocketTileMapRefresh() {
+  if (rocketMapTileRefreshTimer) return;
+  const delay = isRocketFastTakeoffMap() ? 150 : 80;
+  rocketMapTileRefreshTimer = window.setTimeout(() => {
+    rocketMapTileRefreshTimer = 0;
+    invalidateRocketMapCache();
+  }, delay);
 }
 
 function makeRocketImageryTileUrl(tx, ty) {
@@ -6134,6 +6161,8 @@ function setupRocketRouteInspector(root, run) {
     toolbar?.querySelectorAll("[data-route-index]").forEach((button) => {
       button.classList.toggle("selected", button.dataset.routeIndex === String(selected));
     });
+    const routeSelect = toolbar?.querySelector("[data-route-select]");
+    if (routeSelect) routeSelect.value = String(selected);
     if (selected === "all") {
       view = makeRocketLogView(mapW, mapH);
     } else if (options.zoomToRoute) {
@@ -6146,11 +6175,17 @@ function setupRocketRouteInspector(root, run) {
     toolbar.innerHTML = `
       <button type="button" class="selected" data-route-index="all">All Routes</button>
       <button type="button" data-route-action="reset">Reset Zoom</button>
-      ${logs.map((log, index) => `<button type="button" data-route-index="${index}">R${log.round}</button>`).join("")}
+      <select data-route-select aria-label="Select route round">
+        <option value="all">Round detail</option>
+        ${logs.map((log, index) => `<option value="${index}">R${log.round} - ${escapeHtml(log.target || "Unknown")}</option>`).join("")}
+      </select>
     `;
   }
   toolbar?.querySelectorAll("[data-route-index]").forEach((button) => {
     button.addEventListener("click", () => selectRoute(button.dataset.routeIndex, { zoomToRoute: button.dataset.routeIndex !== "all" }));
+  });
+  toolbar?.querySelector("[data-route-select]")?.addEventListener("change", (event) => {
+    selectRoute(event.target.value, { zoomToRoute: event.target.value !== "all" });
   });
   toolbar?.querySelector("[data-route-action='reset']")?.addEventListener("click", () => {
     view = selected === "all" ? makeRocketLogView(mapW, mapH) : makeRocketRouteView(logs[selected], mapW, mapH);
@@ -6175,8 +6210,9 @@ function setupRocketRouteInspector(root, run) {
   canvas.onwheel = (event) => {
     event.preventDefault();
     const point = rocketCanvasEventToMapPoint(canvas, mapW, mapH, event, view);
-    const factor = event.deltaY < 0 ? 1.22 : 1 / 1.22;
-    view = zoomRocketLogView(view, mapW, mapH, point, factor);
+    const anchor = rocketCanvasEventAnchor(canvas, event);
+    const factor = event.deltaY < 0 ? 1.16 : 1 / 1.16;
+    view = zoomRocketLogView(view, mapW, mapH, point, factor, anchor);
     redraw(false);
   };
   canvas.onpointerdown = (event) => {
@@ -6331,14 +6367,18 @@ function makeRocketRouteView(log = {}, mapW = ROCKET_MAP_W, mapH = ROCKET_MAP_H)
   });
 }
 
-function zoomRocketLogView(view, mapW, mapH, point, factor = 1.5) {
+function zoomRocketLogView(view, mapW, mapH, point, factor = 1.5, anchor = null) {
   const next = normalizeRocketLogView(view, mapW, mapH);
   const targetZoom = Math.max(1, Math.min(8, next.zoom * factor));
   if (Math.abs(targetZoom - next.zoom) < 0.001) return next;
+  const anchorX = Number.isFinite(Number(anchor?.xRatio)) ? Number(anchor.xRatio) : 0.5;
+  const anchorY = Number.isFinite(Number(anchor?.yRatio)) ? Number(anchor.yRatio) : 0.5;
+  const worldW = mapW / targetZoom;
+  const worldH = mapH / targetZoom;
   return makeRocketLogView(mapW, mapH, {
     zoom: targetZoom,
-    cx: point.x,
-    cy: point.y
+    cx: Number(point.x) + worldW * (0.5 - anchorX),
+    cy: Number(point.y) + worldH * (0.5 - anchorY)
   });
 }
 
@@ -6374,6 +6414,16 @@ function rocketCanvasEventToMapPoint(canvas, mapW, mapH, event, view = null) {
   return {
     x: Math.max(0, Math.min(mapW, viewport.minX + x / viewport.scaleX)),
     y: Math.max(0, Math.min(mapH, viewport.minY + y / viewport.scaleY))
+  };
+}
+
+function rocketCanvasEventAnchor(canvas, event) {
+  const rect = canvas.getBoundingClientRect();
+  const xRatio = rect.width ? (event.clientX - rect.left) / rect.width : 0.5;
+  const yRatio = rect.height ? (event.clientY - rect.top) / rect.height : 0.5;
+  return {
+    xRatio: Math.max(0.08, Math.min(0.92, xRatio)),
+    yRatio: Math.max(0.08, Math.min(0.92, yRatio))
   };
 }
 
@@ -6418,15 +6468,13 @@ function renderRocketRouteMeta(meta, logs, selected, selectedDepot = null) {
   }
   if (selected === "all") {
     const reached = logs.filter((log) => log.success).length;
-    const fuel = logs.length ? logs[logs.length - 1].fuel : 0;
-    const best = getRocketBestRound(logs);
-    const bestEvent = best ? getRocketBiggestRoundEvent(best) : null;
+    const depotCount = logs.reduce((total, log) => total + getRocketRoundDepotCount(log), 0);
+    const depotTotal = logs.reduce((total, log) => total + getRocketRoundDepotTotal(log), 0);
     meta.innerHTML = `
       <strong>All routes</strong>
       <span>${reached}/${logs.length} reached</span>
-      <span>Final fuel ${Number(fuel || 0).toFixed(0)}%</span>
-      ${best && bestEvent ? `<span>Best: Round ${best.round} | ${escapeHtml(rocketEventText(bestEvent))}</span>` : ""}
-      <span>Click a route color or round button to isolate one flight.</span>
+      <span>Fuel depots ${depotCount}${depotTotal ? ` / ${depotTotal}` : ""}</span>
+      <span>Click a route line or choose a round for depot levels.</span>
     `;
     return;
   }
@@ -6434,16 +6482,13 @@ function renderRocketRouteMeta(meta, logs, selected, selectedDepot = null) {
   if (!log) return;
   const depotCount = getRocketRoundDepotCount(log);
   const depotTotal = getRocketRoundDepotTotal(log);
-  const biggestEvent = getRocketBiggestRoundEvent(log);
   const selectedMarker = Number.isInteger(selectedDepot) ? getRocketDepotMarkersForLog(log)[selectedDepot] : null;
   meta.innerHTML = `
     <strong>Round ${log.round}: ${rocketLogFlagHtml(log)}${escapeHtml(log.target || "Unknown")}</strong>
     <span class="${log.success ? "round-good" : "round-bad"}">${log.success ? "Reached" : "Missed"} | ${escapeHtml(log.reason || "route")} | ${Math.max(0, log.time || 0).toFixed(1)}s left</span>
-    <span>Fuel ${Number(log.fuel || 0).toFixed(0)}% | Score ${formatScore(log.score || 0)}</span>
-    <span>Depots ${depotCount}${depotTotal ? ` / ${depotTotal}` : ""} | TP +${log.techEarned || 0}</span>
+    <span>Fuel depots ${depotCount}${depotTotal ? ` / ${depotTotal}` : ""}</span>
     ${rocketDepotStatusHtml(log, selectedDepot)}
     ${selectedMarker ? `<span class="rocket-depot-selected">${rocketDepotDetailHtml(selectedMarker, selectedDepot)}</span>` : ""}
-    <span class="${biggestEvent.className || ""}">Biggest event: ${escapeHtml(rocketEventText(biggestEvent))}</span>
   `;
 }
 
@@ -6454,7 +6499,7 @@ function pickRocketRouteFromCanvas(canvas, logs, mapW, mapH, event, view = null)
   const viewport = getRocketLogViewport(canvas, mapW, mapH, view);
   let best = { index: null, distance: Infinity, progress: 0 };
   (logs || []).forEach((log, index) => {
-    const hit = getRouteHitDistance(log.trace || [], x, y, viewport);
+    const hit = getRouteHitDistance(getRocketLogDisplayTrace(log.trace || [], ROCKET_LOG_DRAW_TRACE_MAX), x, y, viewport);
     if (hit.distance < best.distance) best = { index, ...hit };
   });
   return best.distance <= 24 ? best : { index: null, distance: Infinity, progress: 0 };
@@ -6489,6 +6534,19 @@ function getRouteHitDistance(trace, x, y, viewport) {
     previous = point.wrap ? null : current;
   });
   return best;
+}
+
+function getRocketLogDisplayTrace(trace = [], maxPoints = ROCKET_LOG_DRAW_TRACE_MAX) {
+  if (!Array.isArray(trace) || trace.length <= maxPoints) return trace || [];
+  const step = Math.max(1, Math.ceil(trace.length / maxPoints));
+  const result = [];
+  for (let index = 0; index < trace.length; index += 1) {
+    const point = trace[index];
+    if (index === 0 || index === trace.length - 1 || point?.wrap || index % step === 0) {
+      result.push(point);
+    }
+  }
+  return result;
 }
 
 function pointToSegmentDistance(px, py, ax, ay, bx, by) {
@@ -6538,12 +6596,13 @@ function drawRocketLogMap(canvas, logs, mapW, mapH, selected = "all", view = nul
     const hue = ["#b35cff", "#22d9f2", "#45f875", "#ffd33d", "#ff6848"][index % 5];
     const isSelected = selected === index;
     const dim = selected !== "all" && !isSelected;
+    const trace = getRocketLogDisplayTrace(log.trace || [], isSelected ? ROCKET_LOG_DRAW_TRACE_MAX : ROCKET_LOG_ALL_TRACE_MAX);
     ctx.strokeStyle = hue;
     ctx.globalAlpha = dim ? 0.12 : isSelected ? 1 : 0.58;
     ctx.lineWidth = isSelected ? 4.5 : 2.25;
     ctx.beginPath();
     let started = false;
-    (log.trace || []).forEach((point) => {
+    trace.forEach((point) => {
       const projected = rocketProjectLogPoint(point, viewport);
       const x = projected.x;
       const y = projected.y;

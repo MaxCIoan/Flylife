@@ -1500,12 +1500,13 @@ body:has(#rocketView.active) .topbar {
 }
 
 .rocket-route-toolbar {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: auto auto minmax(12rem, 1fr);
   gap: 0.45rem;
 }
 
-.rocket-route-toolbar button {
+.rocket-route-toolbar button,
+.rocket-route-toolbar select {
   min-height: 2.2rem;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 0.55rem;
@@ -1515,11 +1516,25 @@ body:has(#rocketView.active) .topbar {
   font-weight: 900;
 }
 
+.rocket-route-toolbar select {
+  width: 100%;
+}
+
 .rocket-route-toolbar button.selected,
 .rocket-route-toolbar button:hover {
   border-color: rgba(34, 217, 242, 0.78);
   color: #ffffff;
   background: rgba(25, 83, 126, 0.94);
+}
+
+@media (max-width: 720px) {
+  .rocket-route-toolbar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .rocket-route-toolbar select {
+    grid-column: 1 / -1;
+  }
 }
 
 .rocket-session-map,
