@@ -975,6 +975,15 @@ body:has(#rocketView.active) .topbar {
   accent-color: var(--purple);
 }
 
+.rocket-audio-panel select {
+  min-height: 2.2rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: var(--radius);
+  color: #eef6ff;
+  background: rgba(8, 17, 28, 0.94);
+  font-weight: 800;
+}
+
 .tech-node {
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 0.55rem;
