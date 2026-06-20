@@ -1515,7 +1515,14 @@ body:has(#rocketView.active) .topbar {
 
 .rocket-session-map,
 #rocketResultMap {
-  cursor: crosshair;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.rocket-session-map:active,
+#rocketResultMap:active {
+  cursor: grabbing;
 }
 
 .rocket-route-hover {

@@ -183,6 +183,9 @@ let propLfo;
 let propNoise;
 let propNoiseGain;
 let propFilter;
+let alienControlOsc;
+let alienControlGain;
+let alienControlFilter;
 let fireworks = [];
 let fireworksAnimation;
 let rocketState;
@@ -195,6 +198,7 @@ let rocketCatalog = null;
 let rocketCatalogLoading = false;
 let rocketMapCache = null;
 let rocketMiniMapCache = null;
+let rocketBlueWorldMapCache = null;
 let rocketImageryTileCache = new Map();
 let rocketImageryTileSerial = 0;
 let rocketImageryActiveLoads = 0;
@@ -607,15 +611,18 @@ function invalidateRocketMapCache() {
   if (isRocketFastTakeoffMap() && rocketMapCache) {
     rocketState.mapCacheDirty = true;
     rocketMiniMapCache = null;
+    rocketBlueWorldMapCache = null;
     return;
   }
   rocketMapCache = null;
   rocketMiniMapCache = null;
+  rocketBlueWorldMapCache = null;
 }
 
 function releaseRocketMapRuntimeMemory() {
   rocketMapCache = null;
   rocketMiniMapCache = null;
+  rocketBlueWorldMapCache = null;
   rocketImageryTileCache.clear();
   rocketImageryActiveLoads = 0;
 }
@@ -760,6 +767,84 @@ function projectRocketRing(ring) {
     return Math.abs(point.x - prev.x) > mapW * 0.45;
   });
   return warped ? [] : points;
+}
+
+function getRocketBlueWorldMapBase(w = 1440, h = 720, mapW = ROCKET_MAP_W, mapH = ROCKET_MAP_H) {
+  const featureKey = rocketWorldFeatures || mapCountries;
+  if (rocketBlueWorldMapCache
+    && rocketBlueWorldMapCache.w === w
+    && rocketBlueWorldMapCache.h === h
+    && rocketBlueWorldMapCache.mapW === mapW
+    && rocketBlueWorldMapCache.mapH === mapH
+    && rocketBlueWorldMapCache.features === featureKey) {
+    return rocketBlueWorldMapCache.canvas;
+  }
+  const canvas = rocketBlueWorldMapCache?.canvas || document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const ocean = ctx.createLinearGradient(0, 0, 0, h);
+  ocean.addColorStop(0, "#051527");
+  ocean.addColorStop(0.5, "#07243d");
+  ocean.addColorStop(1, "#04101d");
+  ctx.fillStyle = ocean;
+  ctx.fillRect(0, 0, w, h);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, w, h);
+  ctx.clip();
+  ctx.fillStyle = "#2d79a9";
+  ctx.globalAlpha = 0.08;
+  for (let index = 0; index < 9; index += 1) {
+    const y = h * (index + 0.45) / 9;
+    ctx.beginPath();
+    ctx.ellipse(w * 0.5, y, w * 0.62, h * 0.12, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  const features = rocketWorldFeatures || mapCountries.map((country) => ({
+    rings: [country.poly.map(([lon, lat]) => worldPoint(lon, lat, mapW, mapH))]
+  }));
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  features.forEach((country) => {
+    ctx.beginPath();
+    (country.rings || []).forEach((ring) => {
+      ring.forEach((point, index) => {
+        const px = point.x / mapW * w;
+        const py = point.y / mapH * h;
+        if (index === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      });
+      ctx.closePath();
+    });
+    ctx.fillStyle = "rgba(70, 157, 205, 0.72)";
+    ctx.fill("evenodd");
+    ctx.strokeStyle = "rgba(198, 236, 255, 0.34)";
+    ctx.lineWidth = 0.75;
+    ctx.stroke();
+  });
+  ctx.strokeStyle = "rgba(132, 211, 255, 0.16)";
+  ctx.lineWidth = 1;
+  for (let lon = -180; lon <= 180; lon += 30) {
+    const x = (lon + 180) / 360 * w;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, h);
+    ctx.stroke();
+  }
+  for (let lat = -60; lat <= 60; lat += 30) {
+    const y = (90 - lat) / 180 * h;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+  rocketBlueWorldMapCache = { canvas, w, h, mapW, mapH, features: featureKey };
+  return canvas;
 }
 
 function rocketCountryColor(name) {
@@ -4912,76 +4997,101 @@ function drawRocketFlightForces(ctx, rect) {
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(rocketState.ship.angle);
-  ctx.lineCap = "round";
-  const wakeCount = 5 + Math.round(intensity * 8);
+  ctx.globalCompositeOperation = "lighter";
+  ctx.filter = "blur(8px)";
+  const wakeCount = 4 + Math.round(intensity * 5);
   for (let index = 0; index < wakeCount; index += 1) {
-    const y = (index - wakeCount / 2) * 12 + Math.sin(performance.now() / 160 + index) * 5;
-    const length = 58 + intensity * 92 + index * 3;
-    ctx.globalAlpha = 0.1 + intensity * 0.18;
-    ctx.strokeStyle = accent;
-    ctx.lineWidth = 2 + intensity * 2;
+    const y = (index - (wakeCount - 1) / 2) * 18 + Math.sin(performance.now() / 210 + index) * 7;
+    const x = -82 - index * (18 + intensity * 10);
+    const length = 46 + intensity * 95 + index * 8;
+    const width = 10 + intensity * 18;
+    const glow = ctx.createRadialGradient(x, y, 2, x - length * 0.44, y + bank * 16, length);
+    glow.addColorStop(0, hexToRgba(accent, 0.34));
+    glow.addColorStop(0.46, hexToRgba(accent, 0.15));
+    glow.addColorStop(1, hexToRgba(accent, 0));
+    ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.moveTo(-76 - index * 10, y);
-    ctx.bezierCurveTo(-118 - length * 0.25, y + bank * 24, -140 - length * 0.6, y - bank * 18, -156 - length, y);
-    ctx.stroke();
+    ctx.ellipse(x - length * 0.35, y + bank * 14, length, width, bank * 0.18, 0, Math.PI * 2);
+    ctx.fill();
   }
   if (forces.braking || accel < -60) {
-    ctx.globalAlpha = Math.min(0.55, 0.18 + Math.abs(accel) / 520);
-    ctx.strokeStyle = "#ff6848";
-    ctx.lineWidth = 5;
-    [-42, 42].forEach((y) => {
+    ctx.globalAlpha = Math.min(0.72, 0.2 + Math.abs(accel) / 460);
+    [-38, 38].forEach((y) => {
+      const glow = ctx.createRadialGradient(14, y, 1, -28, y + bank * 10, 72);
+      glow.addColorStop(0, "rgba(255,104,72,.46)");
+      glow.addColorStop(0.42, "rgba(255,104,72,.2)");
+      glow.addColorStop(1, "rgba(255,104,72,0)");
+      ctx.fillStyle = glow;
       ctx.beginPath();
-      ctx.moveTo(18, y);
-      ctx.lineTo(-38, y + bank * 16);
-      ctx.stroke();
+      ctx.ellipse(-22, y + bank * 12, 72, 18, bank * 0.24, 0, Math.PI * 2);
+      ctx.fill();
     });
   }
   ctx.restore();
 
   if (Math.abs(vertical) > 60) {
     ctx.save();
-    ctx.lineCap = "round";
-    ctx.strokeStyle = vertical > 0 ? "#b35cff" : "#22d9f2";
-    ctx.globalAlpha = Math.min(0.45, 0.16 + Math.abs(vertical) / 900);
-    ctx.lineWidth = 3;
+    ctx.globalCompositeOperation = "lighter";
+    ctx.filter = "blur(10px)";
     const direction = vertical > 0 ? -1 : 1;
-    for (let index = 0; index < 7; index += 1) {
-      const offset = (index - 3) * 32;
-      const x = cx + offset + Math.sin(performance.now() / 180 + index) * 8;
-      const y = cy + direction * (42 + index * 5);
+    const color = vertical > 0 ? "#b35cff" : "#22d9f2";
+    const alpha = Math.min(0.54, 0.12 + Math.abs(vertical) / 780);
+    for (let index = 0; index < 5; index += 1) {
+      const offset = (index - 2) * 34 + Math.sin(performance.now() / 170 + index) * 7;
+      const px = cx + offset + bank * 12;
+      const py = cy + direction * (48 + index * 8);
+      const glow = ctx.createRadialGradient(px, py, 2, px, py + direction * 42, 78);
+      glow.addColorStop(0, hexToRgba(color, alpha));
+      glow.addColorStop(0.5, hexToRgba(color, alpha * 0.32));
+      glow.addColorStop(1, hexToRgba(color, 0));
+      ctx.fillStyle = glow;
       ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + bank * 16, y + direction * (42 + intensity * 48));
-      ctx.stroke();
+      ctx.ellipse(px, py + direction * 36, 22 + intensity * 16, 78 + intensity * 40, bank * 0.16, 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.restore();
   }
 }
 
-function drawRocketBiplaneWing(ctx, y, length, thickness, accent, lift = 0) {
-  const gradient = ctx.createLinearGradient(-length, y - thickness, 42, y + thickness);
+function drawRocketBiplaneWing(ctx, x, span, chord, accent, lift = 0) {
+  const gradient = ctx.createLinearGradient(x - chord, -span, x + chord, span);
   gradient.addColorStop(0, "#f3e2bf");
-  gradient.addColorStop(0.48, "#d4b070");
-  gradient.addColorStop(0.52, accent);
-  gradient.addColorStop(1, "#123048");
+  gradient.addColorStop(0.45, "#f0e6c8");
+  gradient.addColorStop(0.58, "#d2b576");
+  gradient.addColorStop(1, "#8f703a");
   ctx.fillStyle = gradient;
   ctx.strokeStyle = "#071521";
-  ctx.lineWidth = 2.4;
+  ctx.lineWidth = 2.2;
   ctx.beginPath();
-  ctx.moveTo(42, y - thickness * 0.64);
-  ctx.bezierCurveTo(-20, y - thickness - lift, -length + 16, y - thickness - lift, -length, y - thickness * 0.18 - lift);
-  ctx.quadraticCurveTo(-length - 8, y + lift * 0.2, -length, y + thickness * 0.72 - lift);
-  ctx.bezierCurveTo(-length + 18, y + thickness + lift, -20, y + thickness + lift, 46, y + thickness * 0.64);
+  ctx.moveTo(x - chord, -span + lift);
+  ctx.quadraticCurveTo(x + 2, -span - 10 + lift, x + chord, -span + lift);
+  ctx.lineTo(x + chord, span + lift);
+  ctx.quadraticCurveTo(x + 2, span + 10 + lift, x - chord, span + lift);
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
-  ctx.strokeStyle = "rgba(255,255,255,.34)";
-  ctx.lineWidth = 1.3;
-  [-0.72, -0.34, 0.04, 0.42, 0.76].forEach((t) => {
-    const x = -length * (0.52 + t * 0.36);
+  ctx.fillStyle = hexToRgba(accent, 0.88);
+  [-1, 1].forEach((side) => {
     ctx.beginPath();
-    ctx.moveTo(x, y - thickness * 0.72 - lift * 0.35);
-    ctx.lineTo(x + 34, y + thickness * 0.72 + lift * 0.2);
+    ctx.arc(x + 2, side * (span - 18) + lift, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#f6e8c8";
+    ctx.beginPath();
+    ctx.arc(x + 2, side * (span - 18) + lift, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#d13a32";
+    ctx.beginPath();
+    ctx.arc(x + 2, side * (span - 18) + lift, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = hexToRgba(accent, 0.88);
+  });
+  ctx.strokeStyle = "rgba(10,33,50,.45)";
+  ctx.lineWidth = 1.2;
+  [-0.62, -0.28, 0.08, 0.42, 0.72].forEach((t) => {
+    const y = span * t + lift;
+    ctx.beginPath();
+    ctx.moveTo(x - chord + 2, y);
+    ctx.lineTo(x + chord - 2, y + lift * 0.08);
     ctx.stroke();
   });
 }
@@ -5007,17 +5117,15 @@ function drawRocketShip(ctx, x, y, angle) {
   ctx.fill();
   ctx.restore();
 
-  drawRocketBiplaneWing(ctx, -55, 140, 17, bodyAccent, wingLift);
-  drawRocketBiplaneWing(ctx, 43, 124, 15, bodyAccent, -wingLift * 0.55);
+  drawRocketBiplaneWing(ctx, -16, 112, 22, bodyAccent, wingLift);
+  drawRocketBiplaneWing(ctx, -72, 82, 15, bodyAccent, -wingLift * 0.45);
 
   ctx.strokeStyle = "rgba(238,225,190,.72)";
   ctx.lineWidth = 3;
-  [[-92, -39, -72, 28], [-42, -40, -26, 28], [8, -38, 18, 27]].forEach(([x1, y1, x2, y2]) => {
+  [[-72, -66, -16, -82], [-72, 66, -16, 82], [-56, -34, 0, -46], [-56, 34, 0, 46]].forEach(([x1, y1, x2, y2]) => {
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
-    ctx.moveTo(x1 + 16, y1);
-    ctx.lineTo(x2 - 12, y2);
     ctx.stroke();
   });
 
@@ -5442,8 +5550,7 @@ function drawRocketMiniMap(ctx, rect) {
 }
 
 function getRocketMiniMapBase(w, h) {
-  const imageReady = rocketMiniMapImage.complete && rocketMiniMapImage.naturalWidth > 0;
-  if (rocketMiniMapCache && rocketMiniMapCache.w === w && rocketMiniMapCache.h === h && rocketMiniMapCache.features === rocketWorldFeatures && rocketMiniMapCache.mapW === rocketState.mapW && rocketMiniMapCache.mapH === rocketState.mapH && rocketMiniMapCache.imageReady === imageReady) {
+  if (rocketMiniMapCache && rocketMiniMapCache.w === w && rocketMiniMapCache.h === h && rocketMiniMapCache.features === rocketWorldFeatures && rocketMiniMapCache.mapW === rocketState.mapW && rocketMiniMapCache.mapH === rocketState.mapH) {
     return rocketMiniMapCache.canvas;
   }
   const canvas = rocketMiniMapCache?.canvas || document.createElement("canvas");
@@ -5452,45 +5559,14 @@ function getRocketMiniMapBase(w, h) {
   const ctx = canvas.getContext("2d");
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = "rgba(3,9,15,.72)";
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(getRocketBlueWorldMapBase(1440, 720, rocketState.mapW, rocketState.mapH), 0, 0, w, h);
+  ctx.fillStyle = "rgba(3,9,15,.12)";
   ctx.fillRect(0, 0, w, h);
-  if (imageReady) {
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(rocketMiniMapImage, 0, 0, w, h);
-    ctx.strokeStyle = "rgba(5,5,5,.42)";
-    ctx.strokeRect(0, 0, w, h);
-    rocketMiniMapCache = { canvas, w, h, features: rocketWorldFeatures, mapW: rocketState.mapW, mapH: rocketState.mapH, imageReady };
-    return canvas;
-  }
-  ctx.strokeStyle = "rgba(255,255,255,.2)";
+  ctx.strokeStyle = "rgba(177,226,255,.32)";
   ctx.strokeRect(0, 0, w, h);
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(0, 0, w, h);
-  ctx.clip();
-  ctx.strokeStyle = "rgba(190,230,205,.55)";
-  ctx.fillStyle = "rgba(103,183,124,.18)";
-  ctx.lineWidth = 0.8;
-  const features = rocketWorldFeatures || mapCountries.map((country) => ({
-    rings: [country.poly.map(([lon, lat]) => worldPoint(lon, lat))]
-  }));
-  features.forEach((country) => {
-    ctx.beginPath();
-    country.rings.forEach((ring) => {
-      ring.forEach((point, index) => {
-        const px = point.x / rocketState.mapW * w;
-        const py = point.y / rocketState.mapH * h;
-        if (index === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      });
-      ctx.closePath();
-    });
-    ctx.fill("evenodd");
-    ctx.stroke();
-  });
-  ctx.restore();
-  rocketMiniMapCache = { canvas, w, h, features: rocketWorldFeatures, mapW: rocketState.mapW, mapH: rocketState.mapH, imageReady };
+  rocketMiniMapCache = { canvas, w, h, features: rocketWorldFeatures, mapW: rocketState.mapW, mapH: rocketState.mapH };
   return canvas;
 }
 
@@ -5902,10 +5978,12 @@ function setupRocketRouteInspector(root, run) {
   let selected = "all";
   let selectedDepot = null;
   let view = makeRocketLogView(mapW, mapH);
+  let dragState = null;
+  let suppressNextClick = false;
 
-  function redraw() {
+  function redraw(updateMeta = true) {
     drawRocketLogMap(canvas, logs, mapW, mapH, selected, view, selectedDepot);
-    renderRocketRouteMeta(meta, logs, selected, selectedDepot);
+    if (updateMeta) renderRocketRouteMeta(meta, logs, selected, selectedDepot);
   }
 
   function selectRoute(value, options = {}) {
@@ -5957,9 +6035,32 @@ function setupRocketRouteInspector(root, run) {
     const point = rocketCanvasEventToMapPoint(canvas, mapW, mapH, event, view);
     const factor = event.deltaY < 0 ? 1.22 : 1 / 1.22;
     view = zoomRocketLogView(view, mapW, mapH, point, factor);
-    redraw();
+    redraw(false);
+  };
+  canvas.onpointerdown = (event) => {
+    if (event.button !== 0) return;
+    dragState = {
+      id: event.pointerId,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      moved: false
+    };
+    canvas.setPointerCapture?.(event.pointerId);
+  };
+  canvas.onpointerup = (event) => {
+    if (!dragState || dragState.id !== event.pointerId) return;
+    suppressNextClick = dragState.moved;
+    canvas.releasePointerCapture?.(event.pointerId);
+    dragState = null;
+  };
+  canvas.onpointercancel = () => {
+    dragState = null;
   };
   canvas.onclick = (event) => {
+    if (suppressNextClick) {
+      suppressNextClick = false;
+      return;
+    }
     if (selected !== "all") {
       const depotIndex = pickRocketDepotFromCanvas(canvas, logs[selected], mapW, mapH, event, view);
       if (depotIndex != null) {
@@ -5997,7 +6098,25 @@ function setupRocketRouteInspector(root, run) {
     view = zoomRocketLogView(view, mapW, mapH, point, selected === "all" ? 1.8 : 1.55);
     redraw();
   };
-  canvas.onmousemove = (event) => {
+  canvas.onpointermove = (event) => {
+    if (dragState && dragState.id === event.pointerId) {
+      const dx = event.clientX - dragState.lastX;
+      const dy = event.clientY - dragState.lastY;
+      if (Math.hypot(dx, dy) > 1.5) {
+        dragState.moved = true;
+        const viewport = getRocketLogViewport(canvas, mapW, mapH, view);
+        view = makeRocketLogView(mapW, mapH, {
+          zoom: view.zoom,
+          cx: view.cx - dx / viewport.scaleX,
+          cy: view.cy - dy / viewport.scaleY
+        });
+        dragState.lastX = event.clientX;
+        dragState.lastY = event.clientY;
+        hover.hidden = true;
+        redraw(false);
+      }
+      return;
+    }
     if (selected !== "all") {
       const depotIndex = pickRocketDepotFromCanvas(canvas, logs[selected], mapW, mapH, event, view, 18);
       if (depotIndex != null) {
@@ -6027,6 +6146,7 @@ function setupRocketRouteInspector(root, run) {
   };
   canvas.onmouseleave = () => {
     hover.hidden = true;
+    dragState = null;
   };
   selectRoute("all");
 }
@@ -6241,39 +6361,14 @@ function drawRocketLogMap(canvas, logs, mapW, mapH, selected = "all", view = nul
   const h = canvas.height;
   const viewport = getRocketLogViewport(canvas, mapW, mapH, view);
   ctx.clearRect(0, 0, w, h);
-  const grad = ctx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, "#061728");
-  grad.addColorStop(1, "#071018");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, w, h);
-
-  const features = rocketWorldFeatures || mapCountries.map((country) => ({
-    name: country.name,
-    color: country.color,
-    rings: [country.poly.map(([lon, lat]) => worldPoint(lon, lat, mapW, mapH))]
-  }));
-  ctx.save();
-  ctx.lineJoin = "round";
-  ctx.lineCap = "round";
-  features.forEach((country) => {
-    ctx.beginPath();
-    (country.rings || []).forEach((ring) => {
-      ring.forEach((point, index) => {
-        const projected = rocketProjectLogPoint(point, viewport);
-        const px = projected.x;
-        const py = projected.y;
-        if (index === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      });
-      ctx.closePath();
-    });
-    ctx.fillStyle = hexToRgba(country.color || "#67b77c", 0.56);
-    ctx.fill("evenodd");
-    ctx.strokeStyle = "rgba(225,255,220,.45)";
-    ctx.lineWidth = 0.75;
-    ctx.stroke();
-  });
-  ctx.restore();
+  const base = getRocketBlueWorldMapBase(1440, 720, mapW, mapH);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  const sx = viewport.minX / mapW * base.width;
+  const sy = viewport.minY / mapH * base.height;
+  const sw = (viewport.maxX - viewport.minX) / mapW * base.width;
+  const sh = (viewport.maxY - viewport.minY) / mapH * base.height;
+  ctx.drawImage(base, sx, sy, sw, sh, 0, 0, w, h);
 
   ctx.strokeStyle = "rgba(255,255,255,.1)";
   ctx.lineWidth = 1;
@@ -6469,19 +6564,42 @@ function startPropellerSound() {
   propLfo.connect(lfoGain).connect(propOsc.frequency);
   propOsc.connect(propFilter).connect(engineGain);
   propNoise.connect(propNoiseGain).connect(propFilter);
+  alienControlOsc = audioContext.createOscillator();
+  alienControlFilter = audioContext.createBiquadFilter();
+  alienControlGain = audioContext.createGain();
+  alienControlOsc.type = "sine";
+  alienControlOsc.frequency.value = 190;
+  alienControlFilter.type = "bandpass";
+  alienControlFilter.frequency.value = 620;
+  alienControlFilter.Q.value = 7;
+  alienControlGain.gain.value = 0.0001;
+  alienControlOsc.connect(alienControlFilter).connect(alienControlGain).connect(fxGain);
   propOsc.start();
   propLfo.start();
   propNoise.start();
+  alienControlOsc.start();
 }
 
 function updatePropellerSound() {
   if (!audioContext || !propOsc || !rocketState) return;
   const speed = Math.hypot(rocketState.ship.vx, rocketState.ship.vy);
   const throttle = rocketState.ship.throttle || 0;
+  const forces = rocketState.flightForces || {};
   const target = 34 + throttle * 70 + Math.min(90, speed * 0.18);
   propOsc.frequency.setTargetAtTime(target, audioContext.currentTime, 0.08);
   propFilter.frequency.setTargetAtTime(440 + throttle * 1200 + speed * 1.3, audioContext.currentTime, 0.08);
   if (propNoiseGain) propNoiseGain.gain.setTargetAtTime(0.015 + throttle * 0.06, audioContext.currentTime, 0.08);
+  if (alienControlOsc && alienControlGain && alienControlFilter) {
+    const bank = Math.abs(Number(forces.bank || rocketState.ship.bank || 0));
+    const vertical = Math.abs(Number(forces.verticalSpeed || rocketState.verticalSpeed || 0));
+    const accel = Math.abs(Number(forces.accel || rocketState.accel || 0));
+    const braking = forces.braking ? 1 : 0;
+    const controlAmount = Math.min(1, bank * 0.55 + vertical / 720 + accel / 520 + braking * 0.35);
+    const controlFreq = 150 + bank * 140 + Math.min(150, vertical * 0.22) + Math.min(90, accel * 0.16) + braking * 75;
+    alienControlOsc.frequency.setTargetAtTime(controlFreq, audioContext.currentTime, 0.08);
+    alienControlFilter.frequency.setTargetAtTime(520 + controlAmount * 1200 + speed * 0.32, audioContext.currentTime, 0.1);
+    alienControlGain.gain.setTargetAtTime(0.002 + controlAmount * 0.024, audioContext.currentTime, 0.12);
+  }
 }
 
 function stopPropellerSound() {
@@ -6490,12 +6608,16 @@ function stopPropellerSound() {
     propOsc.stop(audioContext.currentTime + 0.08);
     propLfo?.stop(audioContext.currentTime + 0.08);
     propNoise?.stop(audioContext.currentTime + 0.08);
+    alienControlOsc?.stop(audioContext.currentTime + 0.08);
   } catch {}
   propOsc = null;
   propLfo = null;
   propNoise = null;
   propNoiseGain = null;
   propFilter = null;
+  alienControlOsc = null;
+  alienControlGain = null;
+  alienControlFilter = null;
 }
 
 function playTakeoffSound() {
