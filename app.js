@@ -195,25 +195,16 @@ let rocketCatalog = null;
 let rocketCatalogLoading = false;
 let rocketMapCache = null;
 let rocketMiniMapCache = null;
-let rocketTerrainTileCache = new Map();
-let rocketTerrainTileSerial = 0;
-let rocketTerrainSampleCanvas = null;
 let rocketImageryTileCache = new Map();
 let rocketImageryTileSerial = 0;
 let rocketImageryActiveLoads = 0;
 const rocketMiniMapImage = new Image();
 const ROCKET_STATIC_CACHE_SNAP = 768;
-const ROCKET_DETAIL_TILE_SIZE = 512;
-const ROCKET_DETAIL_VIRTUAL_ZOOM = 10;
 const ROCKET_IMAGERY_TILE_SIZE = 512;
-const ROCKET_IMAGERY_RASTER_SIZE = 512;
-const ROCKET_IMAGERY_CACHE_MAX = 16;
-const ROCKET_IMAGERY_MAX_LOADS = 1;
-const ROCKET_LIVE_WMS_IMAGERY = false;
-const ROCKET_IMAGERY_LAYER = "BlueMarble_ShadedRelief_Bathymetry";
-const ROCKET_IMAGERY_WMS_URL = "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi";
-const ROCKET_CLOSE_CAMERA_ZOOM = 2.05;
-const ROCKET_ISLAND_RELIEF_MIN_ZOOM = 1.1;
+const ROCKET_IMAGERY_CACHE_MAX = 72;
+const ROCKET_IMAGERY_MAX_LOADS = 4;
+const ROCKET_ATLAS_TILE_VERSION = "20260620a";
+const ROCKET_FIXED_CAMERA_ZOOM = 1.35;
 const ROCKET_TAKEOFF_SPEED = 65;
 const ROCKET_CRUISE_ALTITUDE = 70;
 const ROCKET_RUNWAY_LOCK_ALTITUDE = 12;
@@ -222,19 +213,9 @@ const ROCKET_LOG_TRACE_MAX = 260;
 const ROCKET_HUD_INTERVAL_MS = 120;
 const ROCKET_NAV_CHECK_INTERVAL = 0.14;
 const ROCKET_TINY_COUNTRY_DOT_MAX = 30;
-const ROCKET_EARTH_IMAGE_SRC = "assets/earth-satellite-nasa-14400.jpg?v=20260617b";
-const rocketEarthImage = new Image();
-rocketEarthImage.decoding = "async";
-rocketEarthImage.addEventListener("load", invalidateRocketMapCache);
 rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260617b";
 rocketMiniMapImage.addEventListener("load", () => { rocketMiniMapCache = null; });
 let rocketCountryOverlayEnabled = localStorage.getItem("flagHunterRocketCountryOverlay") !== "0";
-
-function ensureRocketEarthImageLoaded() {
-  if (!rocketEarthImage.src) {
-    rocketEarthImage.src = ROCKET_EARTH_IMAGE_SRC;
-  }
-}
 
 let officialFlyLeaders = [];
 let officialFlyLeadersLoaded = false;
@@ -399,127 +380,6 @@ function worldPoint(lon, lat, mapW = ROCKET_MAP_W, mapH = ROCKET_MAP_H) {
     y: (90 - lat) / 180 * mapH
   };
 }
-
-const rocketIslandReliefFeatures = [
-  ["Palau", 134.58, 7.5, "volcanic", 20],
-  ["Yap", 138.12, 9.55, "island", 13],
-  ["Ulithi", 139.66, 10.02, "atoll", 12],
-  ["Woleai", 143.9, 7.36, "atoll", 10],
-  ["Guam", 144.79, 13.44, "volcanic", 17],
-  ["Rota", 145.2, 14.15, "island", 11],
-  ["Tinian", 145.64, 14.98, "island", 10],
-  ["Saipan", 145.75, 15.18, "island", 12],
-  ["Chuuk Lagoon", 151.84, 7.44, "atoll", 17],
-  ["Pohnpei", 158.23, 6.85, "volcanic", 16],
-  ["Kosrae", 162.98, 5.32, "volcanic", 13],
-  ["Nauru", 166.93, -0.52, "reef", 13],
-  ["Majuro", 171.38, 7.09, "atoll", 15],
-  ["Kwajalein", 167.47, 8.72, "atoll", 16],
-  ["Bikini", 165.38, 11.61, "atoll", 12],
-  ["Enewetak", 162.32, 11.35, "atoll", 12],
-  ["Jaluit", 169.62, 5.92, "atoll", 12],
-  ["Wotje", 170.0, 9.45, "atoll", 11],
-  ["Maloelap", 171.07, 8.72, "atoll", 11],
-  ["Ailinglaplap", 168.73, 7.28, "atoll", 12],
-  ["Tarawa", 173.0, 1.43, "atoll", 16],
-  ["Makin", 172.98, 3.38, "atoll", 11],
-  ["Butaritari", 172.82, 3.12, "atoll", 13],
-  ["Abaiang", 173.04, 1.85, "atoll", 11],
-  ["Abemama", 173.85, 0.4, "atoll", 12],
-  ["Tabiteuea", 174.83, -1.43, "atoll", 14],
-  ["Kanton", -171.72, -2.82, "atoll", 12],
-  ["Kiritimati", -157.4, 1.87, "atoll", 22],
-  ["Tabuaeran", -159.36, 3.86, "atoll", 13],
-  ["Teraina", -160.39, 4.69, "atoll", 11],
-  ["Funafuti", 179.2, -8.52, "atoll", 15],
-  ["Nukufetau", 178.36, -8.0, "atoll", 11],
-  ["Nanumea", 176.12, -5.67, "atoll", 10],
-  ["Tokelau Atafu", -172.5, -8.55, "atoll", 11],
-  ["Tokelau Nukunonu", -171.82, -9.17, "atoll", 11],
-  ["Tokelau Fakaofo", -171.23, -9.38, "atoll", 11],
-  ["Savaii", -172.42, -13.62, "volcanic", 24],
-  ["Samoa Upolu", -171.75, -13.93, "volcanic", 22],
-  ["Tutuila", -170.7, -14.28, "volcanic", 15],
-  ["Tonga Tongatapu", -175.2, -21.18, "reef", 17],
-  ["Vavau", -173.98, -18.65, "reef", 14],
-  ["Niue", -169.86, -19.05, "reef", 15],
-  ["Rarotonga", -159.77, -21.23, "volcanic", 14],
-  ["Aitutaki", -159.78, -18.85, "atoll", 12],
-  ["Tahiti", -149.4, -17.65, "volcanic", 24],
-  ["Bora Bora", -151.74, -16.5, "reef", 13],
-  ["New Caledonia", 165.62, -21.3, "island", 34],
-  ["Vanuatu Efate", 168.32, -17.65, "volcanic", 15],
-  ["Solomon Guadalcanal", 160.15, -9.6, "volcanic", 24],
-  ["Fiji Viti Levu", 178.0, -17.8, "volcanic", 28],
-  ["Fiji Vanua Levu", 179.25, -16.58, "volcanic", 22],
-  ["Maldives North Male", 73.52, 4.18, "atoll", 17],
-  ["Maldives Ari", 72.83, 3.88, "atoll", 15],
-  ["Maldives Addu", 73.13, -0.63, "atoll", 14],
-  ["Chagos", 72.42, -7.32, "atoll", 15],
-  ["Seychelles Mahe", 55.45, -4.62, "volcanic", 16],
-  ["Seychelles Praslin", 55.74, -4.32, "island", 11],
-  ["Aldabra", 46.37, -9.42, "atoll", 15],
-  ["Mauritius", 57.55, -20.17, "volcanic", 20],
-  ["Rodrigues", 63.42, -19.72, "reef", 13],
-  ["Reunion", 55.53, -21.11, "volcanic", 20],
-  ["Grande Comore", 43.33, -11.7, "volcanic", 17],
-  ["Anjouan", 44.43, -12.22, "volcanic", 13],
-  ["Moheli", 43.73, -12.32, "volcanic", 11],
-  ["Mayotte", 45.17, -12.83, "reef", 14],
-  ["Socotra", 54.02, 12.48, "island", 22],
-  ["Zanzibar", 39.34, -6.16, "reef", 22],
-  ["Pemba", 39.75, -5.22, "reef", 15],
-  ["Mafia", 39.75, -7.87, "reef", 12],
-  ["Sao Tome", 6.61, 0.25, "volcanic", 16],
-  ["Principe", 7.41, 1.62, "volcanic", 11],
-  ["Bioko", 8.7, 3.5, "volcanic", 17],
-  ["Cape Verde Santiago", -23.61, 15.11, "volcanic", 16],
-  ["Cape Verde Sao Vicente", -24.98, 16.85, "volcanic", 13],
-  ["Cape Verde Sal", -22.92, 16.73, "reef", 12],
-  ["Saint Lucia", -60.98, 13.91, "volcanic", 16],
-  ["Martinique", -61.02, 14.64, "volcanic", 17],
-  ["Dominica", -61.37, 15.41, "volcanic", 16],
-  ["Barbados", -59.54, 13.19, "reef", 15],
-  ["Grenada", -61.68, 12.12, "volcanic", 13],
-  ["Saint Vincent", -61.2, 13.25, "volcanic", 14],
-  ["Guadeloupe", -61.55, 16.25, "volcanic", 18],
-  ["Antigua", -61.8, 17.08, "reef", 12],
-  ["Barbuda", -61.8, 17.63, "reef", 11],
-  ["Saint Kitts", -62.73, 17.32, "volcanic", 11],
-  ["Nevis", -62.58, 17.15, "volcanic", 10],
-  ["Montserrat", -62.19, 16.74, "volcanic", 10],
-  ["Anguilla", -63.06, 18.22, "reef", 10],
-  ["Saint Martin", -63.05, 18.07, "reef", 11],
-  ["Tortola", -64.62, 18.43, "reef", 11],
-  ["Saint Thomas", -64.93, 18.34, "reef", 10],
-  ["Saint Croix", -64.75, 17.73, "reef", 11],
-  ["Puerto Rico", -66.59, 18.22, "volcanic", 30],
-  ["Vieques", -65.44, 18.13, "reef", 10],
-  ["Culebra", -65.3, 18.31, "reef", 9],
-  ["Trinidad", -61.22, 10.69, "island", 25],
-  ["Tobago", -60.67, 11.25, "reef", 14],
-  ["Aruba", -69.97, 12.52, "reef", 12],
-  ["Curacao", -68.99, 12.17, "reef", 15],
-  ["Bonaire", -68.28, 12.2, "reef", 12],
-  ["Cayman Grand", -81.25, 19.32, "reef", 13],
-  ["Jamaica", -77.3, 18.1, "volcanic", 32],
-  ["Bahamas Andros", -77.95, 24.7, "reef", 27],
-  ["Bahamas New Providence", -77.35, 25.03, "reef", 11],
-  ["Bahamas Eleuthera", -76.18, 25.1, "reef", 17],
-  ["Bahamas Abaco", -77.1, 26.55, "reef", 19],
-  ["Bahamas Exuma", -76.45, 23.7, "reef", 21],
-  ["Turks Caicos", -71.8, 21.75, "reef", 16]
-].map(([name, lon, lat, kind, radius], index) => ({
-  name,
-  lon,
-  lat,
-  kind,
-  radius,
-  seed: index * 977 + Math.round((lon + 180) * 91) + Math.round((lat + 90) * 131),
-  point: null,
-  mapW: 0,
-  mapH: 0
-}));
 
 const mapCountries = [
   { name: "Canada", color: "#5aa477", poly: [[-141,70],[-60,70],[-52,50],[-82,42],[-125,49],[-141,60]] },
@@ -689,8 +549,6 @@ function invalidateRocketMapCache() {
 function releaseRocketMapRuntimeMemory() {
   rocketMapCache = null;
   rocketMiniMapCache = null;
-  rocketTerrainTileCache.clear();
-  rocketTerrainSampleCanvas = null;
   rocketImageryTileCache.clear();
   rocketImageryActiveLoads = 0;
 }
@@ -2421,7 +2279,6 @@ function roundRect(ctx, x, y, w, h, r, fill = false) {
 }
 
 function startRocketRun() {
-  ensureRocketEarthImageLoaded();
   loadRocketWorldMap();
   loadRocketBoundaryLines();
   loadRocketCatalog();
@@ -3315,23 +3172,24 @@ function updateRocket(dt) {
   while (turn < -Math.PI) turn += Math.PI * 2;
   const turnLevel = rocketState.tech.turn || 0;
   const speedLevel = rocketState.tech.speed || 0;
-  const turnRate = 2.05 + turnLevel * 0.56;
+  const turnRate = 3.15 + turnLevel * 0.62;
   if (runwayLocked) {
     rocketState.ship.bank += (0 - rocketState.ship.bank) * Math.min(1, dt * 8);
   } else {
-    rocketState.ship.angle += turn * Math.min(1, dt * turnRate);
-    rocketState.ship.bank += (Math.max(-1, Math.min(1, turn * 2.1)) - rocketState.ship.bank) * Math.min(1, dt * 7);
+    const maxTurnStep = turnRate * dt;
+    rocketState.ship.angle += Math.max(-maxTurnStep, Math.min(maxTurnStep, turn));
+    rocketState.ship.bank += (Math.max(-1, Math.min(1, turn * 2.4)) - rocketState.ship.bank) * Math.min(1, dt * 9);
   }
   const onGround = rocketState.ship.altitude <= 8;
   const headingX = Math.cos(rocketState.ship.angle);
   const headingY = Math.sin(rocketState.ship.angle);
   const pointerAlongHeading = control.manual ? dx * headingX + dy * headingY : 0;
   const spaceBrake = Boolean(rocketState.keys?.Space);
-  const noseDecel = control.manual && pointerAlongHeading >= 0 && control.distance < 115;
+  const noseDecel = control.manual && pointerAlongHeading >= 0 && control.distance < 56;
   const parkingBrake = rocketState.parked || rocketState.parkingHold > 0;
   const manualPull = control.manual ? Math.max(0, pointerAlongHeading) / 360 : 0;
-  const intent = parkingBrake || spaceBrake || noseDecel ? 0 : control.manual ? Math.min(1, manualPull) : 0.82;
-  rocketState.ship.throttle += (intent - rocketState.ship.throttle) * Math.min(1, dt * (parkingBrake || spaceBrake || noseDecel ? 3.8 : 2.75));
+  const intent = parkingBrake || spaceBrake || noseDecel ? 0 : control.manual ? Math.max(0.48, Math.min(1, 0.62 + manualPull * 0.38)) : 0.82;
+  rocketState.ship.throttle += (intent - rocketState.ship.throttle) * Math.min(1, dt * (parkingBrake || spaceBrake || noseDecel ? 4.2 : 4.4));
   const thrust = 720 + speedLevel * 205 + turnLevel * 34;
   rocketState.ship.vx += Math.cos(rocketState.ship.angle) * thrust * rocketState.ship.throttle * dt;
   rocketState.ship.vy += Math.sin(rocketState.ship.angle) * thrust * rocketState.ship.throttle * dt;
@@ -3697,18 +3555,18 @@ function getRocketControlVector(rect, dt = 0.016) {
   const rawDx = rocketState.mouse.x - center.x;
   const rawDy = rocketState.mouse.y - center.y;
   const distance = Math.hypot(rawDx, rawDy);
-  const inZone = Boolean(rocketState.mouse.inside) && distance < 230;
+  const inZone = Boolean(rocketState.mouse.inside);
   if (!rocketState.mouse.hasSmooth || !rocketState.mouse.inside) {
     rocketState.mouse.smoothX = rocketState.mouse.x;
     rocketState.mouse.smoothY = rocketState.mouse.y;
     rocketState.mouse.hasSmooth = true;
   } else {
-    const smoothing = Math.min(1, 1 - Math.exp(-dt * 26));
+    const smoothing = Math.min(1, 1 - Math.exp(-dt * 52));
     rocketState.mouse.smoothX += (rocketState.mouse.x - rocketState.mouse.smoothX) * smoothing;
     rocketState.mouse.smoothY += (rocketState.mouse.y - rocketState.mouse.smoothY) * smoothing;
   }
-  const smoothDx = rocketState.mouse.smoothX - center.x;
-  const smoothDy = rocketState.mouse.smoothY - center.y;
+  const smoothDx = Math.abs(rawDx) < 6 ? 0 : rocketState.mouse.smoothX - center.x;
+  const smoothDy = Math.abs(rawDy) < 6 ? 0 : rocketState.mouse.smoothY - center.y;
   if (!inZone) {
     rocketState.manualControl = false;
     rocketState.manualReleased = false;
@@ -3720,6 +3578,15 @@ function getRocketControlVector(rect, dt = 0.016) {
       dx: Math.cos(rocketState.ship.angle) * 180,
       dy: Math.sin(rocketState.ship.angle) * 180,
       manual: false,
+      inZone,
+      distance
+    };
+  }
+  if (distance < 8) {
+    return {
+      dx: Math.cos(rocketState.ship.angle) * 180,
+      dy: Math.sin(rocketState.ship.angle) * 180,
+      manual: true,
       inZone,
       distance
     };
@@ -3810,23 +3677,9 @@ function drawRocket() {
 }
 
 function getRocketCameraZoom() {
-  if (!rocketState) return 1;
-  const altitude = Math.max(0, rocketState.ship?.altitude || 0);
-  let target;
-  if (altitude < 350) {
-    target = ROCKET_CLOSE_CAMERA_ZOOM;
-  } else if (altitude < 1600) {
-    target = ROCKET_CLOSE_CAMERA_ZOOM - (altitude - 350) / 1250 * 0.35;
-  } else if (altitude < 4200) {
-    target = 1.7 - (altitude - 1600) / 2600 * 0.38;
-  } else {
-    target = 1.32 - Math.min(0.2, (altitude - 4200) / 2600 * 0.2);
-  }
-  target = Math.max(1.12, Math.min(ROCKET_CLOSE_CAMERA_ZOOM, target));
-  rocketState.cameraZoom = rocketState.cameraZoom
-    ? rocketState.cameraZoom + (target - rocketState.cameraZoom) * 0.08
-    : target;
-  return Math.round(rocketState.cameraZoom * 20) / 20;
+  if (!rocketState) return ROCKET_FIXED_CAMERA_ZOOM;
+  rocketState.cameraZoom = ROCKET_FIXED_CAMERA_ZOOM;
+  return ROCKET_FIXED_CAMERA_ZOOM;
 }
 
 function drawRocketSetupBackground(ctx, rect) {
@@ -3923,19 +3776,13 @@ function getRocketStaticCacheSnap() {
 }
 
 function getRocketMapCachePixelScale() {
-  const zoom = rocketState?.cameraZoom || 1;
-  if (zoom < 1.18) return 1;
   const memory = Number(navigator.deviceMemory) || 4;
-  if (isRocketFastTakeoffMap()) return memory <= 2 ? 1 : 1.25;
-  if (memory <= 2) return 1.25;
-  if (memory <= 4) return 1.5;
-  return 2;
+  if (isRocketFastTakeoffMap() || memory <= 4) return 1;
+  return 1.15;
 }
 
 function drawRocketStaticMap(ctx, rect, camX, camY, detailMode = "full") {
   drawRocketSatelliteBase(ctx, rect, camX, camY);
-  drawRocketImageryDetailTiles(ctx, rect, camX, camY);
-  if (detailMode !== "takeoff-fast") drawRocketTerrainDetailTiles(ctx, rect, camX, camY);
   ctx.save();
   ctx.translate(-camX, -camY);
 
@@ -3977,7 +3824,6 @@ function drawRocketStaticMap(ctx, rect, camX, camY, detailMode = "full") {
       drawRocketTinyCountryMarker(ctx, country);
 
     });
-    drawRocketIslandReliefEnhancements(ctx, rect, camX, camY);
     drawRocketBoundaryLines(ctx, camX, camY, rect);
   } else if (rocketCountryOverlayEnabled) {
     mapCountries.forEach((country) => {
@@ -4003,9 +3849,6 @@ function drawRocketStaticMap(ctx, rect, camX, camY, detailMode = "full") {
       ctx.stroke();
 
     });
-    drawRocketIslandReliefEnhancements(ctx, rect, camX, camY);
-  } else {
-    drawRocketIslandReliefEnhancements(ctx, rect, camX, camY);
   }
 
   ctx.restore();
@@ -4070,45 +3913,13 @@ function getRocketBoundaryPath(line) {
   return path;
 }
 
-function satelliteHash(x, y, salt = 0) {
-  let value = Math.imul(Math.floor(x) + 1013, 374761393) ^ Math.imul(Math.floor(y) + 668265263, 1274126177) ^ salt;
-  value = (value ^ (value >>> 13)) >>> 0;
-  return ((Math.imul(value, 1274126177) ^ value) >>> 0) / 4294967295;
-}
-
 function drawRocketSatelliteBase(ctx, rect, camX, camY) {
-  if (rocketEarthImage.complete && rocketEarthImage.naturalWidth > 0) {
-    drawRocketEarthRaster(ctx, rect, camX, camY);
-    return;
-  }
   ctx.fillStyle = "#071827";
   ctx.fillRect(0, 0, rect.width, rect.height);
+  drawRocketNaturalEarthTiles(ctx, rect, camX, camY);
 }
 
-function drawRocketEarthRaster(ctx, rect, camX, camY) {
-  const imgW = rocketEarthImage.naturalWidth;
-  const imgH = rocketEarthImage.naturalHeight;
-  const viewLeft = Math.max(0, camX);
-  const viewRight = Math.min(rocketState.mapW, camX + rect.width);
-  const viewTop = Math.max(0, camY);
-  const viewBottom = Math.min(rocketState.mapH, camY + rect.height);
-  ctx.fillStyle = "#050b18";
-  ctx.fillRect(0, 0, rect.width, rect.height);
-  if (viewBottom <= viewTop || viewRight <= viewLeft) return;
-  const sx = viewLeft / rocketState.mapW * imgW;
-  const sy = viewTop / rocketState.mapH * imgH;
-  const sw = (viewRight - viewLeft) / rocketState.mapW * imgW;
-  const sh = (viewBottom - viewTop) / rocketState.mapH * imgH;
-  const dx = viewLeft - camX;
-  const dy = viewTop - camY;
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(rocketEarthImage, sx, sy, sw, sh, dx, dy, viewRight - viewLeft, viewBottom - viewTop);
-  drawRocketPolarEdge(ctx, rect, camY);
-}
-
-function drawRocketImageryDetailTiles(ctx, rect, camX, camY) {
-  if (!shouldUseRocketImageryDetail()) return;
+function drawRocketNaturalEarthTiles(ctx, rect, camX, camY) {
   const tileSize = ROCKET_IMAGERY_TILE_SIZE;
   const minTileX = Math.max(0, Math.floor(camX / tileSize));
   const maxTileX = Math.min(Math.ceil(rocketState.mapW / tileSize) - 1, Math.floor((camX + rect.width) / tileSize));
@@ -4130,19 +3941,12 @@ function drawRocketImageryDetailTiles(ctx, rect, camX, camY) {
       painted = true;
     }
   }
-  if (painted) {
-    ctx.fillStyle = "rgba(255,255,255,0.04)";
+  ctx.restore();
+  if (!painted) {
+    ctx.fillStyle = "#061827";
     ctx.fillRect(0, 0, rect.width, rect.height);
   }
-  ctx.restore();
-}
-
-function shouldUseRocketImageryDetail() {
-  if (!ROCKET_LIVE_WMS_IMAGERY) return false;
-  if (!rocketState || !window.fetch) return false;
-  const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-  if (connection?.saveData) return false;
-  return (rocketState.cameraZoom || 1) >= 1.18;
+  drawRocketPolarEdge(ctx, rect, camY);
 }
 
 function getRocketImageryTile(tx, ty) {
@@ -4193,26 +3997,7 @@ function startRocketImageryPendingLoads() {
 }
 
 function makeRocketImageryTileUrl(tx, ty) {
-  const tileSize = ROCKET_IMAGERY_TILE_SIZE;
-  const worldX = tx * tileSize;
-  const worldY = ty * tileSize;
-  const west = worldX / rocketState.mapW * 360 - 180;
-  const east = Math.min(rocketState.mapW, worldX + tileSize) / rocketState.mapW * 360 - 180;
-  const north = 90 - worldY / rocketState.mapH * 180;
-  const south = 90 - Math.min(rocketState.mapH, worldY + tileSize) / rocketState.mapH * 180;
-  const params = new URLSearchParams({
-    SERVICE: "WMS",
-    VERSION: "1.1.1",
-    REQUEST: "GetMap",
-    LAYERS: ROCKET_IMAGERY_LAYER,
-    STYLES: "",
-    SRS: "EPSG:4326",
-    BBOX: `${west.toFixed(6)},${south.toFixed(6)},${east.toFixed(6)},${north.toFixed(6)}`,
-    WIDTH: String(ROCKET_IMAGERY_RASTER_SIZE),
-    HEIGHT: String(ROCKET_IMAGERY_RASTER_SIZE),
-    FORMAT: "image/jpeg"
-  });
-  return `${ROCKET_IMAGERY_WMS_URL}?${params.toString()}`;
+  return `assets/natural-earth-tiles/ne2_${tx}_${ty}.jpg?v=${ROCKET_ATLAS_TILE_VERSION}`;
 }
 
 function trimRocketImageryTileCache() {
@@ -4222,361 +4007,6 @@ function trimRocketImageryTileCache() {
     .sort((a, b) => a[1].used - b[1].used)
     .slice(0, Math.max(0, rocketImageryTileCache.size - ROCKET_IMAGERY_CACHE_MAX))
     .forEach(([key]) => rocketImageryTileCache.delete(key));
-}
-
-function drawRocketIslandReliefEnhancements(ctx, rect, camX, camY) {
-  if (!rocketState || (rocketState.cameraZoom || 1) < ROCKET_ISLAND_RELIEF_MIN_ZOOM) return;
-  ctx.save();
-  rocketIslandReliefFeatures.forEach((feature) => {
-    const point = getRocketIslandReliefPoint(feature);
-    const radius = getRocketIslandReliefRadius(feature);
-    if (point.x < camX - radius * 3 || point.x > camX + rect.width + radius * 3 || point.y < camY - radius * 3 || point.y > camY + rect.height + radius * 3) return;
-    if (feature.kind === "atoll") drawRocketAtollRelief(ctx, point.x, point.y, radius, feature);
-    else if (feature.kind === "reef") drawRocketReefRelief(ctx, point.x, point.y, radius, feature);
-    else drawRocketIslandLandRelief(ctx, point.x, point.y, radius, feature);
-  });
-  ctx.restore();
-}
-
-function getRocketIslandReliefPoint(feature) {
-  const mapW = rocketState?.mapW || ROCKET_MAP_W;
-  const mapH = rocketState?.mapH || ROCKET_MAP_H;
-  if (!feature.point || feature.mapW !== mapW || feature.mapH !== mapH) {
-    feature.point = worldPoint(feature.lon, feature.lat, mapW, mapH);
-    feature.mapW = mapW;
-    feature.mapH = mapH;
-  }
-  return feature.point;
-}
-
-function getRocketIslandReliefRadius(feature) {
-  const isPacific = (feature.lon > 120 || feature.lon < -120) && feature.lat > -35 && feature.lat < 35;
-  const isolatedPacific = (feature.lon > 145 || feature.lon < -145) && feature.lat > -25 && feature.lat < 25;
-  const kindScale = feature.kind === "atoll" ? 0.78 : feature.kind === "reef" ? 0.72 : 0.86;
-  const oceanScale = isolatedPacific ? 1.14 : isPacific ? 1.06 : 1;
-  return Math.max(5.5, feature.radius * kindScale * oceanScale);
-}
-
-function drawRocketAtollRelief(ctx, x, y, radius, feature) {
-  const rand = seededRandom(feature.seed);
-  const angle = (rand() - 0.5) * Math.PI;
-  const rx = radius * (1.18 + rand() * 0.24);
-  const ry = radius * (0.56 + rand() * 0.2);
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(angle);
-  ctx.fillStyle = "rgba(80, 205, 218, 0.10)";
-  ctx.beginPath();
-  ctx.ellipse(0, 0, rx * 1.18, ry * 1.22, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(116, 241, 221, 0.34)";
-  ctx.lineWidth = Math.max(0.75, radius * 0.065);
-  ctx.beginPath();
-  ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
-  ctx.stroke();
-  const motus = 12 + Math.floor(rand() * 8);
-  for (let index = 0; index < motus; index += 1) {
-    const t = index / motus * Math.PI * 2 + rand() * 0.38;
-    const px = Math.cos(t) * rx * (0.82 + rand() * 0.1);
-    const py = Math.sin(t) * ry * (0.82 + rand() * 0.1);
-    const w = Math.max(1.3, radius * (0.075 + rand() * 0.065));
-    const h = Math.max(0.85, radius * (0.035 + rand() * 0.045));
-    drawRocketIslandLandPiece(ctx, px, py, w, h, t + rand() * 0.7, rand, rand() > 0.38);
-  }
-  ctx.strokeStyle = "rgba(232, 255, 245, 0.18)";
-  ctx.lineWidth = 0.8;
-  ctx.beginPath();
-  ctx.ellipse(0, 0, rx * 1.12, ry * 1.12, 0, -0.15, Math.PI * 0.58);
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawRocketReefRelief(ctx, x, y, radius, feature) {
-  const rand = seededRandom(feature.seed);
-  const angle = (rand() - 0.5) * Math.PI;
-  const rx = radius * (0.95 + rand() * 0.2);
-  const ry = radius * (0.46 + rand() * 0.16);
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(angle);
-  ctx.fillStyle = "rgba(62, 197, 211, 0.09)";
-  ctx.beginPath();
-  ctx.ellipse(0, 0, rx * 1.18, ry * 1.2, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(139, 249, 226, 0.34)";
-  ctx.lineWidth = Math.max(0.8, radius * 0.06);
-  ctx.beginPath();
-  ctx.ellipse(0, 0, rx, ry, 0, rand() * 0.3, Math.PI * (1.35 + rand() * 0.38));
-  ctx.stroke();
-  const pieces = radius > 13 ? 5 : 3;
-  for (let index = 0; index < pieces; index += 1) {
-    const px = (rand() - 0.5) * rx * 1.1;
-    const py = (rand() - 0.5) * ry * 0.9;
-    const w = Math.max(1.5, radius * (0.09 + rand() * 0.06));
-    const h = Math.max(0.9, radius * (0.045 + rand() * 0.035));
-    drawRocketIslandLandPiece(ctx, px, py, w, h, rand() * Math.PI, rand, rand() > 0.55);
-  }
-  ctx.restore();
-}
-
-function drawRocketIslandLandRelief(ctx, x, y, radius, feature) {
-  const rand = seededRandom(feature.seed);
-  const angle = (rand() - 0.5) * Math.PI;
-  const rx = radius * (0.82 + rand() * 0.18);
-  const ry = radius * (0.48 + rand() * 0.16);
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(angle);
-  ctx.fillStyle = "rgba(71, 196, 207, 0.08)";
-  ctx.beginPath();
-  ctx.ellipse(0, 0, rx * 1.28, ry * 1.34, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(146, 248, 222, 0.28)";
-  ctx.lineWidth = Math.max(0.75, radius * 0.045);
-  ctx.beginPath();
-  ctx.ellipse(0, 0, rx * 1.1, ry * 1.08, 0, 0, Math.PI * 2);
-  ctx.stroke();
-  drawRocketIslandLandPiece(ctx, 0, 0, rx * 0.74, ry * 0.76, 0, rand, true, feature.kind === "volcanic");
-  ctx.strokeStyle = feature.kind === "volcanic" ? "rgba(40, 78, 45, 0.62)" : "rgba(236, 230, 155, 0.44)";
-  ctx.lineWidth = Math.max(0.65, radius * 0.045);
-  const ridgeCount = feature.kind === "volcanic" ? 4 : 2;
-  for (let index = 0; index < ridgeCount; index += 1) {
-    const offset = (index - (ridgeCount - 1) / 2) * ry * 0.22;
-    ctx.beginPath();
-    ctx.moveTo(-rx * 0.5, offset + (rand() - 0.5) * ry * 0.16);
-    ctx.quadraticCurveTo(0, offset - ry * (0.35 + rand() * 0.18), rx * 0.52, offset + (rand() - 0.5) * ry * 0.2);
-    ctx.stroke();
-  }
-  if (radius > 13) {
-    drawRocketIslandLandPiece(ctx, rx * 0.58, -ry * 0.08, rx * 0.22, ry * 0.2, -0.25, rand, true, false);
-    drawRocketIslandLandPiece(ctx, -rx * 0.62, ry * 0.16, rx * 0.17, ry * 0.15, 0.35, rand, rand() > 0.5, false);
-  }
-  ctx.restore();
-}
-
-function drawRocketIslandLandPiece(ctx, x, y, rx, ry, angle, rand, green = true, volcanic = false) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(angle);
-  ctx.fillStyle = "rgba(222, 207, 127, 0.86)";
-  drawRocketIslandBlobPath(ctx, rx * 1.08, ry * 1.05, rand);
-  ctx.fill();
-  ctx.fillStyle = green
-    ? volcanic ? "rgba(61, 116, 64, 0.92)" : "rgba(74, 139, 75, 0.88)"
-    : "rgba(204, 185, 105, 0.88)";
-  drawRocketIslandBlobPath(ctx, rx * 0.72, ry * 0.68, rand);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(16, 46, 35, 0.48)";
-  ctx.lineWidth = Math.max(0.45, Math.min(rx, ry) * 0.22);
-  drawRocketIslandBlobPath(ctx, rx * 0.75, ry * 0.7, rand);
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawRocketIslandBlobPath(ctx, rx, ry, rand) {
-  const points = 8;
-  ctx.beginPath();
-  for (let index = 0; index <= points; index += 1) {
-    const t = index / points * Math.PI * 2;
-    const wobble = 0.78 + rand() * 0.32;
-    const px = Math.cos(t) * rx * wobble;
-    const py = Math.sin(t) * ry * (0.82 + rand() * 0.24);
-    if (index === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  }
-  ctx.closePath();
-}
-
-function getRocketTerrainDetailProfile() {
-  const cores = Number(navigator.hardwareConcurrency) || 4;
-  const memory = Number(navigator.deviceMemory) || 4;
-  if (memory <= 2 || cores <= 2) return { lineScale: 0.44, sample: 24, maxTiles: 14 };
-  if (memory <= 4 || cores <= 4) return { lineScale: 0.62, sample: 30, maxTiles: 24 };
-  return { lineScale: 0.86, sample: 36, maxTiles: 36 };
-}
-
-function drawRocketTerrainDetailTiles(ctx, rect, camX, camY) {
-  if (!rocketEarthImage.complete || !rocketEarthImage.naturalWidth) return;
-  const profile = getRocketTerrainDetailProfile();
-  const tileSize = ROCKET_DETAIL_TILE_SIZE;
-  const minTileX = Math.max(0, Math.floor(camX / tileSize) - 1);
-  const maxTileX = Math.min(Math.ceil(rocketState.mapW / tileSize) - 1, Math.floor((camX + rect.width) / tileSize) + 1);
-  const minTileY = Math.max(0, Math.floor(camY / tileSize) - 1);
-  const maxTileY = Math.min(Math.ceil(rocketState.mapH / tileSize) - 1, Math.floor((camY + rect.height) / tileSize) + 1);
-  ctx.save();
-  ctx.globalCompositeOperation = "soft-light";
-  ctx.globalAlpha = 0.74;
-  for (let ty = minTileY; ty <= maxTileY; ty += 1) {
-    for (let tx = minTileX; tx <= maxTileX; tx += 1) {
-      const tile = getRocketTerrainDetailTile(tx, ty, profile);
-      if (!tile) continue;
-      ctx.drawImage(tile, tx * tileSize - camX, ty * tileSize - camY, tileSize, tileSize);
-    }
-  }
-  ctx.restore();
-}
-
-function getRocketTerrainDetailTile(tx, ty, profile) {
-  const key = `${tx}:${ty}`;
-  const cached = rocketTerrainTileCache.get(key);
-  if (cached) {
-    cached.used = ++rocketTerrainTileSerial;
-    return cached.canvas;
-  }
-  const canvas = makeRocketTerrainDetailTile(tx, ty, profile);
-  rocketTerrainTileCache.set(key, { canvas, used: ++rocketTerrainTileSerial });
-  trimRocketTerrainTileCache(profile.maxTiles);
-  return canvas;
-}
-
-function trimRocketTerrainTileCache(maxTiles) {
-  if (rocketTerrainTileCache.size <= maxTiles) return;
-  [...rocketTerrainTileCache.entries()]
-    .sort((a, b) => a[1].used - b[1].used)
-    .slice(0, rocketTerrainTileCache.size - maxTiles)
-    .forEach(([key]) => rocketTerrainTileCache.delete(key));
-}
-
-function makeRocketTerrainDetailTile(tx, ty, profile) {
-  const tileSize = ROCKET_DETAIL_TILE_SIZE;
-  const canvas = document.createElement("canvas");
-  canvas.width = tileSize;
-  canvas.height = tileSize;
-  const ctx = canvas.getContext("2d");
-  const worldX = tx * tileSize;
-  const worldY = ty * tileSize;
-  const stats = sampleRocketTerrainTile(worldX, worldY, tileSize, profile.sample);
-  const seed = ((tx * 73856093) ^ (ty * 19349663) ^ 0x6f3d2b1) >>> 0;
-  const rand = seededRandom(seed);
-  ctx.clearRect(0, 0, tileSize, tileSize);
-
-  const landRatio = 1 - stats.oceanRatio;
-  const density = Math.max(0.35, profile.lineScale);
-  const microStep = Math.max(16, tileSize / ROCKET_DETAIL_VIRTUAL_ZOOM);
-
-  if (stats.oceanRatio > 0.28) {
-    const oceanLines = Math.round((10 + stats.oceanRatio * 18) * density);
-    for (let index = 0; index < oceanLines; index += 1) {
-      const y = rand() * tileSize;
-      const x = -40 + rand() * 120;
-      const length = tileSize * (0.45 + rand() * 0.55);
-      const bend = (rand() - 0.5) * 80;
-      ctx.strokeStyle = rand() > 0.45 ? "rgba(80, 170, 226, 0.20)" : "rgba(16, 58, 112, 0.26)";
-      ctx.lineWidth = 0.7 + rand() * 1.1;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.bezierCurveTo(x + length * 0.32, y + bend, x + length * 0.68, y - bend * 0.45, x + length, y + (rand() - 0.5) * 55);
-      ctx.stroke();
-    }
-  }
-
-  if (landRatio > 0.16) {
-    const ridgeLines = Math.round((14 + stats.roughness * 44 + landRatio * 22) * density);
-    for (let index = 0; index < ridgeLines; index += 1) {
-      const x = rand() * tileSize;
-      const y = rand() * tileSize;
-      const len = 28 + rand() * microStep * 2.9;
-      const angle = rand() * Math.PI * 2;
-      const bend = (rand() - 0.5) * 36;
-      const warm = stats.dryRatio > stats.greenRatio;
-      const snowy = stats.snowRatio > 0.32;
-      ctx.strokeStyle = snowy
-        ? "rgba(230, 242, 255, 0.24)"
-        : warm
-          ? "rgba(118, 76, 38, 0.22)"
-          : "rgba(33, 86, 43, 0.20)";
-      ctx.lineWidth = 0.65 + rand() * 1.1;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.quadraticCurveTo(
-        x + Math.cos(angle + 0.7) * len * 0.5,
-        y + Math.sin(angle + 0.7) * len * 0.5 + bend,
-        x + Math.cos(angle) * len,
-        y + Math.sin(angle) * len
-      );
-      ctx.stroke();
-    }
-
-    const contourLines = Math.round((6 + stats.roughness * 16) * density);
-    ctx.strokeStyle = stats.snowRatio > 0.25 ? "rgba(255,255,255,0.17)" : "rgba(255, 240, 194, 0.13)";
-    ctx.lineWidth = 0.65;
-    for (let index = 0; index < contourLines; index += 1) {
-      const y = rand() * tileSize;
-      const wave = microStep * (0.32 + rand() * 0.42);
-      ctx.beginPath();
-      for (let x = -20; x <= tileSize + 20; x += microStep * 0.7) {
-        const py = y + Math.sin((x + rand() * 35) / wave) * (5 + rand() * 11);
-        if (x <= -20) ctx.moveTo(x, py);
-        else ctx.lineTo(x, py);
-      }
-      ctx.stroke();
-    }
-  }
-
-  if (stats.coastRatio > 0.12) {
-    ctx.strokeStyle = "rgba(120, 225, 211, 0.20)";
-    ctx.lineWidth = 1.2;
-    const coastLines = Math.round((5 + stats.coastRatio * 12) * density);
-    for (let index = 0; index < coastLines; index += 1) {
-      const x = rand() * tileSize;
-      const y = rand() * tileSize;
-      ctx.beginPath();
-      ctx.arc(x, y, 18 + rand() * 42, rand() * Math.PI, rand() * Math.PI + Math.PI * (0.3 + rand() * 0.55));
-      ctx.stroke();
-    }
-  }
-
-  return canvas;
-}
-
-function sampleRocketTerrainTile(worldX, worldY, tileSize, sampleSize) {
-  const fallback = { oceanRatio: 0.5, greenRatio: 0.2, dryRatio: 0.2, snowRatio: 0.05, coastRatio: 0.1, roughness: 0.2 };
-  if (!rocketEarthImage.complete || !rocketEarthImage.naturalWidth) return fallback;
-  try {
-    const canvas = rocketTerrainSampleCanvas || document.createElement("canvas");
-    rocketTerrainSampleCanvas = canvas;
-    if (canvas.width !== sampleSize || canvas.height !== sampleSize) {
-      canvas.width = sampleSize;
-      canvas.height = sampleSize;
-    }
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    const sx = worldX / rocketState.mapW * rocketEarthImage.naturalWidth;
-    const sy = worldY / rocketState.mapH * rocketEarthImage.naturalHeight;
-    const sw = Math.min(tileSize, rocketState.mapW - worldX) / rocketState.mapW * rocketEarthImage.naturalWidth;
-    const sh = Math.min(tileSize, rocketState.mapH - worldY) / rocketState.mapH * rocketEarthImage.naturalHeight;
-    ctx.clearRect(0, 0, sampleSize, sampleSize);
-    ctx.drawImage(rocketEarthImage, sx, sy, sw, sh, 0, 0, sampleSize, sampleSize);
-    const data = ctx.getImageData(0, 0, sampleSize, sampleSize).data;
-    let ocean = 0, green = 0, dry = 0, snow = 0, coast = 0, roughness = 0, previousLuma = null, samples = 0;
-    for (let index = 0; index < data.length; index += 4) {
-      const r = data[index];
-      const g = data[index + 1];
-      const b = data[index + 2];
-      const luma = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
-      const isOcean = b > g * 1.08 && b > r * 1.18 && b > 28;
-      const isSnow = r > 170 && g > 168 && b > 160;
-      const isGreen = !isOcean && g >= r * 0.9 && g > b * 0.7;
-      const isDry = !isOcean && r > g * 0.98 && r > b * 1.1;
-      if (isOcean) ocean += 1;
-      if (isSnow) snow += 1;
-      if (isGreen) green += 1;
-      if (isDry) dry += 1;
-      if (isOcean && (r > 22 || g > 38)) coast += 1;
-      if (previousLuma != null) roughness += Math.abs(luma - previousLuma);
-      previousLuma = luma;
-      samples += 1;
-    }
-    return {
-      oceanRatio: ocean / samples,
-      greenRatio: green / samples,
-      dryRatio: dry / samples,
-      snowRatio: snow / samples,
-      coastRatio: coast / samples,
-      roughness: Math.min(1, roughness / Math.max(1, samples - 1) * 18)
-    };
-  } catch {
-    return fallback;
-  }
 }
 
 function drawRocketPolarEdge(ctx, rect, camY) {
@@ -5134,14 +4564,14 @@ function drawRocketControlZone(ctx, x, y) {
   ctx.lineWidth = 2;
   ctx.setLineDash([10, 12]);
   ctx.beginPath();
-  ctx.arc(x, y, 230, 0, Math.PI * 2);
+  ctx.arc(x, y, 330, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
   ctx.setLineDash([]);
   ctx.textAlign = "center";
   ctx.font = "900 12px system-ui";
   ctx.fillStyle = manual ? "#45f875" : "#b35cff";
-  ctx.fillText(manual ? "MANUAL CONTROL" : "AUTOPILOT STRAIGHT", x, y - 246);
+  ctx.fillText(manual ? "MANUAL CONTROL" : "AUTOPILOT STRAIGHT", x, y - 346);
   ctx.restore();
 }
 
@@ -6532,7 +5962,7 @@ els.rocketCanvas?.addEventListener("pointermove", (event) => {
   const distanceFromPlane = Math.hypot(rocketState.mouse.x - rect.width / 2, rocketState.mouse.y - rect.height / 2);
   if (rocketState.parked && rocketState.phase !== "briefing" && distanceFromPlane > 240) {
     rocketState.restartTakeoffOnReentry = true;
-    els.rocketMessage.textContent = "Takeoff restart armed. Move back into the green control ring to roll.";
+    els.rocketMessage.textContent = "Takeoff restart armed. Move the pointer back over the map to roll.";
   }
   if (rocketState.restartTakeoffOnReentry && rocketState.parked && rocketState.phase !== "briefing" && distanceFromPlane < 210) {
     rocketState.restartTakeoffOnReentry = false;
@@ -6557,13 +5987,13 @@ els.rocketCanvas?.addEventListener("pointerleave", () => {
   if (rocketState.parked || Math.hypot(rocketState.ship.vx, rocketState.ship.vy) < 7) {
     rocketState.parked = true;
     rocketState.restartTakeoffOnReentry = true;
-    els.rocketMessage.textContent = "Plane stopped. Return to the control ring to restart the takeoff roll.";
+    els.rocketMessage.textContent = "Plane stopped. Move the pointer back over the map to restart the takeoff roll.";
     rocketFeedback("Ready to restart takeoff", "#ffd33d", "info");
     return;
   }
   rocketState.manualControl = false;
   rocketState.manualReleased = false;
-  els.rocketMessage.textContent = "Pointer left the map. Autopilot is holding a straight heading until you return near the plane.";
+  els.rocketMessage.textContent = "Pointer left the map. Autopilot holds a straight heading until the pointer returns.";
 });
 els.rocketCanvas?.addEventListener("click", (event) => {
   if (!rocketState || rocketState.phase === "briefing") return;
@@ -6573,10 +6003,13 @@ els.rocketCanvas?.addEventListener("click", (event) => {
   const y = event.clientY - rect.top;
   const nearPlane = Math.hypot(x - rect.width / 2, y - rect.height / 2) < 70;
   if (!nearPlane) return;
-  rocketState.manualControl = !rocketState.manualControl;
-  rocketState.manualReleased = !rocketState.manualControl;
-  els.rocketMessage.textContent = rocketState.manualControl ? "Manual steering engaged. Keep the pointer inside the purple zone." : "Manual steering released. Autopilot will fly straight.";
-  rocketFeedback(rocketState.manualControl ? "Manual control" : "Autopilot straight", rocketState.manualControl ? "#45f875" : "#b35cff", "info");
+  rocketState.manualControl = true;
+  rocketState.manualReleased = false;
+  rocketState.mouse.inside = true;
+  rocketState.mouse.x = x;
+  rocketState.mouse.y = y;
+  els.rocketMessage.textContent = "Manual steering engaged. Move the pointer anywhere on the map to steer.";
+  rocketFeedback("Manual control", "#45f875", "info");
 });
 document.querySelector("#authOpen")?.addEventListener("click", () => els.authDialog?.showModal());
 document.querySelector("#profileOpen")?.addEventListener("click", () => {
