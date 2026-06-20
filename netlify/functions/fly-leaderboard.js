@@ -1,7 +1,7 @@
 import { query } from "../../db/index.js";
 import { emptyResponse, jsonResponse } from "./_shared.js";
 
-const FLY_TRACE_POINT_LIMIT = 260;
+const FLY_TRACE_POINT_LIMIT = 720;
 
 function compactTrace(trace = []) {
   const points = (Array.isArray(trace) ? trace : [])
@@ -31,6 +31,7 @@ function compactPayload(payload = {}) {
       ? payload.logs.map((log) => ({
         ...log,
         trace: compactTrace(log.trace),
+        depotMarkers: Array.isArray(log.depotMarkers) ? log.depotMarkers.slice(0, 8) : [],
         landings: Array.isArray(log.landings) ? log.landings.slice(0, 8) : []
       }))
       : []

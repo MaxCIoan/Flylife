@@ -1577,18 +1577,21 @@ body:has(#rocketView.active) .topbar {
 }
 
 .rocket-depot-dot {
+  appearance: none;
   display: inline-grid;
   place-items: center;
   width: 1.25rem;
   height: 1.25rem;
   border: 2px solid currentColor;
   border-radius: 999px;
+  padding: 0;
   color: #ff6578;
   background: rgba(255, 61, 90, 0.12);
   font-size: 0.68rem;
   font-style: normal;
   font-weight: 950;
   line-height: 1;
+  cursor: pointer;
 }
 
 .rocket-depot-dot.hit {
@@ -1604,6 +1607,22 @@ body:has(#rocketView.active) .topbar {
 .rocket-depot-dot.missed {
   color: #ff3d5a;
   background: rgba(255, 61, 90, 0.12);
+}
+
+.rocket-depot-dot.selected,
+.rocket-depot-dot:hover {
+  box-shadow: 0 0 0 0.18rem rgba(34, 217, 242, 0.28);
+  transform: translateY(-1px);
+}
+
+.rocket-depot-selected {
+  display: block;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid rgba(34, 217, 242, 0.24);
+  border-radius: 0.5rem;
+  color: #ffffff;
+  background: rgba(34, 217, 242, 0.08);
+  font-weight: 850;
 }
 
 .tech-tree-overlay {
