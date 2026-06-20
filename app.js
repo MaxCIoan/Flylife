@@ -207,9 +207,9 @@ const ROCKET_ATLAS_TILE_VERSION = "20260620d";
 const ROCKET_FIXED_CAMERA_ZOOM = 1.85;
 const ROCKET_IMAGERY_PRELOAD_PAD = 2;
 const ROCKET_IMAGERY_AHEAD_STEPS = 8;
-const ROCKET_CONTROL_RADIUS = 230;
+const ROCKET_CONTROL_RADIUS = 220;
 const ROCKET_NOSE_DECEL_RADIUS = Math.round(ROCKET_CONTROL_RADIUS / Math.SQRT2);
-const ROCKET_STEER_ARM_RADIUS = ROCKET_NOSE_DECEL_RADIUS;
+const ROCKET_STEER_ARM_RADIUS = 28;
 const ROCKET_TAKEOFF_SPEED = 65;
 const ROCKET_CRUISE_ALTITUDE = 70;
 const ROCKET_RUNWAY_LOCK_ALTITUDE = 12;
@@ -3181,25 +3181,27 @@ function updateRocket(dt) {
   if (runwayLocked) {
     rocketState.ship.bank += (0 - rocketState.ship.bank) * Math.min(1, dt * 8);
   } else if (control.steering) {
-    const maxTurnStep = turnRate * dt;
+    const turnScale = Math.max(0.18, Math.min(1, control.turnScale || 1));
+    const maxTurnStep = turnRate * turnScale * dt;
     rocketState.ship.angle += Math.max(-maxTurnStep, Math.min(maxTurnStep, turn));
-    rocketState.ship.bank += (Math.max(-1, Math.min(1, turn * 2.4)) - rocketState.ship.bank) * Math.min(1, dt * 9);
+    rocketState.ship.bank += (Math.max(-1, Math.min(1, turn * 2.4 * turnScale)) - rocketState.ship.bank) * Math.min(1, dt * 9);
   } else {
     rocketState.ship.bank += (0 - rocketState.ship.bank) * Math.min(1, dt * 7);
   }
   const onGround = rocketState.ship.altitude <= 8;
   const spaceBrake = Boolean(rocketState.keys?.Space);
   const noseDecel = Boolean(control.decelerating);
+  const decelStrength = noseDecel ? Math.max(0.1, Math.min(1.4, control.decelStrength || 0.35)) : 0;
   const parkingBrake = rocketState.parked || rocketState.parkingHold > 0;
-  const manualPull = control.manual ? Math.max(0, control.throttleDistance || 0) / 420 : 0;
-  const intent = parkingBrake ? 0 : spaceBrake ? 0.16 : noseDecel ? 0.24 : control.manual ? Math.max(0.46, Math.min(0.94, 0.52 + manualPull * 0.42)) : 0.7;
+  const manualPull = control.manual ? Math.min(1, Math.max(0, control.throttleDistance || 0) / Math.max(1, ROCKET_CONTROL_RADIUS - ROCKET_NOSE_DECEL_RADIUS)) : 0;
+  const intent = parkingBrake ? 0 : spaceBrake ? 0.16 : noseDecel ? Math.max(0.14, 0.38 - decelStrength * 0.16) : control.manual ? Math.max(0.46, Math.min(0.94, 0.52 + manualPull * 0.42)) : 0.7;
   rocketState.ship.throttle += (intent - rocketState.ship.throttle) * Math.min(1, dt * (parkingBrake || spaceBrake || noseDecel ? 2.8 : 3.5));
   const thrust = 580 + speedLevel * 118 + turnLevel * 22;
   rocketState.ship.vx += Math.cos(rocketState.ship.angle) * thrust * rocketState.ship.throttle * dt;
   rocketState.ship.vy += Math.sin(rocketState.ship.angle) * thrust * rocketState.ship.throttle * dt;
   const preDragSpeed = Math.hypot(rocketState.ship.vx, rocketState.ship.vy);
   const speedDrag = Math.max(0, preDragSpeed - 420) / 1900;
-  const brakeDrag = parkingBrake ? 3.6 + speedLevel * 0.16 : spaceBrake ? 0.72 : noseDecel ? 0.36 : 0;
+  const brakeDrag = parkingBrake ? 3.6 + speedLevel * 0.16 : spaceBrake ? 0.72 : noseDecel ? 0.16 + decelStrength * 1.05 : 0;
   const dragFactor = Math.exp(-(0.36 + speedDrag + brakeDrag) * dt);
   rocketState.ship.vx *= dragFactor;
   rocketState.ship.vy *= dragFactor;
@@ -3236,6 +3238,7 @@ function updateRocket(dt) {
   }
   const liftSpeed = ROCKET_TAKEOFF_SPEED;
   const climbIntent = control.steering ? Math.max(-0.35, Math.min(1, -dy / 220)) : 0;
+  updateRocketManeuverCue(control, { spaceBrake, noseDecel, decelStrength, turn, climbIntent });
   const verticalUpgrade = 1 + turnLevel * 0.1 + speedLevel * 0.025;
   if (currentSpeed > liftSpeed && rocketState.ship.throttle > 0.45) {
     rocketState.ship.altitude += (currentSpeed - liftSpeed) * (0.21 + climbIntent * 0.46) * verticalUpgrade * dt;
@@ -3287,6 +3290,31 @@ function updateRocket(dt) {
     els.rocketMessage.textContent = `Black box recovered in ${rocketState.sideQuest.name}. +${rocketState.sideQuest.reward} TP.`;
     rocketFeedback(`Black box +${rocketState.sideQuest.reward} TP`, "#0b0f14", "success");
   }
+}
+
+function updateRocketManeuverCue(control, { spaceBrake, noseDecel, decelStrength, turn, climbIntent }) {
+  let label = "AUTOPILOT";
+  let color = "#8fd3ff";
+  if (spaceBrake) {
+    label = "AIRBRAKE";
+    color = "#ff5d52";
+  } else if (noseDecel) {
+    label = decelStrength > 0.65 ? "DECELERATING" : "SLOWING DOWN";
+    color = "#ff5d52";
+  } else if (control.steering && climbIntent > 0.22) {
+    label = "CLIMBING";
+    color = "#b35cff";
+  } else if (control.steering && climbIntent < -0.12) {
+    label = "DROPPING";
+    color = "#b35cff";
+  } else if (control.steering && Math.abs(turn) > 0.14) {
+    label = turn > 0 ? "TURNING RIGHT" : "TURNING LEFT";
+    color = "#ffd33d";
+  } else if (control.manual) {
+    label = rocketState.accel < -4 ? "SLOWING DOWN" : "ACCELERATING";
+    color = rocketState.accel < -4 ? "#ff5d52" : "#45f875";
+  }
+  rocketState.maneuverCue = { label, color };
 }
 
 function updateRocketObjectiveFlyThrough() {
@@ -3581,9 +3609,13 @@ function getRocketControlVector(rect, dt = 0.016) {
   }
   const smoothDx = Math.abs(rawDx) < 6 ? 0 : rocketState.mouse.smoothX - center.x;
   const smoothDy = Math.abs(rawDy) < 6 ? 0 : rocketState.mouse.smoothY - center.y;
+  const previousDistance = Number.isFinite(rocketState.lastControlDistance) ? rocketState.lastControlDistance : distance;
+  const radialClosingSpeed = Math.max(0, (previousDistance - distance) / Math.max(0.001, dt));
+  rocketState.lastControlDistance = distance;
   if (!inZone) {
     rocketState.manualControl = false;
     rocketState.manualReleased = false;
+    rocketState.controlDecelStrength = 0;
   } else if (!rocketState.manualReleased) {
     rocketState.manualControl = true;
   }
@@ -3596,33 +3628,31 @@ function getRocketControlVector(rect, dt = 0.016) {
       distance,
       steering: false,
       decelerating: false,
-      throttleDistance: 0
+      throttleDistance: 0,
+      decelStrength: 0,
+      turnScale: 0
     };
   }
   if (distance < ROCKET_NOSE_DECEL_RADIUS) {
+    const zoneDepth = 1 - distance / Math.max(1, ROCKET_NOSE_DECEL_RADIUS);
+    const strikeForce = Math.min(1.1, radialClosingSpeed / 520);
+    const targetDecel = Math.max(0.12, Math.min(1.35, zoneDepth * 0.78 + strikeForce));
+    rocketState.controlDecelStrength = (rocketState.controlDecelStrength || 0) + (targetDecel - (rocketState.controlDecelStrength || 0)) * Math.min(1, dt * (strikeForce > 0.35 ? 12 : 4.5));
+    const canSteer = distance > ROCKET_STEER_ARM_RADIUS;
     return {
-      dx: headingX * 180,
-      dy: headingY * 180,
+      dx: canSteer ? smoothDx : headingX * 180,
+      dy: canSteer ? smoothDy : headingY * 180,
       manual: true,
       inZone,
       distance,
-      steering: false,
+      steering: canSteer,
       decelerating: true,
-      throttleDistance: 0
+      throttleDistance: 0,
+      decelStrength: rocketState.controlDecelStrength || targetDecel,
+      turnScale: Math.max(0, Math.min(0.72, (distance - ROCKET_STEER_ARM_RADIUS) / Math.max(1, ROCKET_NOSE_DECEL_RADIUS - ROCKET_STEER_ARM_RADIUS)))
     };
   }
-  if (distance < ROCKET_STEER_ARM_RADIUS) {
-    return {
-      dx: headingX * 180,
-      dy: headingY * 180,
-      manual: true,
-      inZone,
-      distance,
-      steering: false,
-      decelerating: false,
-      throttleDistance: 0
-    };
-  }
+  rocketState.controlDecelStrength = 0;
   return {
     dx: smoothDx,
     dy: smoothDy,
@@ -3631,7 +3661,9 @@ function getRocketControlVector(rect, dt = 0.016) {
     distance,
     steering: true,
     decelerating: false,
-    throttleDistance: distance - ROCKET_STEER_ARM_RADIUS
+    throttleDistance: distance - ROCKET_NOSE_DECEL_RADIUS,
+    decelStrength: 0,
+    turnScale: 1
   };
 }
 
@@ -3974,7 +4006,6 @@ function drawRocketBlueMarbleTiles(ctx, rect, camX, camY) {
   ctx.save();
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  ctx.filter = "saturate(1.12) contrast(1.08) brightness(1.03)";
   for (let ty = minTileY; ty <= maxTileY; ty += 1) {
     for (let tx = minTileX; tx <= maxTileX; tx += 1) {
       const tile = getRocketImageryTile(tx, ty);
@@ -3987,7 +4018,6 @@ function drawRocketBlueMarbleTiles(ctx, rect, camX, camY) {
       painted = true;
     }
   }
-  ctx.filter = "none";
   ctx.restore();
   if (!painted) {
     ctx.fillStyle = "#061827";
@@ -4392,15 +4422,9 @@ function updateRocketDistanceTrend() {
   rocketState.lastObjectiveDistance = { key: objective.key, distance: objective.distance };
 }
 
-function rocketAltitudeColor() {
-  const amount = Math.max(0, Math.min(1, rocketState.ship.altitude / 2500));
-  const hue = 125 - amount * 125;
-  return `hsl(${hue.toFixed(0)}, 92%, 56%)`;
-}
-
 function drawRocketPointerTrace(ctx, rect) {
   if (!rocketState?.mouse?.inside || rocketState.phase === "setup" || rocketState.phase === "briefing") return;
-  const color = rocketAltitudeColor();
+  const cue = rocketState.maneuverCue || { label: "AUTOPILOT", color: "#8fd3ff" };
   const noseX = rect.width / 2 + Math.cos(rocketState.ship.angle) * 62;
   const noseY = rect.height / 2 + Math.sin(rocketState.ship.angle) * 62;
   const mx = Number.isFinite(rocketState.mouse.smoothX) ? rocketState.mouse.smoothX : rocketState.mouse.x;
@@ -4408,25 +4432,36 @@ function drawRocketPointerTrace(ctx, rect) {
   const dx = mx - rect.width / 2;
   const dy = my - rect.height / 2;
   const distance = Math.hypot(dx, dy);
-  if (distance > ROCKET_CONTROL_RADIUS) return;
-  const decelCue = distance < ROCKET_NOSE_DECEL_RADIUS;
-  const brakeCue = Boolean(rocketState.keys?.Space);
+  if (distance > ROCKET_CONTROL_RADIUS) {
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.font = "950 12px system-ui";
+    ctx.fillStyle = "rgba(3, 8, 14, .78)";
+    roundRect(ctx, rect.width / 2 - 74, rect.height / 2 + 66, 148, 30, 9);
+    ctx.fill();
+    ctx.fillStyle = "#8fd3ff";
+    ctx.fillText("AUTOPILOT", rect.width / 2, rect.height / 2 + 86);
+    ctx.restore();
+    return;
+  }
   ctx.save();
-  ctx.strokeStyle = brakeCue || decelCue ? "#ff6848" : color;
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = cue.color;
+  ctx.lineWidth = Math.min(5, 3 + (rocketState.controlDecelStrength || 0) * 1.2);
   ctx.setLineDash([12, 9]);
   ctx.beginPath();
   ctx.moveTo(noseX, noseY);
   ctx.lineTo(mx, my);
   ctx.stroke();
   ctx.setLineDash([]);
-  ctx.font = "900 10px system-ui";
+  ctx.font = "950 11px system-ui";
   ctx.textAlign = "center";
-  if (brakeCue || decelCue) {
-    ctx.fillStyle = "#ffb199";
-    ctx.fillText(brakeCue ? "SPACE AIRBRAKE" : "DECEL", rect.width / 2, rect.height / 2 + 86);
-  }
-  ctx.fillStyle = brakeCue || decelCue ? "#ff6848" : color;
+  const cueW = Math.min(190, Math.max(92, ctx.measureText(cue.label).width + 24));
+  ctx.fillStyle = "rgba(3, 8, 14, .78)";
+  roundRect(ctx, rect.width / 2 - cueW / 2, rect.height / 2 + 66, cueW, 30, 9);
+  ctx.fill();
+  ctx.fillStyle = cue.color;
+  ctx.fillText(cue.label, rect.width / 2, rect.height / 2 + 86);
+  ctx.fillStyle = cue.color;
   ctx.beginPath();
   ctx.arc(mx, my, 5, 0, Math.PI * 2);
   ctx.fill();
@@ -4673,8 +4708,8 @@ function drawRocketControlZone(ctx, x, y) {
   if (rocketState.phase === "briefing") return;
   const manual = rocketState.manualControl;
   ctx.save();
-  ctx.strokeStyle = manual ? "rgba(69,248,117,.62)" : "rgba(179,92,255,.5)";
-  ctx.fillStyle = manual ? "rgba(69,248,117,.055)" : "rgba(179,92,255,.055)";
+  ctx.strokeStyle = manual ? "rgba(255,211,61,.42)" : "rgba(143,211,255,.34)";
+  ctx.fillStyle = "rgba(255,255,255,.018)";
   ctx.lineWidth = 2;
   ctx.setLineDash([10, 12]);
   ctx.beginPath();
@@ -4682,22 +4717,17 @@ function drawRocketControlZone(ctx, x, y) {
   ctx.fill();
   ctx.stroke();
   if (manual) {
-    ctx.strokeStyle = "rgba(255,104,72,.55)";
-    ctx.fillStyle = "rgba(255,104,72,.045)";
-    ctx.setLineDash([7, 10]);
+    ctx.strokeStyle = "rgba(255,211,61,.26)";
+    ctx.lineWidth = 1.4;
+    ctx.setLineDash([6, 14]);
     ctx.beginPath();
     ctx.arc(x, y, ROCKET_NOSE_DECEL_RADIUS, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.strokeStyle = "rgba(255,211,61,.5)";
-    ctx.beginPath();
-    ctx.arc(x, y, ROCKET_STEER_ARM_RADIUS, 0, Math.PI * 2);
     ctx.stroke();
   }
   ctx.setLineDash([]);
   ctx.textAlign = "center";
   ctx.font = "900 12px system-ui";
-  ctx.fillStyle = manual ? "#45f875" : "#b35cff";
+  ctx.fillStyle = manual ? "#ffd33d" : "#8fd3ff";
   ctx.fillText(manual ? "MANUAL CONTROL" : "AUTOPILOT STRAIGHT", x, y - ROCKET_CONTROL_RADIUS - 16);
   ctx.restore();
 }
@@ -6139,7 +6169,7 @@ els.rocketCanvas?.addEventListener("click", (event) => {
   rocketState.mouse.inside = true;
   rocketState.mouse.x = x;
   rocketState.mouse.y = y;
-  els.rocketMessage.textContent = "Manual steering engaged. Stay inside the ring to steer; exit the ring for straight autopilot.";
+  els.rocketMessage.textContent = "Manual steering engaged. Inner ring slows, outer ring accelerates; exit the ring for straight autopilot.";
   rocketFeedback("Manual control", "#45f875", "info");
 });
 document.querySelector("#authOpen")?.addEventListener("click", () => els.authDialog?.showModal());
