@@ -340,29 +340,6 @@
       });
   }
 
-  function blockEvent(event, reason) {
-    event.preventDefault();
-    event.stopPropagation();
-    markTampered(reason);
-    return false;
-  }
-
-  function blockContextMenu(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    return false;
-  }
-
-  document.addEventListener("keydown", (event) => {
-    const key = String(event.key || "").toLowerCase();
-    const chord = event.ctrlKey || event.metaKey;
-    if (event.key === "F12") blockEvent(event, "developer tools shortcut was used");
-    if (chord && event.shiftKey && ["i", "j", "c", "k"].includes(key)) blockEvent(event, "developer tools shortcut was used");
-    if (chord && ["u", "s"].includes(key)) blockEvent(event, "protected source/storage shortcut was used");
-  }, true);
-  document.addEventListener("contextmenu", blockContextMenu, true);
-  document.addEventListener("drop", (event) => blockEvent(event, "drop editing was attempted"), true);
-
   window.FlagGuard = Object.freeze({
     version: VERSION,
     allowedRounds: ALLOWED_ROUNDS.slice(),

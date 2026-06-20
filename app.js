@@ -206,9 +206,10 @@ const ROCKET_STATIC_CACHE_SNAP = 768;
 const ROCKET_DETAIL_TILE_SIZE = 512;
 const ROCKET_DETAIL_VIRTUAL_ZOOM = 10;
 const ROCKET_IMAGERY_TILE_SIZE = 512;
-const ROCKET_IMAGERY_RASTER_SIZE = 1024;
-const ROCKET_IMAGERY_CACHE_MAX = 90;
-const ROCKET_IMAGERY_MAX_LOADS = 4;
+const ROCKET_IMAGERY_RASTER_SIZE = 512;
+const ROCKET_IMAGERY_CACHE_MAX = 16;
+const ROCKET_IMAGERY_MAX_LOADS = 1;
+const ROCKET_LIVE_WMS_IMAGERY = false;
 const ROCKET_IMAGERY_LAYER = "BlueMarble_ShadedRelief_Bathymetry";
 const ROCKET_IMAGERY_WMS_URL = "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi";
 const ROCKET_CLOSE_CAMERA_ZOOM = 2.05;
@@ -221,12 +222,20 @@ const ROCKET_LOG_TRACE_MAX = 260;
 const ROCKET_HUD_INTERVAL_MS = 120;
 const ROCKET_NAV_CHECK_INTERVAL = 0.14;
 const ROCKET_TINY_COUNTRY_DOT_MAX = 30;
+const ROCKET_EARTH_IMAGE_SRC = "assets/earth-satellite-nasa-14400.jpg?v=20260617b";
 const rocketEarthImage = new Image();
-rocketEarthImage.src = "assets/earth-satellite-nasa-14400.jpg?v=20260617b";
+rocketEarthImage.decoding = "async";
 rocketEarthImage.addEventListener("load", invalidateRocketMapCache);
 rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260617b";
 rocketMiniMapImage.addEventListener("load", () => { rocketMiniMapCache = null; });
 let rocketCountryOverlayEnabled = localStorage.getItem("flagHunterRocketCountryOverlay") !== "0";
+
+function ensureRocketEarthImageLoaded() {
+  if (!rocketEarthImage.src) {
+    rocketEarthImage.src = ROCKET_EARTH_IMAGE_SRC;
+  }
+}
+
 let officialFlyLeaders = [];
 let officialFlyLeadersLoaded = false;
 let officialFlyLeadersLoading = false;
@@ -675,6 +684,25 @@ function invalidateRocketMapCache() {
   }
   rocketMapCache = null;
   rocketMiniMapCache = null;
+}
+
+function releaseRocketMapRuntimeMemory() {
+  rocketMapCache = null;
+  rocketMiniMapCache = null;
+  rocketTerrainTileCache.clear();
+  rocketTerrainSampleCanvas = null;
+  rocketImageryTileCache.clear();
+  rocketImageryActiveLoads = 0;
+}
+
+function startRocketAnimationLoop() {
+  if (!rocketAnimation) rocketAnimation = requestAnimationFrame(tickRocket);
+}
+
+function stopRocketAnimationLoop() {
+  if (!rocketAnimation) return;
+  cancelAnimationFrame(rocketAnimation);
+  rocketAnimation = null;
 }
 
 function rocketTechCost(level) {
@@ -2311,9 +2339,21 @@ function showView(name, updateHash = true) {
     showView("play", updateHash);
     return;
   }
+  const leavingRocket = name !== "rocket" && document.querySelector("#rocketView")?.classList.contains("active");
+  if (leavingRocket && rocketState) {
+    rocketState.active = false;
+    rocketState.last = performance.now();
+    stopPropellerSound();
+    stopRocketAnimationLoop();
+    releaseRocketMapRuntimeMemory();
+  }
   document.querySelectorAll(".view").forEach((view) => view.classList.remove("active"));
   document.querySelectorAll(".nav-btn").forEach((button) => button.classList.toggle("active", button.dataset.view === name));
   targetView.classList.add("active");
+  if (name === "rocket" && rocketState) {
+    rocketState.last = performance.now();
+    startRocketAnimationLoop();
+  }
   if (name !== "play") {
     clearInterval(timer);
     clearTimeout(flagQuestionTimeout);
@@ -2339,6 +2379,7 @@ function showPreparedView(name, updateHash = true) {
 
 function isViewActive(name) {
   const viewMap = {
+    rocket: "rocketView",
     runs: "runsView",
     leaderboard: "leaderboardView"
   };
@@ -2380,6 +2421,7 @@ function roundRect(ctx, x, y, w, h, r, fill = false) {
 }
 
 function startRocketRun() {
+  ensureRocketEarthImageLoaded();
   loadRocketWorldMap();
   loadRocketBoundaryLines();
   loadRocketCatalog();
@@ -2489,7 +2531,7 @@ function startRocketRun() {
   }
   showView("rocket");
   resizeRocketCanvas();
-  if (!rocketAnimation) rocketAnimation = requestAnimationFrame(tickRocket);
+  startRocketAnimationLoop();
 }
 
 function prepareRocketBriefing(rounds) {
@@ -3178,8 +3220,13 @@ function failRocketRound(reason, message) {
 }
 
 function tickRocket(now) {
-  rocketAnimation = requestAnimationFrame(tickRocket);
+  rocketAnimation = null;
   if (!rocketState) return;
+  if (!isViewActive("rocket")) {
+    rocketState.last = now;
+    return;
+  }
+  startRocketAnimationLoop();
   if (els.rocketTargetCard && rocketState.phase !== "briefing" && now > rocketState.targetCardUntil) {
     els.rocketTargetCard.hidden = true;
   }
@@ -4091,6 +4138,7 @@ function drawRocketImageryDetailTiles(ctx, rect, camX, camY) {
 }
 
 function shouldUseRocketImageryDetail() {
+  if (!ROCKET_LIVE_WMS_IMAGERY) return false;
   if (!rocketState || !window.fetch) return false;
   const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
   if (connection?.saveData) return false;
@@ -4342,9 +4390,9 @@ function drawRocketIslandBlobPath(ctx, rx, ry, rand) {
 function getRocketTerrainDetailProfile() {
   const cores = Number(navigator.hardwareConcurrency) || 4;
   const memory = Number(navigator.deviceMemory) || 4;
-  if (memory <= 2 || cores <= 2) return { lineScale: 0.48, sample: 28, maxTiles: 28 };
-  if (memory <= 4 || cores <= 4) return { lineScale: 0.68, sample: 36, maxTiles: 44 };
-  return { lineScale: 1, sample: 48, maxTiles: 72 };
+  if (memory <= 2 || cores <= 2) return { lineScale: 0.44, sample: 24, maxTiles: 14 };
+  if (memory <= 4 || cores <= 4) return { lineScale: 0.62, sample: 30, maxTiles: 24 };
+  return { lineScale: 0.86, sample: 36, maxTiles: 36 };
 }
 
 function drawRocketTerrainDetailTiles(ctx, rect, camX, camY) {
@@ -6555,8 +6603,6 @@ window.addEventListener("resize", resizeRocketCanvas);
 renderProfile();
 loadServerProfile();
 loadRocketCatalog();
-loadRocketWorldMap();
-loadRocketBoundaryLines();
 const initialView = location.hash.replace("#", "");
 const bootParams = new URLSearchParams(location.search);
 if (bootParams.get("simulateAgents") === "1") {

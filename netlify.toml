@@ -51,3 +51,26 @@
   [headers.values]
     Content-Type = "text/javascript"
     Cache-Control = "no-store"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/countries.geo.json"
+  [headers.values]
+    Content-Type = "application/json"
+    Cache-Control = "public, max-age=86400"
+
+[[headers]]
+  for = "/country-boundaries.geo.json"
+  [headers.values]
+    Content-Type = "application/json"
+    Cache-Control = "public, max-age=86400"
+
+[[headers]]
+  for = "/rocket-countries.json"
+  [headers.values]
+    Content-Type = "application/json"
+    Cache-Control = "public, max-age=86400"
