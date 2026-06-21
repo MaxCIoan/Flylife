@@ -2511,6 +2511,41 @@ body:has(#rocketView.active) .topbar {
   width: 100%;
 }
 
+.admin-db-panel {
+  display: grid;
+  gap: 0.7rem;
+  max-height: 18rem;
+  overflow: auto;
+  border: 1px solid rgba(76, 177, 255, 0.16);
+  border-radius: var(--radius);
+  padding: 0.85rem;
+  background: rgba(5, 11, 18, 0.52);
+}
+
+.admin-db-panel div,
+.admin-db-panel li {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.admin-db-panel ul {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-db-panel b {
+  color: var(--text);
+}
+
+.admin-db-panel span,
+.admin-db-panel small,
+.admin-db-panel p {
+  color: var(--muted);
+}
+
 .toggle-line {
   display: flex !important;
   grid-template-columns: none;

@@ -44,6 +44,9 @@
 - Fixed named profile detection so a valid display name still counts as an official player even if `display_name_locked` was manually flipped false in the database.
 - Changed the official leaderboard dedupe to collapse duplicate display names, preventing old duplicate `country` rows from taking multiple leaderboard slots.
 - Added admin-token Settings tools and API endpoints to rename this browser's official player record and recover/import a selected saved local Fly run into the official database.
+- Added admin-token database browsing for all official players and per-player database runs, including created/updated timestamps, run counts, best scores, and legacy missing-trace/depot warnings.
+- Changed leaderboard identity grouping to use display name for named players and player id for Guest/anonymous legacy rows, so each player gets one best score slot without hiding old guest data.
+- Changed Fly save feedback to say local-only when official database submission is unavailable instead of implying the leaderboard accepted the run.
 
 ## 2026-06-13
 

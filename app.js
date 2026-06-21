@@ -177,8 +177,12 @@ const els = {
   adminTokenInput: document.querySelector("#adminTokenInput"),
   adminDisplayNameInput: document.querySelector("#adminDisplayNameInput"),
   adminFlyRunSelect: document.querySelector("#adminFlyRunSelect"),
+  adminPlayerSelect: document.querySelector("#adminPlayerSelect"),
+  adminDatabasePanel: document.querySelector("#adminDatabasePanel"),
   adminRenameMe: document.querySelector("#adminRenameMe"),
   adminRefreshFlyRuns: document.querySelector("#adminRefreshFlyRuns"),
+  adminLoadPlayers: document.querySelector("#adminLoadPlayers"),
+  adminLoadPlayerRuns: document.querySelector("#adminLoadPlayerRuns"),
   adminRecoverBestFly: document.querySelector("#adminRecoverBestFly"),
   adminMessage: document.querySelector("#adminMessage")
 };
@@ -1114,6 +1118,18 @@ async function postAdmin(path, body, token = getAdminToken()) {
   return data;
 }
 
+async function getAdmin(path, token = getAdminToken()) {
+  if (!token) throw new Error("Admin token is required.");
+  rememberAdminToken(token);
+  const response = await fetch(`${flyApiBase}${path}`, {
+    headers: { "x-fly-admin-token": token }
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
+  if (!response.ok) throw new Error(data.error || response.statusText || "Admin request failed.");
+  return data;
+}
+
 function getBestLocalFlyRun() {
   return (profile.rocketRuns || [])
     .filter(rocketRunHasScoringEvent)
@@ -1170,6 +1186,108 @@ function getSelectedLocalFlyRun() {
   return runs.find((run) => run.id === selectedId) || runs[0];
 }
 
+let adminPlayers = [];
+let adminPlayerRuns = [];
+
+function formatAdminDate(value) {
+  if (!value) return "never";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "unknown";
+  return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function describeAdminPlayer(player = {}) {
+  const id = String(player.playerId || "").slice(0, 8);
+  const score = formatScore(player.bestScore || 0);
+  return `${player.displayName || "Guest"} | best ${score} | runs ${player.completedRuns || 0}/${player.runCount || 0}${id ? ` | ${id}` : ""}`;
+}
+
+function refreshAdminPlayerPicker(preferredPlayerId = "") {
+  if (!els.adminPlayerSelect) return;
+  els.adminPlayerSelect.innerHTML = "";
+  if (!adminPlayers.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No database players loaded";
+    els.adminPlayerSelect.append(option);
+    return;
+  }
+  adminPlayers.forEach((player, index) => {
+    const option = document.createElement("option");
+    option.value = player.playerId || String(index);
+    option.dataset.displayName = player.displayName || "";
+    option.textContent = describeAdminPlayer(player);
+    els.adminPlayerSelect.append(option);
+  });
+  const selected = adminPlayers.find((player) => player.playerId === preferredPlayerId) || adminPlayers[0];
+  els.adminPlayerSelect.value = selected?.playerId || "";
+}
+
+function getSelectedAdminPlayer() {
+  const selectedId = els.adminPlayerSelect?.value;
+  return adminPlayers.find((player) => player.playerId === selectedId) || adminPlayers[0] || null;
+}
+
+function runHasModernDetails(run = {}) {
+  const logs = Array.isArray(run.payload?.logs) ? run.payload.logs : [];
+  return logs.some((log) => Array.isArray(log.trace) && log.trace.length > 1)
+    && logs.some((log) => Array.isArray(log.depotMarkers) && log.depotMarkers.length);
+}
+
+function renderAdminDatabasePanel(player = getSelectedAdminPlayer(), runs = adminPlayerRuns) {
+  if (!els.adminDatabasePanel) return;
+  if (!player) {
+    els.adminDatabasePanel.innerHTML = "<p>No database player selected.</p>";
+    return;
+  }
+  const runRows = (runs || []).map((run) => {
+    const details = runHasModernDetails(run) ? "modern trace/depot data" : "legacy or missing trace/depot data";
+    const tone = runHasModernDetails(run) ? "status-ok" : "status-bad";
+    return `
+      <li>
+        <b>${formatScore(run.finalScore || 0)}</b>
+        <span>${escapeHtml(run.status || "unknown")} | ${run.completedRounds || 0}/${run.selectedRounds || run.rounds || 0} rounds | ${formatAdminDate(run.finishedAt || run.createdAt)}</span>
+        <small class="${tone}">${details}</small>
+      </li>
+    `;
+  }).join("");
+  els.adminDatabasePanel.innerHTML = `
+    <div>
+      <b>${escapeHtml(player.displayName || "Guest")}</b>
+      <span>${escapeHtml(player.playerId || "no player id")}</span>
+      <small>Created ${formatAdminDate(player.createdAt)} | Updated ${formatAdminDate(player.updatedAt)} | locked ${player.displayNameLocked ? "yes" : "no"} | rank ${formatScore(player.rankPoints || 0)}</small>
+    </div>
+    <ul>${runRows || "<li><span>No database runs loaded for this player.</span></li>"}</ul>
+  `;
+}
+
+async function loadAdminPlayers() {
+  showAdminMessage("Loading database players...", "info");
+  const data = await getAdmin("/api/fly/admin/data?type=players");
+  adminPlayers = Array.isArray(data.players) ? data.players : [];
+  adminPlayerRuns = [];
+  refreshAdminPlayerPicker(profile.playerId || "");
+  renderAdminDatabasePanel(getSelectedAdminPlayer(), adminPlayerRuns);
+  showAdminMessage(`Loaded ${adminPlayers.length} database player${adminPlayers.length === 1 ? "" : "s"}.`, "success");
+  return adminPlayers;
+}
+
+async function loadSelectedAdminPlayerRuns() {
+  const player = getSelectedAdminPlayer();
+  if (!player) throw new Error("Load database players first.");
+  showAdminMessage(`Loading runs for ${player.displayName || "player"}...`, "info");
+  const params = new URLSearchParams({
+    type: "runs",
+    playerId: player.playerId || "",
+    displayName: player.displayName || ""
+  });
+  const data = await getAdmin(`/api/fly/admin/data?${params.toString()}`);
+  adminPlayerRuns = Array.isArray(data.runs) ? data.runs : [];
+  renderAdminDatabasePanel(player, adminPlayerRuns);
+  showAdminMessage(`Loaded ${adminPlayerRuns.length} database run${adminPlayerRuns.length === 1 ? "" : "s"}.`, "success");
+  return adminPlayerRuns;
+}
+
 async function recoverLocalFlyRun(run = getBestLocalFlyRun(), token = getAdminToken()) {
   if (!run) throw new Error("No local Fly run with scoring events was found in this browser.");
   const displayName = isGuestDisplayName(profile.displayName) ? run.displayName : profile.displayName;
@@ -1214,6 +1332,10 @@ window.FlyAdmin = {
   recoverableFlyRuns: getRecoverableFlyRuns,
   localFlyRunSummaries: () => getRecoverableFlyRuns().map((run) => ({ id: run.id, label: describeLocalFlyRun(run), score: run.score })),
   bestLocalFlyRun: getBestLocalFlyRun,
+  loadPlayers: loadAdminPlayers,
+  loadSelectedPlayerRuns: loadSelectedAdminPlayerRuns,
+  getLoadedPlayers: () => adminPlayers.slice(),
+  getLoadedPlayerRuns: () => adminPlayerRuns.slice(),
   recoverBestLocalFlyRun: (token) => recoverLocalFlyRun(getBestLocalFlyRun(), token),
   recoverLocalFlyRun: (runId, token) => {
     const run = (profile.rocketRuns || []).find((item) => item.id === runId);
@@ -1788,27 +1910,32 @@ function saveRocketSessionResult(title, summary) {
     return session;
   }
   window.FlagGuard?.finishRun?.(session).then((officialResult) => {
-    if (officialResult) {
-      session.officialResult = officialResult;
-      if (officialResult.discarded) {
-        profile.rocketRuns = (profile.rocketRuns || []).filter((run) => run.id !== session.id);
-        profile.rankPoints = estimateRankPointsFromHistory(profile);
-        saveProfile();
-        showSaveHud("Official run discarded");
-        renderTablesIfDataView();
-        return;
-      }
-      mergeServerProfile(officialResult.player, { persist: false });
+    if (!officialResult) {
+      session.officialResult = { localOnly: true, at: new Date().toISOString() };
       saveProfile();
-      showSaveHud("Score saved");
-      refreshOfficialFlyLeaderboard();
+      showSaveHud("Local saved - official unavailable");
       renderTablesIfDataView();
+      return;
     }
+    session.officialResult = officialResult;
+    if (officialResult.discarded) {
+      profile.rocketRuns = (profile.rocketRuns || []).filter((run) => run.id !== session.id);
+      profile.rankPoints = estimateRankPointsFromHistory(profile);
+      saveProfile();
+      showSaveHud("Official run discarded");
+      renderTablesIfDataView();
+      return;
+    }
+    mergeServerProfile(officialResult.player, { persist: false });
+    saveProfile();
+    showSaveHud("Official score saved");
+    refreshOfficialFlyLeaderboard();
+    renderTablesIfDataView();
   });
   addRankPoints(session.score);
   profile.rocketRuns = [session, ...(profile.rocketRuns || [])].slice(0, 40);
   saveProfile();
-  showSaveHud("Score saved");
+  showSaveHud("Local score saved");
   renderTablesIfDataView();
   return session;
 }
@@ -1986,7 +2113,7 @@ function buildOfficialLeaderboardEntries(officialFlyRuns = []) {
   const bestByPlayer = new Map();
   (officialFlyRuns || []).forEach((run) => {
     if (isGuestDisplayName(run.displayName)) return;
-    const key = String(run.displayName || run.playerId || "").toLowerCase();
+    const key = String(isGuestDisplayName(run.displayName) ? (run.playerId || run.displayName || "") : (run.displayName || run.playerId || "")).toLowerCase();
     if (!key) return;
     const current = bestByPlayer.get(key);
     const currentScore = Number(current?.finalScore || current?.score || 0);
@@ -8118,6 +8245,24 @@ els.adminRecoverBestFly?.addEventListener("click", async () => {
 });
 els.adminRefreshFlyRuns?.addEventListener("click", () => {
   refreshAdminFlyRunPicker(els.adminFlyRunSelect?.value || "");
+});
+els.adminLoadPlayers?.addEventListener("click", async () => {
+  try {
+    await loadAdminPlayers();
+  } catch (error) {
+    showAdminMessage(error instanceof Error ? error.message : "Could not load database players.", "warn");
+  }
+});
+els.adminLoadPlayerRuns?.addEventListener("click", async () => {
+  try {
+    await loadSelectedAdminPlayerRuns();
+  } catch (error) {
+    showAdminMessage(error instanceof Error ? error.message : "Could not load database runs.", "warn");
+  }
+});
+els.adminPlayerSelect?.addEventListener("change", () => {
+  adminPlayerRuns = [];
+  renderAdminDatabasePanel(getSelectedAdminPlayer(), adminPlayerRuns);
 });
 els.adminRenameMe?.addEventListener("click", async () => {
   try {

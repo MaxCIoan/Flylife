@@ -58,7 +58,10 @@ export default async (request) => {
                 finished_at as "finishedAt",
                 payload,
                 row_number() over (
-                  partition by lower(display_name)
+                  partition by case
+                    when lower(display_name) in ('guest', 'anonymous', 'player') then coalesce(nullif(player_id, ''), run_id)
+                    else lower(display_name)
+                  end
                   order by final_score desc, elapsed_ms asc, finished_at asc
                 ) as rank_for_player
          from fly_runs
@@ -66,7 +69,7 @@ export default async (request) => {
            and tampered = false
            and final_score > 0
            and coalesce(jsonb_array_length(payload->'logs'), 0) > 0
-           and lower(display_name) not in ('guest', 'anonymous', 'player', 'codexprobe', 'codexpartialprobe')
+           and lower(display_name) not in ('codexprobe', 'codexpartialprobe')
        ) ranked
        where rank_for_player = 1
        order by "finalScore" desc, "elapsedMs" asc, "finishedAt" asc

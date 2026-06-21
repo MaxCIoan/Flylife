@@ -3,4 +3,5 @@
 /api/fly/leaderboard /.netlify/functions/fly-leaderboard 200
 /api/fly/admin/import-run /.netlify/functions/fly-admin-import-run 200
 /api/fly/admin/player /.netlify/functions/fly-admin-player 200
+/api/fly/admin/data /.netlify/functions/fly-admin-data 200
 /* /index.html 200
