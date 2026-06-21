@@ -16,6 +16,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/fly/run/ping"
+  to = "/.netlify/functions/fly-run-ping"
+  status = 200
+
+[[redirects]]
   from = "/api/fly/leaderboard"
   to = "/.netlify/functions/fly-leaderboard"
   status = 200

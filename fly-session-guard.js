@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "20260621identity2";
+  const VERSION = "20260621inactive1";
   const PROFILE_KEY = "flagHunterLocalProfile";
   const TRUST_KEY = "flagHunterTrustedProfileV1";
   const ROCKET_ROUNDS_KEY = "flagHunterRocketRounds";
@@ -315,16 +315,64 @@
       });
   }
 
+  async function getRunCredentials() {
+    return serverRun
+      || readJsonSafe(localStorage.getItem(SERVER_RUN_KEY))
+      || readJsonSafe(sessionStorage.getItem(SERVER_RUN_KEY))
+      || await serverRunPromise;
+  }
+
+  async function pingRun(activity = {}) {
+    const credentials = await getRunCredentials();
+    if (!credentials?.runId || !credentials?.token) return null;
+    return postJson(`${getFlyApiBase()}/api/fly/run/ping`, {
+      runId: credentials.runId,
+      token: credentials.token,
+      activity
+    }).catch((error) => {
+      console.warn("Official fly heartbeat skipped", error);
+      return null;
+    });
+  }
+
+  async function discardRun(reason = "discarded") {
+    const credentials = await getRunCredentials();
+    if (!credentials?.runId || !credentials?.token) return null;
+    const rounds = Number(credentials.rounds) || ALLOWED_ROUNDS[0];
+    return postJson(`${getFlyApiBase()}/api/fly/run/finish`, {
+      runId: credentials.runId,
+      token: credentials.token,
+      playerId: credentials.playerId,
+      displayName: credentials.displayName,
+      session: {
+        playerId: credentials.playerId,
+        displayName: credentials.displayName,
+        rounds,
+        selectedRounds: rounds,
+        completedRounds: 0,
+        longestRun: 0,
+        score: 0,
+        logs: [],
+        discardedReason: reason
+      }
+    }).then((result) => {
+      sessionStorage.removeItem(SERVER_RUN_KEY);
+      localStorage.removeItem(SERVER_RUN_KEY);
+      serverRun = null;
+      return result;
+    }).catch((error) => {
+      console.warn("Official fly run was not discarded", error);
+      return null;
+    });
+  }
+
   async function finishRun(session) {
     const reason = validateRocketSession(session);
     if (reason) {
       console.warn("Official fly run was not submitted", reason);
       return null;
     }
-    const credentials = serverRun
-      || readJsonSafe(localStorage.getItem(SERVER_RUN_KEY))
-      || readJsonSafe(sessionStorage.getItem(SERVER_RUN_KEY))
-      || await serverRunPromise;
+    const credentials = await getRunCredentials();
     if (!credentials?.runId || !credentials?.token) return null;
     return postJson(`${getFlyApiBase()}/api/fly/run/finish`, {
       runId: credentials.runId,
@@ -351,6 +399,8 @@
     checkStoredProfile,
     syncProfile,
     startRun,
+    pingRun,
+    discardRun,
     finishRun,
     isTampered: () => tampered,
     getTamperReason: () => tamperReason,

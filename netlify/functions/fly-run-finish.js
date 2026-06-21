@@ -2,6 +2,8 @@ import { query } from "../../db/index.js";
 import { computeFlyScore } from "../../lib/fly-scoring.js";
 import { cleanDisplayName, cleanPlayerId, emptyResponse, isGuestDisplayName, jsonResponse, logError, logMetric, readRequestJson } from "./_shared.js";
 
+const INACTIVITY_LIMIT_MS = 15 * 60 * 1000;
+
 function dateMs(value) {
   if (value instanceof Date) return value.getTime();
   const parsed = Date.parse(String(value || ""));
@@ -25,7 +27,8 @@ export default async (request) => {
               final_score as "finalScore",
               elapsed_ms as "elapsedMs",
               tampered,
-              tamper_reason as "tamperReason"
+              tamper_reason as "tamperReason",
+              payload
        from fly_runs
        where run_id = $1 and token = $2
        limit 1`,
@@ -39,6 +42,16 @@ export default async (request) => {
         elapsedMs: run.elapsedMs || 0,
         tampered: Boolean(run.tampered),
         tamperReason: run.tamperReason || null,
+        alreadySubmitted: true
+      });
+    }
+    if (run.status === "discarded") {
+      return jsonResponse(200, {
+        finalScore: 0,
+        elapsedMs: run.elapsedMs || 0,
+        tampered: Boolean(run.tampered),
+        tamperReason: run.tamperReason || "run discarded",
+        discarded: true,
         alreadySubmitted: true
       });
     }
@@ -67,6 +80,40 @@ export default async (request) => {
       [playerId, requestedName, requestedName !== "Guest"]
     );
     const playerName = players[0]?.displayName || requestedName;
+    const lastActivityMs = dateMs(run.payload?.lastActivityAt || run.startedAt);
+    if (!lastActivityMs || finishedAt.getTime() - lastActivityMs > INACTIVITY_LIMIT_MS) {
+      const elapsedMs = Math.max(0, finishedAt.getTime() - dateMs(run.startedAt));
+      await query(
+        `update fly_runs
+         set display_name = $1,
+             player_id = $2,
+             finished_at = $3,
+             status = 'discarded',
+             payload = payload || $4::jsonb,
+             final_score = 0,
+             elapsed_ms = $5,
+             tampered = false,
+             tamper_reason = 'inactive session expired'
+         where run_id = $6`,
+        [
+          playerName,
+          playerId,
+          finishedAt,
+          JSON.stringify({ expiredAt: finishedAt.toISOString(), lastActivityAt: run.payload?.lastActivityAt || null }),
+          elapsedMs,
+          body.runId
+        ]
+      );
+      logMetric("fly-run-finish", "discarded inactive run", { runId: body.runId, playerId, elapsedMs });
+      return jsonResponse(200, {
+        finalScore: 0,
+        elapsedMs,
+        tampered: false,
+        tamperReason: "inactive session expired",
+        discarded: true,
+        player: players[0] ? { playerId, ...players[0] } : null
+      });
+    }
     const result = computeFlyScore({
       startedMs: dateMs(run.startedAt),
       finishedMs: finishedAt.getTime(),

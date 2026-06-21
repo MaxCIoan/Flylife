@@ -38,11 +38,12 @@ export default async (request) => {
     );
     const player = players[0] || { displayName: requestedName, displayNameLocked: shouldLockName, rankPoints: 0 };
 
+    const startPayload = JSON.stringify({ lastActivityAt: new Date().toISOString(), activity: { round: 1, phase: "briefing", score: 0, techPoints: 0 } });
     const { rows } = await query(
       `insert into fly_runs (run_id, token, player_id, display_name, mode, rounds, payload)
-       values ($1, $2, $3, $4, 'rocket', $5, '{}'::jsonb)
+       values ($1, $2, $3, $4, 'rocket', $5, $6::jsonb)
        returning run_id as "runId", token, player_id as "playerId", display_name as "displayName", rounds, started_at as "startedAt"`,
-      [runId, token, playerId, player.displayName, rounds]
+      [runId, token, playerId, player.displayName, rounds, startPayload]
     );
     logMetric("fly-run-start", "started run", { runId, playerId, rounds, displayName: player.displayName });
     return jsonResponse(200, { ...rows[0], player: { playerId, ...player } });

@@ -162,6 +162,7 @@ const els = {
   manualPlaneList: document.querySelector("#manualPlaneList"),
   rocketMessage: document.querySelector("#rocketMessage"),
   rocketStart: document.querySelector("#rocketStart"),
+  rocketEndRunQuick: document.querySelector("#rocketEndRunQuick"),
   rocketResultOverlay: document.querySelector("#rocketResultOverlay"),
   rocketResultTitle: document.querySelector("#rocketResultTitle"),
   rocketResultSummary: document.querySelector("#rocketResultSummary"),
@@ -221,7 +222,7 @@ const ROCKET_STATIC_CACHE_SNAP = 768;
 const ROCKET_IMAGERY_TILE_SIZE = 512;
 const ROCKET_IMAGERY_CACHE_MAX = 144;
 const ROCKET_IMAGERY_MAX_LOADS = 5;
-const ROCKET_ATLAS_TILE_VERSION = "20260621identity2";
+const ROCKET_ATLAS_TILE_VERSION = "20260621inactive1";
 const ROCKET_FIXED_CAMERA_ZOOM = 2.05;
 const ROCKET_IMAGERY_PRELOAD_PAD = 1;
 const ROCKET_IMAGERY_AHEAD_STEPS = 6;
@@ -237,10 +238,12 @@ const ROCKET_LOG_DRAW_TRACE_MAX = 260;
 const ROCKET_LOG_ALL_TRACE_MAX = 120;
 const ROCKET_HUD_INTERVAL_MS = 120;
 const ROCKET_NAV_CHECK_INTERVAL = 0.14;
+const ROCKET_INACTIVITY_LIMIT_MS = 15 * 60 * 1000;
+const ROCKET_HEARTBEAT_INTERVAL_MS = 60 * 1000;
 const ROCKET_TINY_COUNTRY_DOT_MAX = 30;
 const ROCKET_BLUE_MAP_W = 2880;
 const ROCKET_BLUE_MAP_H = 1440;
-rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260621identity2";
+rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260621inactive1";
 rocketMiniMapImage.addEventListener("load", () => { rocketMiniMapCache = null; });
 let rocketCountryOverlayEnabled = false;
 
@@ -2606,6 +2609,58 @@ function clearRocketProgressSnapshot() {
   localStorage.removeItem(rocketResumeKey);
 }
 
+function markRocketActivity() {
+  if (!rocketState) return;
+  rocketState.lastActivityAt = Date.now();
+}
+
+function shouldTrackRocketActivity() {
+  return Boolean(rocketState && !["setup", "result", "round-summary"].includes(rocketState.phase) && !rocketState.sessionSaved);
+}
+
+function pingRocketRun(force = false) {
+  if (!shouldTrackRocketActivity()) return;
+  const now = Date.now();
+  const activityAt = Number(rocketState.lastActivityAt || 0);
+  if (!force && (!activityAt || activityAt <= Number(rocketState.lastHeartbeatActivityAt || 0))) return;
+  if (!force && rocketState.lastHeartbeatAt && now - rocketState.lastHeartbeatAt < ROCKET_HEARTBEAT_INTERVAL_MS) return;
+  rocketState.lastHeartbeatAt = now;
+  rocketState.lastHeartbeatActivityAt = activityAt || now;
+  window.FlagGuard?.pingRun?.({
+    round: rocketState.round,
+    phase: rocketState.phase,
+    score: Math.round(rocketState.score || 0),
+    techPoints: rocketState.techPoints || 0
+  });
+}
+
+function expireRocketRunForInactivity() {
+  if (!rocketState || rocketState.inactivityExpired) return;
+  rocketState.inactivityExpired = true;
+  rocketState.active = false;
+  rocketState.paused = false;
+  rocketState.pausedWasActive = false;
+  rocketState.sessionSaved = true;
+  stopPropellerSound();
+  clearRocketProgressSnapshot();
+  window.FlagGuard?.discardRun?.("inactive for 15 minutes");
+  els.rocketMessage.textContent = "Fly session expired after 15 minutes without activity. Start a fresh run when ready.";
+  renderRocketHud(true);
+  showPreparedView("runs");
+}
+
+function checkRocketInactivity() {
+  if (!shouldTrackRocketActivity()) return;
+  const last = Number(rocketState.lastActivityAt || 0);
+  if (!last) {
+    markRocketActivity();
+    return;
+  }
+  if (Date.now() - last >= ROCKET_INACTIVITY_LIMIT_MS) {
+    expireRocketRunForInactivity();
+  }
+}
+
 function makeRocketProgressSnapshot() {
   if (!rocketState || !hasNamedProfile() || rocketState.sessionSaved) return null;
   if (!rocketState.desiredRounds || (rocketState.roundLogs || []).length >= rocketState.desiredRounds) return null;
@@ -2627,6 +2682,8 @@ function makeRocketProgressSnapshot() {
     time: rocketState.time,
     roundTimeLimit: rocketState.roundTimeLimit,
     difficulty: rocketState.difficulty || 1,
+    phase: rocketState.phase,
+    lastActivityAt: rocketState.lastActivityAt || Date.now(),
     target: rocketState.target,
     targetIdeal: rocketState.targetIdeal,
     sideQuest: rocketState.sideQuest,
@@ -2634,6 +2691,11 @@ function makeRocketProgressSnapshot() {
     roundDepotCountries: rocketState.roundDepotCountries || [],
     roundDepotMarkers: rocketState.roundDepotMarkers || [],
     roundLogs: rocketState.roundLogs || [],
+    roundTechEarned: rocketState.roundTechEarned || 0,
+    scoreEvents: rocketState.scoreEvents || [],
+    landingLogs: rocketState.landingLogs || [],
+    routeTrail: buildRocketRoundTrace(rocketState.routeTrail || []),
+    allObjectivesBonusAwarded: Boolean(rocketState.allObjectivesBonusAwarded),
     targetHistory: rocketState.targetHistory || [],
     targetQueue: rocketCountryQueues.targetQueue || [],
     depotQueue: rocketCountryQueues.depotQueue || []
@@ -2688,6 +2750,11 @@ function restoreRocketProgressSnapshot() {
   rocketState.techPoints = cleanRankPoints(snapshot.techPoints);
   rocketState.tech = { fuel: 0, speed: 0, turn: 0, sonar: 0, ...(snapshot.tech || {}) };
   rocketState.telemetry = { peakSpeed: 0, peakAccel: 0, peakDecel: 0, peakTurn: 0, ...(snapshot.telemetry || {}) };
+  rocketState.roundTechEarned = cleanRankPoints(snapshot.roundTechEarned);
+  rocketState.scoreEvents = Array.isArray(snapshot.scoreEvents) ? snapshot.scoreEvents : [];
+  rocketState.landingLogs = Array.isArray(snapshot.landingLogs) ? snapshot.landingLogs : [];
+  rocketState.routeTrail = Array.isArray(snapshot.routeTrail) ? snapshot.routeTrail : [];
+  rocketState.allObjectivesBonusAwarded = Boolean(snapshot.allObjectivesBonusAwarded);
   rocketState.fuel = Math.max(0, Math.min(100, Number(snapshot.fuel) || 0));
   rocketState.difficulty = Math.max(1, Number(snapshot.difficulty) || 1);
   rocketState.time = shouldAdvanceFromLoggedRound ? Math.max(60, 92 - rocketState.difficulty * 8) : Math.max(1, Number(snapshot.time) || 90);
@@ -2735,7 +2802,10 @@ function restoreRocketProgressSnapshot() {
   rocketState.depotQueue = rocketCountryQueues.depotQueue;
   rememberRocketTarget(rocketState.target);
   rocketState.active = false;
-  rocketState.phase = "briefing";
+  rocketState.phase = ["briefing", "takeoff", "cruise"].includes(snapshot.phase) ? snapshot.phase : "briefing";
+  rocketState.lastActivityAt = Date.now();
+  rocketState.lastHeartbeatAt = 0;
+  rocketState.lastHeartbeatActivityAt = 0;
   rocketState.roundLogged = false;
   rocketState.sessionSaved = false;
   rocketState.targetCardUntil = Infinity;
@@ -2745,7 +2815,7 @@ function restoreRocketProgressSnapshot() {
   renderRocketDepotIntel();
   if (els.rocketStart) {
     els.rocketStart.hidden = false;
-    els.rocketStart.textContent = "Resume Takeoff";
+    els.rocketStart.textContent = rocketState.phase === "briefing" ? "Resume Takeoff" : "Resume Flight";
     els.rocketStart.classList.add("is-briefing");
     els.rocketStart.classList.remove("in-flight");
   }
@@ -2836,6 +2906,10 @@ function startRocketRun() {
     resultAction: "restart",
     paused: false,
     pausedWasActive: false,
+    lastActivityAt: Date.now(),
+    lastHeartbeatAt: 0,
+    lastHeartbeatActivityAt: 0,
+    inactivityExpired: false,
     tutorial: tutorialMode ? { active: true, step: 0, seen: new Set(), forcePause: true } : null,
     feedback: [],
     flash: null,
@@ -2880,6 +2954,7 @@ function startRocketRun() {
 function prepareRocketBriefing(rounds) {
   if (!requireNamedProfile("Create your rogue pilot before starting an official Fly run.")) return;
   if (!rocketState) startRocketRun();
+  markRocketActivity();
   rocketState.desiredRounds = rounds;
   rocketState.phase = "briefing";
   rocketState.targetCardUntil = Infinity;
@@ -2904,6 +2979,7 @@ function prepareRocketBriefing(rounds) {
   rocketState.serverRunStarted = true;
   rocketState.serverRunRounds = rounds;
   saveRocketProgressSnapshot();
+  pingRocketRun(true);
   rocketFeedback(`${rounds} rounds selected`, "#45f875", "success");
   renderRocketHud();
 }
@@ -3007,6 +3083,8 @@ function beginRocketTakeoff() {
   }
   if (rocketState.phase !== "briefing" || rocketState.active) return;
   const rect = els.rocketCanvas.getBoundingClientRect();
+  markRocketActivity();
+  pingRocketRun(true);
   rocketState.active = true;
   rocketState.phase = "takeoff";
   rocketState.targetCardUntil = performance.now() + 4200;
@@ -3023,10 +3101,13 @@ function beginRocketTakeoff() {
   playTakeoffSound();
   startPropellerSound();
   startRocketDefaultRadio();
+  saveRocketProgressSnapshot();
 }
 
 function engageRocketTakeoff() {
   if (!rocketState || rocketState.phase !== "briefing") return;
+  markRocketActivity();
+  pingRocketRun(true);
   rocketState.active = true;
   rocketState.phase = "takeoff";
   rocketState.ship.vx = Math.cos(rocketState.ship.angle) * 8;
@@ -3034,6 +3115,7 @@ function engageRocketTakeoff() {
   rocketState.last = performance.now();
   els.rocketMessage.textContent = `Takeoff started. Build speed, then climb above ${ROCKET_CRUISE_ALTITUDE} m.`;
   playTakeoffSound();
+  saveRocketProgressSnapshot();
 }
 
 function enterRocketRefuelStop(message) {
@@ -3393,6 +3475,7 @@ function awardRocketTechPoints(amount) {
   if (!rocketState || !Number.isFinite(amount) || amount <= 0) return;
   rocketState.techPoints += amount;
   rocketState.roundTechEarned = (rocketState.roundTechEarned || 0) + amount;
+  saveRocketProgressSnapshot();
 }
 
 function showRocketMissionPopup({ title, kind, points, speed, altitude, descentDrop, descentBonus, dist, research = 0, fuel = null }) {
@@ -3622,6 +3705,10 @@ function tickRocket(now) {
   }
   const dt = Math.min(0.033, (now - rocketState.last) / 1000 || 0.016);
   rocketState.last = now;
+  if (rocketState.phase !== "result") {
+    checkRocketInactivity();
+    pingRocketRun(false);
+  }
   if (!rocketState.paused && rocketState.phase !== "result") {
     updateRocketPendingNextRound(dt);
     if (rocketState.active) updateRocket(dt);
@@ -3875,6 +3962,8 @@ function updateRocket(dt) {
       points: blackBoxPoints,
       detail: `+${rocketState.sideQuest.reward} TP`
     });
+    saveRocketProgressSnapshot(true);
+    pingRocketRun(true);
     els.rocketMessage.textContent = `Black box recovered in ${rocketState.sideQuest.name}. +${rocketState.sideQuest.reward} TP.`;
     rocketFeedback(`Black box +${rocketState.sideQuest.reward} TP`, "#0b0f14", "success");
   }
@@ -4062,6 +4151,8 @@ function completeRocketDepotLanding(depot, dist, landingSnapshot = {}) {
     points: landing.points,
     detail: `${landing.parts?.join(", ") || "depot refuel"}; +${researchEarned} TP; fuel +${fuelEarned}`
   });
+  saveRocketProgressSnapshot(true);
+  pingRocketRun(true);
   renderRocketDepotIntel();
   const landingName = landing.perfect ? "Perfect depot descent" : landing.good ? "Clean depot descent" : "Depot refuel";
   showRocketMissionPopup({
@@ -4123,6 +4214,8 @@ function completeRocketTargetLanding(dist, landingSnapshot = {}) {
     points: landingPoints,
     detail: `${formatScore(Math.round(1040 - dist * 3.6))} distance + ${formatScore(speedBonus)} speed + ${formatScore(altitudeBonus)} altitude + ${formatScore(descentBonus)} descent`
   });
+  saveRocketProgressSnapshot(true);
+  pingRocketRun(true);
   els.rocketMessage.textContent = clearedAllDepots
     ? `Perfect sweep: every fuel depot and ${rocketState.target.name} found. +${targetResearchEarned + 10} TP and +${formatScore(landingPoints + 2400)} pts.`
     : idealBonus?.perfect
@@ -6111,11 +6204,15 @@ function renderRocketHud(force = true) {
   if (els.rocketScore) els.rocketScore.textContent = formatScore(rocketState.score);
   if (els.rocketTech) els.rocketTech.textContent = rocketState.techPoints;
   if (els.rocketStart) {
-    const briefing = rocketState.phase === "briefing" && !rocketState.active;
-    els.rocketStart.hidden = !briefing;
-    els.rocketStart.textContent = briefing ? "Begin Takeoff" : "Restart Flight Run";
-    els.rocketStart.classList.toggle("is-briefing", briefing);
-    els.rocketStart.classList.toggle("in-flight", !briefing);
+    const resumable = !rocketState.active && ["briefing", "takeoff", "cruise"].includes(rocketState.phase);
+    els.rocketStart.hidden = !resumable;
+    els.rocketStart.textContent = rocketState.phase === "briefing" ? "Begin Takeoff" : "Resume Flight";
+    els.rocketStart.classList.toggle("is-briefing", resumable);
+    els.rocketStart.classList.toggle("in-flight", !resumable);
+  }
+  if (els.rocketEndRunQuick) {
+    const canEnd = rocketState && !rocketState.sessionSaved && !["setup", "result"].includes(rocketState.phase);
+    els.rocketEndRunQuick.hidden = !canEnd;
   }
   const techKey = [
     rocketState.phase,
@@ -6183,6 +6280,7 @@ function updateRocketTechLabels() {
 
 function buyRocketTargetScan() {
   if (!rocketState || ["setup", "briefing", "result"].includes(rocketState.phase)) return;
+  markRocketActivity();
   const cost = 10;
   if (rocketState.techPoints < cost) {
     els.rocketMessage.textContent = `Need ${cost} tech points for a 5 second destination scan.`;
@@ -6193,6 +6291,8 @@ function buyRocketTargetScan() {
   rocketState.targetScanUntil = performance.now() + 5000;
   rocketState.distanceTrend = null;
   rocketState.lastObjectiveDistance = null;
+  saveRocketProgressSnapshot();
+  pingRocketRun(true);
   els.rocketMessage.textContent = "Destination scan active for 5 seconds.";
   rocketFeedback("Scan active", "#22d9f2", "info");
   closeRocketPause();
@@ -6307,6 +6407,7 @@ function clearCurrentRocketRoundGains() {
   rocketState.scoreEvents = (rocketState.scoreEvents || []).filter((event) => event.round !== round);
   rocketState.landingLogs = [];
   rocketState.allObjectivesBonusAwarded = false;
+  saveRocketProgressSnapshot();
 }
 
 function abandonRocketRound() {
@@ -7087,6 +7188,7 @@ function drawRocketLogDepotStatusMarkers(ctx, log, viewport, selectedDepot = nul
 
 function buyRocketTech(kind) {
   if (!rocketState || !rocketTechInfo[kind]) return;
+  markRocketActivity();
   const level = rocketState.tech[kind] || 0;
   if (level >= rocketTechMax) {
     const text = `${rocketTechInfo[kind].title} is already maxed at level ${rocketTechMax}.`;
@@ -7119,6 +7221,8 @@ function buyRocketTech(kind) {
   animateTechTree("unlocked");
   rocketFeedback("Upgrade unlocked", "#ffffff", "success");
   playPowerUp();
+  saveRocketProgressSnapshot(true);
+  pingRocketRun(true);
   renderRocketHud();
 }
 
@@ -7548,6 +7652,14 @@ function handleRocketStartClick(event = null) {
     beginRocketTakeoff();
     return;
   }
+  if (rocketState && ["takeoff", "cruise"].includes(rocketState.phase) && !rocketState.active) {
+    markRocketActivity();
+    rocketState.active = true;
+    rocketState.last = performance.now();
+    startPropellerSound();
+    renderRocketHud(true);
+    return;
+  }
   startRocketRun();
 }
 
@@ -7702,9 +7814,22 @@ els.rocketResultRestart?.addEventListener("click", () => {
 });
 els.rocketTutorialNext?.addEventListener("click", continueRocketTutorial);
 els.techTreeClose?.addEventListener("click", closeRocketPause);
-els.pauseResume?.addEventListener("click", closeRocketPause);
-els.pauseEndRound?.addEventListener("click", abandonRocketRound);
-els.pauseEndRun?.addEventListener("click", () => endRocketRun("Run Ended", "Flight run ended from pause menu.", "setup"));
+els.pauseResume?.addEventListener("click", () => {
+  markRocketActivity();
+  closeRocketPause();
+});
+els.pauseEndRound?.addEventListener("click", () => {
+  markRocketActivity();
+  abandonRocketRound();
+});
+els.pauseEndRun?.addEventListener("click", () => {
+  markRocketActivity();
+  endRocketRun("Run Ended", "Flight run ended from pause menu.", "setup");
+});
+els.rocketEndRunQuick?.addEventListener("click", () => {
+  markRocketActivity();
+  endRocketRun("Run Ended", "Flight run ended manually.", "setup");
+});
 els.pauseScanTarget?.addEventListener("click", buyRocketTargetScan);
 document.querySelectorAll("[data-pause-view]").forEach((button) => {
   button.addEventListener("click", () => {
@@ -7724,6 +7849,7 @@ document.querySelectorAll("[data-tech]").forEach((button) => {
 });
 window.addEventListener("keydown", (event) => {
   if (event.code === "Escape" && document.querySelector("#rocketView")?.classList.contains("active")) {
+    markRocketActivity();
     event.preventDefault();
     toggleRocketPause();
     return;
@@ -7733,15 +7859,18 @@ window.addEventListener("keydown", (event) => {
   if (event.code === "Space") {
     event.preventDefault();
   }
+  markRocketActivity();
   rocketState.keys[event.code] = true;
 });
 window.addEventListener("keyup", (event) => {
   if (!rocketState?.keys) return;
+  markRocketActivity();
   delete rocketState.keys[event.code];
 });
 els.rocketCanvas?.addEventListener("pointermove", (event) => {
   if (!rocketState) return;
   if (rocketState.phase === "setup") return;
+  markRocketActivity();
   const rect = els.rocketCanvas.getBoundingClientRect();
   rocketState.mouse.x = event.clientX - rect.left;
   rocketState.mouse.y = event.clientY - rect.top;
@@ -7785,6 +7914,7 @@ els.rocketCanvas?.addEventListener("pointerleave", () => {
 els.rocketCanvas?.addEventListener("click", (event) => {
   if (!rocketState || rocketState.phase === "briefing") return;
   if (rocketState.phase === "setup") return;
+  markRocketActivity();
   const rect = els.rocketCanvas.getBoundingClientRect();
   const x = event.clientX - rect.left;
   const y = event.clientY - rect.top;

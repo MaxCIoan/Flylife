@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check fly-session-guard.js && node --check app.js && node --check lib/fly-scoring.js && node --check netlify/functions/fly-run-start.js && node --check netlify/functions/fly-run-finish.js && node --check netlify/functions/fly-leaderboard.js && node --check netlify/functions/fly-player-profile.js && node --check netlify/functions/fly-admin-flush.js",
+    "check": "node --check fly-session-guard.js && node --check app.js && node --check lib/fly-scoring.js && node --check netlify/functions/fly-run-start.js && node --check netlify/functions/fly-run-finish.js && node --check netlify/functions/fly-run-ping.js && node --check netlify/functions/fly-leaderboard.js && node --check netlify/functions/fly-player-profile.js && node --check netlify/functions/fly-admin-flush.js",
     "package:itch": "powershell -ExecutionPolicy Bypass -File scripts/package-itch.ps1"
   },
   "dependencies": {
