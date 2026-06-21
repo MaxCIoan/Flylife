@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "20260621apiorigin1";
+  const VERSION = "20260621apiorigin2";
   const PROFILE_KEY = "flagHunterLocalProfile";
   const TRUST_KEY = "flagHunterTrustedProfileV1";
   const ROCKET_ROUNDS_KEY = "flagHunterRocketRounds";
@@ -12,7 +12,7 @@
   const MAX_SCORE_PER_ROUND = 80000;
   const MIN_MS_PER_ROUND = 2500;
   const SALT = "flag-hunter-fly-guard-20260609";
-  const PRODUCTION_API_ORIGIN = "https://flyrace.netlify.app";
+  const PRODUCTION_API_ORIGIN = "https://flightrace.netlify.app";
 
   let tampered = false;
   let tamperReason = null;

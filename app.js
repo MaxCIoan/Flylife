@@ -251,7 +251,7 @@ let officialFlyLeaders = [];
 let officialFlyLeadersLoaded = false;
 let officialFlyLeadersLoading = false;
 let officialFlyLeadersError = false;
-const productionFlyApiOrigin = "https://flyrace.netlify.app";
+const productionFlyApiOrigin = "https://flightrace.netlify.app";
 const isItchContext = /(^|\.)itch\.io$/i.test(window.location.hostname)
   || /itch\.io/i.test(document.referrer || "")
   || new URLSearchParams(window.location.search).has("itchStatus");
