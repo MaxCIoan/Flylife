@@ -58,7 +58,7 @@ export default async (request) => {
                 finished_at as "finishedAt",
                 payload,
                 row_number() over (
-                  partition by player_id
+                  partition by lower(display_name)
                   order by final_score desc, elapsed_ms asc, finished_at asc
                 ) as rank_for_player
          from fly_runs

@@ -41,6 +41,9 @@
 - Replaced the off-style burger button with a compact gear-styled account/settings button using the same card art source.
 - Polished index/menu panels, page headings, tables, manual cards, and settings cards with a consistent blue mission-console identity.
 - Added cache-busting query updates for the latest UI and API-origin changes so browsers do not keep stale scripts.
+- Fixed named profile detection so a valid display name still counts as an official player even if `display_name_locked` was manually flipped false in the database.
+- Changed the official leaderboard dedupe to collapse duplicate display names, preventing old duplicate `country` rows from taking multiple leaderboard slots.
+- Added admin-token Settings tools and API endpoints to rename this browser's official player record and recover/import the best saved local Fly run into the official database.
 
 ## 2026-06-13
 

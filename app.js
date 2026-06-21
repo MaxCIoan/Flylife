@@ -173,7 +173,12 @@ const els = {
   authDialog: document.querySelector("#authDialog"),
   displayNameInput: document.querySelector("#displayNameInput"),
   authMessage: document.querySelector("#authMessage"),
-  authDone: document.querySelector("#authDone")
+  authDone: document.querySelector("#authDone"),
+  adminTokenInput: document.querySelector("#adminTokenInput"),
+  adminDisplayNameInput: document.querySelector("#adminDisplayNameInput"),
+  adminRenameMe: document.querySelector("#adminRenameMe"),
+  adminRecoverBestFly: document.querySelector("#adminRecoverBestFly"),
+  adminMessage: document.querySelector("#adminMessage")
 };
 
 const storeKey = "flagHunterLocalProfile";
@@ -315,7 +320,7 @@ function isGuestDisplayName(value) {
 }
 
 function hasNamedProfile() {
-  return Boolean(profile?.playerId && profile.displayNameLocked && !isGuestDisplayName(profile.displayName));
+  return Boolean(profile?.playerId && !isGuestDisplayName(profile.displayName));
 }
 
 function flagRunHasEvent(run = {}) {
@@ -1077,6 +1082,90 @@ function saveProfile(options = {}) {
   window.FlagGuard?.syncProfile?.(profile);
   if (options.remote !== false) scheduleProfileSync();
 }
+
+function cleanPilotName(value) {
+  return String(value || "").trim().replace(/[^a-z0-9 _-]/gi, "").slice(0, 18);
+}
+
+function getAdminToken() {
+  return String(els.adminTokenInput?.value || sessionStorage.getItem("flagHunterAdminToken") || "").trim();
+}
+
+function rememberAdminToken(token) {
+  if (token) sessionStorage.setItem("flagHunterAdminToken", token);
+}
+
+async function postAdmin(path, body, token = getAdminToken()) {
+  if (!token) throw new Error("Admin token is required.");
+  rememberAdminToken(token);
+  const response = await fetch(`${flyApiBase}${path}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-fly-admin-token": token
+    },
+    body: JSON.stringify(body)
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
+  if (!response.ok) throw new Error(data.error || response.statusText || "Admin request failed.");
+  return data;
+}
+
+function getBestLocalFlyRun() {
+  return (profile.rocketRuns || [])
+    .filter(rocketRunHasScoringEvent)
+    .sort((a, b) => cleanRankPoints(b.score) - cleanRankPoints(a.score))[0] || null;
+}
+
+async function recoverLocalFlyRun(run = getBestLocalFlyRun(), token = getAdminToken()) {
+  if (!run) throw new Error("No local Fly run with scoring events was found in this browser.");
+  const displayName = isGuestDisplayName(profile.displayName) ? run.displayName : profile.displayName;
+  const data = await postAdmin("/api/fly/admin/import-run", {
+    playerId: profile.playerId || run.playerId || getLocalPlayerId(),
+    displayName,
+    session: {
+      ...run,
+      playerId: profile.playerId || run.playerId || getLocalPlayerId(),
+      displayName
+    }
+  }, token);
+  refreshOfficialFlyLeaderboard();
+  showAdminMessage(`Recovered ${formatScore(data.finalScore || run.score)} to official leaderboard.`, "success");
+  return data;
+}
+
+async function adminRenameCurrentPlayer(displayName, token = getAdminToken()) {
+  const clean = cleanPilotName(displayName);
+  if (isGuestDisplayName(clean)) throw new Error("Choose a real display name.");
+  const data = await postAdmin("/api/fly/admin/player", {
+    action: "rename",
+    playerId: profile.playerId || getLocalPlayerId(),
+    displayName: clean,
+    lock: true
+  }, token);
+  mergeServerProfile(data.player, { persist: false });
+  profile.displayName = data.player?.displayName || clean;
+  profile.displayNameLocked = true;
+  saveProfile();
+  renderProfile();
+  syncProfileControls();
+  refreshOfficialFlyLeaderboard();
+  showAdminMessage(`Renamed this player to ${profile.displayName}.`, "success");
+  return data;
+}
+
+window.FlyAdmin = {
+  getProfile: () => profile,
+  localFlyRuns: () => (profile.rocketRuns || []).slice(),
+  bestLocalFlyRun: getBestLocalFlyRun,
+  recoverBestLocalFlyRun: (token) => recoverLocalFlyRun(getBestLocalFlyRun(), token),
+  recoverLocalFlyRun: (runId, token) => {
+    const run = (profile.rocketRuns || []).find((item) => item.id === runId);
+    return recoverLocalFlyRun(run, token);
+  },
+  renameMe: adminRenameCurrentPlayer
+};
 
 let profile = loadProfile();
 
@@ -1842,7 +1931,7 @@ function buildOfficialLeaderboardEntries(officialFlyRuns = []) {
   const bestByPlayer = new Map();
   (officialFlyRuns || []).forEach((run) => {
     if (isGuestDisplayName(run.displayName)) return;
-    const key = String(run.playerId || run.displayName || "").toLowerCase();
+    const key = String(run.displayName || run.playerId || "").toLowerCase();
     if (!key) return;
     const current = bestByPlayer.get(key);
     const currentScore = Number(current?.finalScore || current?.score || 0);
@@ -2544,6 +2633,12 @@ function showAuthMessage(message = "", tone = "info") {
   els.authMessage.dataset.tone = tone;
 }
 
+function showAdminMessage(message = "", tone = "info") {
+  if (!els.adminMessage) return;
+  els.adminMessage.textContent = message;
+  els.adminMessage.dataset.tone = tone;
+}
+
 function showAuthDialog(message = "", options = {}) {
   if (!els.authDialog) return false;
   syncProfileControls();
@@ -2585,6 +2680,7 @@ function syncProfileControls() {
     saveButton.toggleAttribute("disabled", locked);
   }
   if (els.authDone) els.authDone.hidden = !locked;
+  if (els.adminDisplayNameInput) els.adminDisplayNameInput.value = isGuestDisplayName(profile.displayName) ? "" : profile.displayName;
 }
 
 function roundRect(ctx, x, y, w, h, r, fill = false) {
@@ -7937,7 +8033,7 @@ document.querySelector("#profileOpen")?.addEventListener("click", () => {
 document.querySelector("#saveName")?.addEventListener("click", (event) => {
   event.preventDefault();
   if (profile.displayNameLocked && !isGuestDisplayName(profile.displayName)) return;
-  const clean = els.displayNameInput.value.trim().replace(/[^a-z0-9 _-]/gi, "").slice(0, 18);
+  const clean = cleanPilotName(els.displayNameInput.value);
   if (isGuestDisplayName(clean)) {
     showAuthMessage("Choose a real pilot name before playing online.", "warn");
     return;
@@ -7954,6 +8050,22 @@ document.querySelector("#saveName")?.addEventListener("click", (event) => {
   window.setTimeout(() => {
     if (els.authDialog?.open) els.authDialog.close();
   }, 1700);
+});
+els.adminRecoverBestFly?.addEventListener("click", async () => {
+  try {
+    showAdminMessage("Recovering best local Fly run...", "info");
+    await recoverLocalFlyRun();
+  } catch (error) {
+    showAdminMessage(error instanceof Error ? error.message : "Recovery failed.", "warn");
+  }
+});
+els.adminRenameMe?.addEventListener("click", async () => {
+  try {
+    showAdminMessage("Renaming player...", "info");
+    await adminRenameCurrentPlayer(els.adminDisplayNameInput?.value || profile.displayName);
+  } catch (error) {
+    showAdminMessage(error instanceof Error ? error.message : "Rename failed.", "warn");
+  }
 });
 document.querySelector(".auth-panel")?.addEventListener("submit", (event) => {
   event.preventDefault();

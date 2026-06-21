@@ -2496,7 +2496,9 @@ body:has(#rocketView.active) .topbar {
 }
 
 .settings-card select,
-.settings-card input[type="file"] {
+.settings-card input[type="file"],
+.settings-card input[type="password"],
+.settings-card input[type="text"] {
   min-height: 2.8rem;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius);

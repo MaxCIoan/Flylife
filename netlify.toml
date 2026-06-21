@@ -35,6 +35,16 @@
   to = "/.netlify/functions/fly-admin-flush"
   status = 200
 
+[[redirects]]
+  from = "/api/fly/admin/import-run"
+  to = "/.netlify/functions/fly-admin-import-run"
+  status = 200
+
+[[redirects]]
+  from = "/api/fly/admin/player"
+  to = "/.netlify/functions/fly-admin-player"
+  status = 200
+
 [[headers]]
   for = "/*.json"
   [headers.values]
