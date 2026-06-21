@@ -451,7 +451,49 @@
     </form>
   </dialog>
 
-  <script src="fly-session-guard.js?v=20260622c"></script>
-  <script src="app.js?v=20260622c"></script>
+  <script>
+    (() => {
+      const markers = [
+        "Admin Tools",
+        "FLY_ADMIN_TOKEN",
+        "Admin token",
+        "Rename this player",
+        "Saved Fly run to recover",
+        "Database player",
+        "Refresh Runs",
+        "Load DB Players",
+        "Load Player Runs",
+        "Recover Selected Fly Run"
+      ];
+      const canUseAdmin = () => {
+        try {
+          const profile = JSON.parse(localStorage.getItem("flagHunterLocalProfile") || "{}");
+          return String(profile.displayName || "").trim().toLowerCase() === "country";
+        } catch {
+          return false;
+        }
+      };
+      const removeAdmin = (root = document) => {
+        if (canUseAdmin()) return;
+        const searchRoot = root.nodeType === Node.TEXT_NODE ? root.parentElement : root;
+        if (!searchRoot) return;
+        const text = searchRoot.textContent || "";
+        if (!markers.some((marker) => text.includes(marker))) return;
+        const panel = searchRoot.closest?.("[data-admin-tools], [data-fly-admin], #adminTools, #flyAdminTools, .admin-tools, .fly-admin-tools, section, form, fieldset, .manual-card, .settings-card, .card") || searchRoot;
+        if (panel && panel !== document.body && panel !== document.documentElement) panel.remove();
+      };
+      const scan = () => document.querySelectorAll("section, form, fieldset, .manual-card, .settings-card, .card, h1, h2, h3, label, button, p, small, span").forEach(removeAdmin);
+      new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          removeAdmin(mutation.target);
+          mutation.addedNodes.forEach(removeAdmin);
+        });
+      }).observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true });
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", scan, { once: true });
+      else scan();
+    })();
+  </script>
+  <script src="fly-session-guard.js?v=20260622d"></script>
+  <script src="app.js?v=20260622d"></script>
 </body>
 </html>
