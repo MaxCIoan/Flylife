@@ -443,16 +443,20 @@
 
           <section class="manual-card settings-card">
             <h2>Admin Tools</h2>
-            <p>Requires the private `FLY_ADMIN_TOKEN` from Netlify. Use this to recover your best local Fly run or rename this browser's official player record without editing the database by hand.</p>
+            <p>Requires the private `FLY_ADMIN_TOKEN` from Netlify. Use this to recover a saved local Fly run or rename this browser's official player record without editing the database by hand.</p>
             <label>Admin token
               <input id="adminTokenInput" type="password" autocomplete="off" placeholder="Private token">
             </label>
             <label>Rename this player
               <input id="adminDisplayNameInput" maxlength="18" autocomplete="nickname" placeholder="New display name">
             </label>
+            <label>Saved Fly run to recover
+              <select id="adminFlyRunSelect"></select>
+            </label>
             <div class="auth-actions">
               <button class="secondary-btn" id="adminRenameMe" type="button">Rename Me</button>
-              <button class="primary-btn" id="adminRecoverBestFly" type="button">Recover Best Local Fly Run</button>
+              <button class="secondary-btn" id="adminRefreshFlyRuns" type="button">Refresh Runs</button>
+              <button class="primary-btn" id="adminRecoverBestFly" type="button">Recover Selected Fly Run</button>
             </div>
             <p class="auth-message" id="adminMessage" aria-live="polite"></p>
           </section>

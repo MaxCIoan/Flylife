@@ -176,7 +176,9 @@ const els = {
   authDone: document.querySelector("#authDone"),
   adminTokenInput: document.querySelector("#adminTokenInput"),
   adminDisplayNameInput: document.querySelector("#adminDisplayNameInput"),
+  adminFlyRunSelect: document.querySelector("#adminFlyRunSelect"),
   adminRenameMe: document.querySelector("#adminRenameMe"),
+  adminRefreshFlyRuns: document.querySelector("#adminRefreshFlyRuns"),
   adminRecoverBestFly: document.querySelector("#adminRecoverBestFly"),
   adminMessage: document.querySelector("#adminMessage")
 };
@@ -1118,6 +1120,56 @@ function getBestLocalFlyRun() {
     .sort((a, b) => cleanRankPoints(b.score) - cleanRankPoints(a.score))[0] || null;
 }
 
+function getRecoverableFlyRuns() {
+  return (profile.rocketRuns || [])
+    .filter(rocketRunHasScoringEvent)
+    .sort((a, b) => {
+      const scoreDiff = cleanRankPoints(b.score) - cleanRankPoints(a.score);
+      if (scoreDiff) return scoreDiff;
+      return Date.parse(b.createdAt || "") - Date.parse(a.createdAt || "");
+    });
+}
+
+function describeLocalFlyRun(run = {}) {
+  const score = formatScore(run.score || 0);
+  const selectedRounds = run.selectedRounds || run.rounds || 0;
+  const completedRounds = run.completedRounds || 0;
+  const when = run.createdAt ? new Date(run.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "undated";
+  const id = String(run.id || "").slice(-6);
+  return `${score} | ${completedRounds}/${selectedRounds} rounds | ${when}${id ? ` | ${id}` : ""}`;
+}
+
+function refreshAdminFlyRunPicker(preferredRunId = "") {
+  if (!els.adminFlyRunSelect) return;
+  const runs = getRecoverableFlyRuns();
+  els.adminFlyRunSelect.innerHTML = "";
+  if (!runs.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No saved Fly runs found on this site";
+    els.adminFlyRunSelect.append(option);
+    els.adminRecoverBestFly?.setAttribute("disabled", "disabled");
+    return;
+  }
+  runs.forEach((run, index) => {
+    const option = document.createElement("option");
+    option.value = run.id || String(index);
+    option.textContent = describeLocalFlyRun(run);
+    els.adminFlyRunSelect.append(option);
+  });
+  const selected = runs.find((run) => run.id === preferredRunId) || runs[0];
+  els.adminFlyRunSelect.value = selected?.id || "";
+  els.adminRecoverBestFly?.removeAttribute("disabled");
+  showAdminMessage(`${runs.length} local Fly run${runs.length === 1 ? "" : "s"} available. Select the exact score before recovering.`, "info");
+}
+
+function getSelectedLocalFlyRun() {
+  const runs = getRecoverableFlyRuns();
+  if (!runs.length) return null;
+  const selectedId = els.adminFlyRunSelect?.value;
+  return runs.find((run) => run.id === selectedId) || runs[0];
+}
+
 async function recoverLocalFlyRun(run = getBestLocalFlyRun(), token = getAdminToken()) {
   if (!run) throw new Error("No local Fly run with scoring events was found in this browser.");
   const displayName = isGuestDisplayName(profile.displayName) ? run.displayName : profile.displayName;
@@ -1131,7 +1183,8 @@ async function recoverLocalFlyRun(run = getBestLocalFlyRun(), token = getAdminTo
     }
   }, token);
   refreshOfficialFlyLeaderboard();
-  showAdminMessage(`Recovered ${formatScore(data.finalScore || run.score)} to official leaderboard.`, "success");
+  const suffix = String(run.id || "").slice(-6);
+  showAdminMessage(`Recovered ${formatScore(data.finalScore || run.score)}${suffix ? ` (${suffix})` : ""} to official leaderboard.`, "success");
   return data;
 }
 
@@ -1158,6 +1211,8 @@ async function adminRenameCurrentPlayer(displayName, token = getAdminToken()) {
 window.FlyAdmin = {
   getProfile: () => profile,
   localFlyRuns: () => (profile.rocketRuns || []).slice(),
+  recoverableFlyRuns: getRecoverableFlyRuns,
+  localFlyRunSummaries: () => getRecoverableFlyRuns().map((run) => ({ id: run.id, label: describeLocalFlyRun(run), score: run.score })),
   bestLocalFlyRun: getBestLocalFlyRun,
   recoverBestLocalFlyRun: (token) => recoverLocalFlyRun(getBestLocalFlyRun(), token),
   recoverLocalFlyRun: (runId, token) => {
@@ -2681,6 +2736,7 @@ function syncProfileControls() {
   }
   if (els.authDone) els.authDone.hidden = !locked;
   if (els.adminDisplayNameInput) els.adminDisplayNameInput.value = isGuestDisplayName(profile.displayName) ? "" : profile.displayName;
+  refreshAdminFlyRunPicker(els.adminFlyRunSelect?.value || "");
 }
 
 function roundRect(ctx, x, y, w, h, r, fill = false) {
@@ -8053,11 +8109,15 @@ document.querySelector("#saveName")?.addEventListener("click", (event) => {
 });
 els.adminRecoverBestFly?.addEventListener("click", async () => {
   try {
-    showAdminMessage("Recovering best local Fly run...", "info");
-    await recoverLocalFlyRun();
+    const run = getSelectedLocalFlyRun();
+    showAdminMessage(run ? `Recovering ${formatScore(run.score || 0)}...` : "No saved Fly run selected.", "info");
+    await recoverLocalFlyRun(run);
   } catch (error) {
     showAdminMessage(error instanceof Error ? error.message : "Recovery failed.", "warn");
   }
+});
+els.adminRefreshFlyRuns?.addEventListener("click", () => {
+  refreshAdminFlyRunPicker(els.adminFlyRunSelect?.value || "");
 });
 els.adminRenameMe?.addEventListener("click", async () => {
   try {
