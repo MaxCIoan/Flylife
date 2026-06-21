@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Flag Hunter</title>
-  <link rel="stylesheet" href="styles.css?v=20260622adminbrowse1">
+  <link rel="stylesheet" href="styles.css?v=20260622noadmin1">
 </head>
 <body>
   <div class="private-api-status" id="privateApiStatus" aria-hidden="true"></div>
@@ -441,32 +441,6 @@
             </label>
           </section>
 
-          <section class="manual-card settings-card">
-            <h2>Admin Tools</h2>
-            <p>Requires the private `FLY_ADMIN_TOKEN` from Netlify. Use this to recover a saved local Fly run or rename this browser's official player record without editing the database by hand.</p>
-            <label>Admin token
-              <input id="adminTokenInput" type="password" autocomplete="off" placeholder="Private token">
-            </label>
-            <label>Rename this player
-              <input id="adminDisplayNameInput" maxlength="18" autocomplete="nickname" placeholder="New display name">
-            </label>
-            <label>Saved Fly run to recover
-              <select id="adminFlyRunSelect"></select>
-            </label>
-            <label>Database player
-              <select id="adminPlayerSelect"></select>
-            </label>
-            <div class="auth-actions">
-              <button class="secondary-btn" id="adminRenameMe" type="button">Rename Me</button>
-              <button class="secondary-btn" id="adminRefreshFlyRuns" type="button">Refresh Runs</button>
-              <button class="secondary-btn" id="adminLoadPlayers" type="button">Load DB Players</button>
-              <button class="secondary-btn" id="adminLoadPlayerRuns" type="button">Load Player Runs</button>
-              <button class="primary-btn" id="adminRecoverBestFly" type="button">Recover Selected Fly Run</button>
-            </div>
-            <div class="admin-db-panel" id="adminDatabasePanel"></div>
-            <p class="auth-message" id="adminMessage" aria-live="polite"></p>
-          </section>
-
           <section class="manual-card">
             <h2>Recommended Hardware</h2>
             <p>Use a dedicated GPU when your computer has one. The game can run on integrated graphics, but satellite tiles, route maps, and effects are smoother on dedicated Nvidia or AMD graphics.</p>
@@ -507,7 +481,7 @@
     </form>
   </dialog>
 
-  <script src="fly-session-guard.js?v=20260622adminbrowse1"></script>
-  <script src="app.js?v=20260622adminbrowse1"></script>
+  <script src="fly-session-guard.js?v=20260622noadmin1"></script>
+  <script src="app.js?v=20260622noadmin1"></script>
 </body>
 </html>

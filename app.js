@@ -173,18 +173,7 @@ const els = {
   authDialog: document.querySelector("#authDialog"),
   displayNameInput: document.querySelector("#displayNameInput"),
   authMessage: document.querySelector("#authMessage"),
-  authDone: document.querySelector("#authDone"),
-  adminTokenInput: document.querySelector("#adminTokenInput"),
-  adminDisplayNameInput: document.querySelector("#adminDisplayNameInput"),
-  adminFlyRunSelect: document.querySelector("#adminFlyRunSelect"),
-  adminPlayerSelect: document.querySelector("#adminPlayerSelect"),
-  adminDatabasePanel: document.querySelector("#adminDatabasePanel"),
-  adminRenameMe: document.querySelector("#adminRenameMe"),
-  adminRefreshFlyRuns: document.querySelector("#adminRefreshFlyRuns"),
-  adminLoadPlayers: document.querySelector("#adminLoadPlayers"),
-  adminLoadPlayerRuns: document.querySelector("#adminLoadPlayerRuns"),
-  adminRecoverBestFly: document.querySelector("#adminRecoverBestFly"),
-  adminMessage: document.querySelector("#adminMessage")
+  authDone: document.querySelector("#authDone")
 };
 
 const storeKey = "flagHunterLocalProfile";
@@ -1092,257 +1081,6 @@ function saveProfile(options = {}) {
 function cleanPilotName(value) {
   return String(value || "").trim().replace(/[^a-z0-9 _-]/gi, "").slice(0, 18);
 }
-
-function getAdminToken() {
-  return String(els.adminTokenInput?.value || sessionStorage.getItem("flagHunterAdminToken") || "").trim();
-}
-
-function rememberAdminToken(token) {
-  if (token) sessionStorage.setItem("flagHunterAdminToken", token);
-}
-
-async function postAdmin(path, body, token = getAdminToken()) {
-  if (!token) throw new Error("Admin token is required.");
-  rememberAdminToken(token);
-  const response = await fetch(`${flyApiBase}${path}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-fly-admin-token": token
-    },
-    body: JSON.stringify(body)
-  });
-  const text = await response.text();
-  const data = text ? JSON.parse(text) : {};
-  if (!response.ok) throw new Error(data.error || response.statusText || "Admin request failed.");
-  return data;
-}
-
-async function getAdmin(path, token = getAdminToken()) {
-  if (!token) throw new Error("Admin token is required.");
-  rememberAdminToken(token);
-  const response = await fetch(`${flyApiBase}${path}`, {
-    headers: { "x-fly-admin-token": token }
-  });
-  const text = await response.text();
-  const data = text ? JSON.parse(text) : {};
-  if (!response.ok) throw new Error(data.error || response.statusText || "Admin request failed.");
-  return data;
-}
-
-function getBestLocalFlyRun() {
-  return (profile.rocketRuns || [])
-    .filter(rocketRunHasScoringEvent)
-    .sort((a, b) => cleanRankPoints(b.score) - cleanRankPoints(a.score))[0] || null;
-}
-
-function getRecoverableFlyRuns() {
-  return (profile.rocketRuns || [])
-    .filter(rocketRunHasScoringEvent)
-    .sort((a, b) => {
-      const scoreDiff = cleanRankPoints(b.score) - cleanRankPoints(a.score);
-      if (scoreDiff) return scoreDiff;
-      return Date.parse(b.createdAt || "") - Date.parse(a.createdAt || "");
-    });
-}
-
-function describeLocalFlyRun(run = {}) {
-  const score = formatScore(run.score || 0);
-  const selectedRounds = run.selectedRounds || run.rounds || 0;
-  const completedRounds = run.completedRounds || 0;
-  const when = run.createdAt ? new Date(run.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "undated";
-  const id = String(run.id || "").slice(-6);
-  return `${score} | ${completedRounds}/${selectedRounds} rounds | ${when}${id ? ` | ${id}` : ""}`;
-}
-
-function refreshAdminFlyRunPicker(preferredRunId = "") {
-  if (!els.adminFlyRunSelect) return;
-  const runs = getRecoverableFlyRuns();
-  els.adminFlyRunSelect.innerHTML = "";
-  if (!runs.length) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = "No saved Fly runs found on this site";
-    els.adminFlyRunSelect.append(option);
-    els.adminRecoverBestFly?.setAttribute("disabled", "disabled");
-    return;
-  }
-  runs.forEach((run, index) => {
-    const option = document.createElement("option");
-    option.value = run.id || String(index);
-    option.textContent = describeLocalFlyRun(run);
-    els.adminFlyRunSelect.append(option);
-  });
-  const selected = runs.find((run) => run.id === preferredRunId) || runs[0];
-  els.adminFlyRunSelect.value = selected?.id || "";
-  els.adminRecoverBestFly?.removeAttribute("disabled");
-  showAdminMessage(`${runs.length} local Fly run${runs.length === 1 ? "" : "s"} available. Select the exact score before recovering.`, "info");
-}
-
-function getSelectedLocalFlyRun() {
-  const runs = getRecoverableFlyRuns();
-  if (!runs.length) return null;
-  const selectedId = els.adminFlyRunSelect?.value;
-  return runs.find((run) => run.id === selectedId) || runs[0];
-}
-
-let adminPlayers = [];
-let adminPlayerRuns = [];
-
-function formatAdminDate(value) {
-  if (!value) return "never";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "unknown";
-  return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
-function describeAdminPlayer(player = {}) {
-  const id = String(player.playerId || "").slice(0, 8);
-  const score = formatScore(player.bestScore || 0);
-  return `${player.displayName || "Guest"} | best ${score} | runs ${player.completedRuns || 0}/${player.runCount || 0}${id ? ` | ${id}` : ""}`;
-}
-
-function refreshAdminPlayerPicker(preferredPlayerId = "") {
-  if (!els.adminPlayerSelect) return;
-  els.adminPlayerSelect.innerHTML = "";
-  if (!adminPlayers.length) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = "No database players loaded";
-    els.adminPlayerSelect.append(option);
-    return;
-  }
-  adminPlayers.forEach((player, index) => {
-    const option = document.createElement("option");
-    option.value = player.playerId || String(index);
-    option.dataset.displayName = player.displayName || "";
-    option.textContent = describeAdminPlayer(player);
-    els.adminPlayerSelect.append(option);
-  });
-  const selected = adminPlayers.find((player) => player.playerId === preferredPlayerId) || adminPlayers[0];
-  els.adminPlayerSelect.value = selected?.playerId || "";
-}
-
-function getSelectedAdminPlayer() {
-  const selectedId = els.adminPlayerSelect?.value;
-  return adminPlayers.find((player) => player.playerId === selectedId) || adminPlayers[0] || null;
-}
-
-function runHasModernDetails(run = {}) {
-  const logs = Array.isArray(run.payload?.logs) ? run.payload.logs : [];
-  return logs.some((log) => Array.isArray(log.trace) && log.trace.length > 1)
-    && logs.some((log) => Array.isArray(log.depotMarkers) && log.depotMarkers.length);
-}
-
-function renderAdminDatabasePanel(player = getSelectedAdminPlayer(), runs = adminPlayerRuns) {
-  if (!els.adminDatabasePanel) return;
-  if (!player) {
-    els.adminDatabasePanel.innerHTML = "<p>No database player selected.</p>";
-    return;
-  }
-  const runRows = (runs || []).map((run) => {
-    const details = runHasModernDetails(run) ? "modern trace/depot data" : "legacy or missing trace/depot data";
-    const tone = runHasModernDetails(run) ? "status-ok" : "status-bad";
-    return `
-      <li>
-        <b>${formatScore(run.finalScore || 0)}</b>
-        <span>${escapeHtml(run.status || "unknown")} | ${run.completedRounds || 0}/${run.selectedRounds || run.rounds || 0} rounds | ${formatAdminDate(run.finishedAt || run.createdAt)}</span>
-        <small class="${tone}">${details}</small>
-      </li>
-    `;
-  }).join("");
-  els.adminDatabasePanel.innerHTML = `
-    <div>
-      <b>${escapeHtml(player.displayName || "Guest")}</b>
-      <span>${escapeHtml(player.playerId || "no player id")}</span>
-      <small>Created ${formatAdminDate(player.createdAt)} | Updated ${formatAdminDate(player.updatedAt)} | locked ${player.displayNameLocked ? "yes" : "no"} | rank ${formatScore(player.rankPoints || 0)}</small>
-    </div>
-    <ul>${runRows || "<li><span>No database runs loaded for this player.</span></li>"}</ul>
-  `;
-}
-
-async function loadAdminPlayers() {
-  showAdminMessage("Loading database players...", "info");
-  const data = await getAdmin("/api/fly/admin/data?type=players");
-  adminPlayers = Array.isArray(data.players) ? data.players : [];
-  adminPlayerRuns = [];
-  refreshAdminPlayerPicker(profile.playerId || "");
-  renderAdminDatabasePanel(getSelectedAdminPlayer(), adminPlayerRuns);
-  showAdminMessage(`Loaded ${adminPlayers.length} database player${adminPlayers.length === 1 ? "" : "s"}.`, "success");
-  return adminPlayers;
-}
-
-async function loadSelectedAdminPlayerRuns() {
-  const player = getSelectedAdminPlayer();
-  if (!player) throw new Error("Load database players first.");
-  showAdminMessage(`Loading runs for ${player.displayName || "player"}...`, "info");
-  const params = new URLSearchParams({
-    type: "runs",
-    playerId: player.playerId || "",
-    displayName: player.displayName || ""
-  });
-  const data = await getAdmin(`/api/fly/admin/data?${params.toString()}`);
-  adminPlayerRuns = Array.isArray(data.runs) ? data.runs : [];
-  renderAdminDatabasePanel(player, adminPlayerRuns);
-  showAdminMessage(`Loaded ${adminPlayerRuns.length} database run${adminPlayerRuns.length === 1 ? "" : "s"}.`, "success");
-  return adminPlayerRuns;
-}
-
-async function recoverLocalFlyRun(run = getBestLocalFlyRun(), token = getAdminToken()) {
-  if (!run) throw new Error("No local Fly run with scoring events was found in this browser.");
-  const displayName = isGuestDisplayName(profile.displayName) ? run.displayName : profile.displayName;
-  const data = await postAdmin("/api/fly/admin/import-run", {
-    playerId: profile.playerId || run.playerId || getLocalPlayerId(),
-    displayName,
-    session: {
-      ...run,
-      playerId: profile.playerId || run.playerId || getLocalPlayerId(),
-      displayName
-    }
-  }, token);
-  refreshOfficialFlyLeaderboard();
-  const suffix = String(run.id || "").slice(-6);
-  showAdminMessage(`Recovered ${formatScore(data.finalScore || run.score)}${suffix ? ` (${suffix})` : ""} to official leaderboard.`, "success");
-  return data;
-}
-
-async function adminRenameCurrentPlayer(displayName, token = getAdminToken()) {
-  const clean = cleanPilotName(displayName);
-  if (isGuestDisplayName(clean)) throw new Error("Choose a real display name.");
-  const data = await postAdmin("/api/fly/admin/player", {
-    action: "rename",
-    playerId: profile.playerId || getLocalPlayerId(),
-    displayName: clean,
-    lock: true
-  }, token);
-  mergeServerProfile(data.player, { persist: false });
-  profile.displayName = data.player?.displayName || clean;
-  profile.displayNameLocked = true;
-  saveProfile();
-  renderProfile();
-  syncProfileControls();
-  refreshOfficialFlyLeaderboard();
-  showAdminMessage(`Renamed this player to ${profile.displayName}.`, "success");
-  return data;
-}
-
-window.FlyAdmin = {
-  getProfile: () => profile,
-  localFlyRuns: () => (profile.rocketRuns || []).slice(),
-  recoverableFlyRuns: getRecoverableFlyRuns,
-  localFlyRunSummaries: () => getRecoverableFlyRuns().map((run) => ({ id: run.id, label: describeLocalFlyRun(run), score: run.score })),
-  bestLocalFlyRun: getBestLocalFlyRun,
-  loadPlayers: loadAdminPlayers,
-  loadSelectedPlayerRuns: loadSelectedAdminPlayerRuns,
-  getLoadedPlayers: () => adminPlayers.slice(),
-  getLoadedPlayerRuns: () => adminPlayerRuns.slice(),
-  recoverBestLocalFlyRun: (token) => recoverLocalFlyRun(getBestLocalFlyRun(), token),
-  recoverLocalFlyRun: (runId, token) => {
-    const run = (profile.rocketRuns || []).find((item) => item.id === runId);
-    return recoverLocalFlyRun(run, token);
-  },
-  renameMe: adminRenameCurrentPlayer
-};
 
 let profile = loadProfile();
 
@@ -2815,12 +2553,6 @@ function showAuthMessage(message = "", tone = "info") {
   els.authMessage.dataset.tone = tone;
 }
 
-function showAdminMessage(message = "", tone = "info") {
-  if (!els.adminMessage) return;
-  els.adminMessage.textContent = message;
-  els.adminMessage.dataset.tone = tone;
-}
-
 function showAuthDialog(message = "", options = {}) {
   if (!els.authDialog) return false;
   syncProfileControls();
@@ -2862,8 +2594,6 @@ function syncProfileControls() {
     saveButton.toggleAttribute("disabled", locked);
   }
   if (els.authDone) els.authDone.hidden = !locked;
-  if (els.adminDisplayNameInput) els.adminDisplayNameInput.value = isGuestDisplayName(profile.displayName) ? "" : profile.displayName;
-  refreshAdminFlyRunPicker(els.adminFlyRunSelect?.value || "");
 }
 
 function roundRect(ctx, x, y, w, h, r, fill = false) {
@@ -8233,44 +7963,6 @@ document.querySelector("#saveName")?.addEventListener("click", (event) => {
   window.setTimeout(() => {
     if (els.authDialog?.open) els.authDialog.close();
   }, 1700);
-});
-els.adminRecoverBestFly?.addEventListener("click", async () => {
-  try {
-    const run = getSelectedLocalFlyRun();
-    showAdminMessage(run ? `Recovering ${formatScore(run.score || 0)}...` : "No saved Fly run selected.", "info");
-    await recoverLocalFlyRun(run);
-  } catch (error) {
-    showAdminMessage(error instanceof Error ? error.message : "Recovery failed.", "warn");
-  }
-});
-els.adminRefreshFlyRuns?.addEventListener("click", () => {
-  refreshAdminFlyRunPicker(els.adminFlyRunSelect?.value || "");
-});
-els.adminLoadPlayers?.addEventListener("click", async () => {
-  try {
-    await loadAdminPlayers();
-  } catch (error) {
-    showAdminMessage(error instanceof Error ? error.message : "Could not load database players.", "warn");
-  }
-});
-els.adminLoadPlayerRuns?.addEventListener("click", async () => {
-  try {
-    await loadSelectedAdminPlayerRuns();
-  } catch (error) {
-    showAdminMessage(error instanceof Error ? error.message : "Could not load database runs.", "warn");
-  }
-});
-els.adminPlayerSelect?.addEventListener("change", () => {
-  adminPlayerRuns = [];
-  renderAdminDatabasePanel(getSelectedAdminPlayer(), adminPlayerRuns);
-});
-els.adminRenameMe?.addEventListener("click", async () => {
-  try {
-    showAdminMessage("Renaming player...", "info");
-    await adminRenameCurrentPlayer(els.adminDisplayNameInput?.value || profile.displayName);
-  } catch (error) {
-    showAdminMessage(error instanceof Error ? error.message : "Rename failed.", "warn");
-  }
 });
 document.querySelector(".auth-panel")?.addEventListener("submit", (event) => {
   event.preventDefault();
