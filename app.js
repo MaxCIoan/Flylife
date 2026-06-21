@@ -251,12 +251,13 @@ let officialFlyLeaders = [];
 let officialFlyLeadersLoaded = false;
 let officialFlyLeadersLoading = false;
 let officialFlyLeadersError = false;
-const productionFlyApiOrigin = "https://flylifeforlife.netlify.app";
+const productionFlyApiOrigin = "https://flyrace.netlify.app";
 const isItchContext = /(^|\.)itch\.io$/i.test(window.location.hostname)
   || /itch\.io/i.test(document.referrer || "")
   || new URLSearchParams(window.location.search).has("itchStatus");
 const isLocalFlyContext = ["", "localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
-const flyApiBase = (isItchContext || isLocalFlyContext) ? productionFlyApiOrigin : "";
+const isNetlifyFlyContext = /\.netlify\.app$/i.test(window.location.hostname);
+const flyApiBase = (isLocalFlyContext || (isItchContext && !isNetlifyFlyContext)) ? productionFlyApiOrigin : "";
 const blockedRocketCountries = new Set(["Fiji", "Antarctica"]);
 const mainlandRocketTargetCountries = new Set(["Netherlands", "New Zealand"]);
 const rocketCountryAliases = {

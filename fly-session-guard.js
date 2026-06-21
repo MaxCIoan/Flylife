@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "20260621inactive1";
+  const VERSION = "20260621apiorigin1";
   const PROFILE_KEY = "flagHunterLocalProfile";
   const TRUST_KEY = "flagHunterTrustedProfileV1";
   const ROCKET_ROUNDS_KEY = "flagHunterRocketRounds";
@@ -12,7 +12,7 @@
   const MAX_SCORE_PER_ROUND = 80000;
   const MIN_MS_PER_ROUND = 2500;
   const SALT = "flag-hunter-fly-guard-20260609";
-  const PRODUCTION_API_ORIGIN = "https://flylifeforlife.netlify.app";
+  const PRODUCTION_API_ORIGIN = "https://flyrace.netlify.app";
 
   let tampered = false;
   let tamperReason = null;
@@ -26,7 +26,8 @@
       || /itch\.io/i.test(document.referrer || "")
       || new URLSearchParams(window.location.search).has("itchStatus");
     const localContext = ["", "localhost", "127.0.0.1", "::1"].includes(hostname);
-    return (itchContext || localContext) && !/flylifeforlife\.netlify\.app$/i.test(hostname) ? PRODUCTION_API_ORIGIN : "";
+    const netlifyContext = /\.netlify\.app$/i.test(hostname);
+    return localContext || (itchContext && !netlifyContext) ? PRODUCTION_API_ORIGIN : "";
   }
 
   function readJsonSafe(value) {
