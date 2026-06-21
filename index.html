@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Flag Hunter</title>
-  <link rel="stylesheet" href="styles.css?v=20260621navcards1">
+  <link rel="stylesheet" href="styles.css?v=20260621bluecards1">
 </head>
 <body>
   <div class="private-api-status" id="privateApiStatus" aria-hidden="true"></div>
@@ -15,12 +15,12 @@
         <span>FLAG<br><b>HUNTER</b></span>
       </a>
       <nav class="main-nav" aria-label="Main navigation">
-        <button class="nav-btn active" data-view="play"><span>Speed</span><b>Flags</b><small>Identify the flag.</small></button>
-        <button class="nav-btn" data-view="rocket"><span>Rogue</span><b>Fly</b><small>No path. Just instinct.</small></button>
-        <button class="nav-btn" data-view="runs"><span>Flight</span><b>Runs</b><small>Trace your range.</small></button>
-        <button class="nav-btn" data-view="leaderboard"><span>Online</span><b>Board</b><small>Compete worldwide.</small></button>
-        <button class="nav-btn" data-view="shop"><span>Rank</span><b>Shop</b><small>Build your legacy.</small></button>
-        <button class="nav-btn" data-view="profile"><span>Pilot</span><b>Manual</b><small>Study the world.</small></button>
+        <button class="nav-btn active" data-view="play"><b>Flag Game</b></button>
+        <button class="nav-btn" data-view="rocket"><b>Fly Game</b></button>
+        <button class="nav-btn" data-view="runs"><b>Runs</b></button>
+        <button class="nav-btn" data-view="leaderboard"><b>Leaderboard</b></button>
+        <button class="nav-btn" data-view="profile"><b>Settings</b></button>
+        <button class="nav-btn" data-view="shop"><b>Shop</b></button>
       </nav>
       <button class="profile-chip" id="profileOpen" type="button">
         <div>
@@ -28,7 +28,7 @@
           <span><span class="coin">★</span> <span id="profileBest">0</span></span>
         </div>
       </button>
-      <button class="menu-button" id="authOpen" aria-label="Open account panel">☰</button>
+      <button class="menu-button" id="authOpen" aria-label="Open account panel" title="Account settings">⚙</button>
     </header>
 
     <main>
@@ -60,7 +60,7 @@
         <section class="game-stage">
           <canvas class="fireworks-canvas" id="fireworksCanvas" aria-hidden="true"></canvas>
           <div class="flag-round-setup" id="flagRoundSetup">
-            <span>Speed Flags Setup</span>
+            <span>Flag Game Setup</span>
             <strong>Round count</strong>
             <p>Pick a fixed run length. The timer no longer ends the run; faster answers only improve the speed bonus.</p>
             <div>
@@ -88,7 +88,7 @@
             <ul id="recentList"></ul>
           </section>
           <section class="activity-card compact">
-            <h2>Speed Flags Score</h2>
+            <h2>Flag Game Score</h2>
             <p>Correct answers add country value, combo bonus, and speed bonus. Wrong answers cost points but do not end the run.</p>
           </section>
           <section class="activity-card compact">
@@ -155,11 +155,11 @@
               <p>Recommended: play on a dedicated GPU when available. Integrated laptop graphics can run the game, but the high-detail satellite layer is smoother on dedicated hardware.</p>
             </section>
             <nav class="rocket-setup-links" aria-label="Fly setup navigation">
-              <button type="button" data-setup-view="play">Speed Flags</button>
+              <button type="button" data-setup-view="play">Flag Game</button>
               <button type="button" data-setup-view="runs">Runs</button>
               <button type="button" data-setup-view="leaderboard">Leaderboard</button>
+              <button type="button" data-setup-view="profile">Settings</button>
               <button type="button" data-setup-view="shop">Shop</button>
-              <button type="button" data-setup-view="profile">Manual</button>
             </nav>
           </div>
           <button class="primary-btn rocket-start-button" id="rocketStart" type="button">Begin Takeoff</button>
@@ -214,9 +214,10 @@
                 <button type="button" id="pauseEndRound">End Round</button>
                 <button type="button" id="pauseEndRun">End Run</button>
                 <button type="button" id="pauseScanTarget">Scan Destination -10 TP</button>
-                <button type="button" data-pause-view="play">Speed Flags</button>
+                <button type="button" data-pause-view="play">Flag Game</button>
                 <button type="button" data-pause-view="runs">Runs</button>
                 <button type="button" data-pause-view="leaderboard">Leaderboard</button>
+                <button type="button" data-pause-view="profile">Settings</button>
                 <button type="button" data-pause-view="shop">Shop</button>
               </div>
               <label class="radio-select">Radio
@@ -299,7 +300,7 @@
           <h1>Your Runs</h1>
         </div>
         <div class="run-section-heading">
-          <h2>Speed Flags</h2>
+          <h2>Flag Game</h2>
           <span>Sorted by highest score</span>
         </div>
         <div class="table-wrap">
@@ -350,16 +351,16 @@
         </div>
       </section>
 
-      <section class="view data-view" id="profileView" aria-label="Rules and settings">
+      <section class="view data-view" id="profileView" aria-label="Settings">
         <div class="manual-dashboard">
           <header class="manual-hero">
-            <span class="eyebrow">Manual / Settings / Scoring</span>
-            <h1>Game Manual</h1>
-            <p>This page documents only behavior that is implemented in this build.</p>
+            <span class="eyebrow">Settings / Manual / Scoring</span>
+            <h1>Settings</h1>
+            <p>Audio, controls, scoring, hardware notes, and implemented game behavior for this build.</p>
           </header>
 
           <section class="manual-card">
-            <h2>Speed Flags</h2>
+            <h2>Flag Game</h2>
             <p>Pick a round count, then identify the shown flag from four answers. The clock measures answer speed for bonus points; it does not end the run.</p>
             <ul>
               <li>Correct score = base country value + combo bonus + fast-answer bonus.</li>
@@ -480,7 +481,7 @@
     </form>
   </dialog>
 
-  <script src="fly-session-guard.js?v=20260621navcards1"></script>
-  <script src="app.js?v=20260621navcards1"></script>
+  <script src="fly-session-guard.js?v=20260621bluecards1"></script>
+  <script src="app.js?v=20260621bluecards1"></script>
 </body>
 </html>
