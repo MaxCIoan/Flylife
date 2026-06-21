@@ -1036,6 +1036,86 @@ function saveProfile(options = {}) {
 }
 
 let profile = loadProfile();
+const flyAdminAllowedDisplayName = "country";
+const flyAdminTextMarkers = [
+  "Admin Tools",
+  "FLY_ADMIN_TOKEN",
+  "Admin token",
+  "Rename this player",
+  "Saved Fly run to recover",
+  "Database player",
+  "Refresh Runs",
+  "Load DB Players",
+  "Load Player Runs",
+  "Recover Selected Fly Run"
+];
+
+function canUseFlyAdminTools() {
+  return String(profile?.displayName || "").trim().toLowerCase() === flyAdminAllowedDisplayName;
+}
+
+function containsFlyAdminText(node) {
+  const text = String(node?.textContent || "");
+  return flyAdminTextMarkers.some((marker) => text.includes(marker));
+}
+
+function getFlyAdminContainer(node) {
+  return node.closest?.("[data-admin-tools], [data-fly-admin], #adminTools, #flyAdminTools, .admin-tools, .fly-admin-tools, section, form, fieldset, .manual-card, .settings-card, .card")
+    || node;
+}
+
+function removeFlyAdminSurface(container) {
+  if (!container || container === document.body || container === document.documentElement) return;
+  container.querySelectorAll?.("input, textarea").forEach((control) => {
+    control.value = "";
+  });
+  container.remove();
+}
+
+function enforceFlyAdminVisibility(root = document) {
+  if (canUseFlyAdminTools()) return;
+  const searchRoot = root.nodeType === Node.TEXT_NODE ? root.parentElement : root;
+  if (!searchRoot) return;
+  const selector = [
+    "[data-admin-tools]",
+    "[data-fly-admin]",
+    "#adminTools",
+    "#flyAdminTools",
+    ".admin-tools",
+    ".fly-admin-tools",
+    "h1",
+    "h2",
+    "h3",
+    "p",
+    "small",
+    "label",
+    "button",
+    "option",
+    "span",
+    "strong"
+  ].join(",");
+  if (searchRoot.matches?.(selector) && containsFlyAdminText(searchRoot)) {
+    removeFlyAdminSurface(getFlyAdminContainer(searchRoot));
+    return;
+  }
+  if (containsFlyAdminText(searchRoot)) {
+    removeFlyAdminSurface(getFlyAdminContainer(searchRoot));
+    return;
+  }
+  searchRoot.querySelectorAll?.(selector).forEach((node) => {
+    if (!containsFlyAdminText(node)) return;
+    removeFlyAdminSurface(getFlyAdminContainer(node));
+  });
+}
+
+const flyAdminObserver = new MutationObserver((mutations) => {
+  for (const mutation of mutations) {
+    enforceFlyAdminVisibility(mutation.target);
+    mutation.addedNodes.forEach((node) => {
+      if (node.nodeType === Node.ELEMENT_NODE || node.nodeType === Node.TEXT_NODE) enforceFlyAdminVisibility(node);
+    });
+  }
+});
 
 function getFlagUrl(code) {
   return `https://flagcdn.com/w640/${code}.png`;
@@ -2120,6 +2200,7 @@ function renderProfile() {
   if (els.displayNameInput) els.displayNameInput.value = profile.displayName === "Guest" ? "" : profile.displayName;
   syncProfileControls();
   renderRankLists();
+  enforceFlyAdminVisibility();
 }
 
 function getBestRun() {
@@ -2426,6 +2507,7 @@ function showView(name, updateHash = true) {
   if (updateHash && location.hash !== `#${name}`) {
     history.replaceState(null, "", `#${name}`);
   }
+  enforceFlyAdminVisibility(document.querySelector(`#${viewMap[name]}`));
 }
 
 function prepareViewData(name) {
@@ -7500,6 +7582,8 @@ document.querySelector("#guestName")?.addEventListener("click", () => {
 window.addEventListener("resize", resizeFireworksCanvas);
 window.addEventListener("resize", resizeRocketCanvas);
 renderProfile();
+enforceFlyAdminVisibility();
+flyAdminObserver.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true });
 loadServerProfile();
 loadRocketCatalog();
 const initialView = location.hash.replace("#", "");
