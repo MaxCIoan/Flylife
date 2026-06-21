@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "20260621identity1";
+  const VERSION = "20260621identity2";
   const PROFILE_KEY = "flagHunterLocalProfile";
   const TRUST_KEY = "flagHunterTrustedProfileV1";
   const ROCKET_ROUNDS_KEY = "flagHunterRocketRounds";

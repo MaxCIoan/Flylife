@@ -171,7 +171,8 @@ const els = {
   rocketSaveHud: document.querySelector("#rocketSaveHud"),
   authDialog: document.querySelector("#authDialog"),
   displayNameInput: document.querySelector("#displayNameInput"),
-  authMessage: document.querySelector("#authMessage")
+  authMessage: document.querySelector("#authMessage"),
+  authDone: document.querySelector("#authDone")
 };
 
 const storeKey = "flagHunterLocalProfile";
@@ -220,7 +221,7 @@ const ROCKET_STATIC_CACHE_SNAP = 768;
 const ROCKET_IMAGERY_TILE_SIZE = 512;
 const ROCKET_IMAGERY_CACHE_MAX = 144;
 const ROCKET_IMAGERY_MAX_LOADS = 5;
-const ROCKET_ATLAS_TILE_VERSION = "20260621identity1";
+const ROCKET_ATLAS_TILE_VERSION = "20260621identity2";
 const ROCKET_FIXED_CAMERA_ZOOM = 2.05;
 const ROCKET_IMAGERY_PRELOAD_PAD = 1;
 const ROCKET_IMAGERY_AHEAD_STEPS = 6;
@@ -239,7 +240,7 @@ const ROCKET_NAV_CHECK_INTERVAL = 0.14;
 const ROCKET_TINY_COUNTRY_DOT_MAX = 30;
 const ROCKET_BLUE_MAP_W = 2880;
 const ROCKET_BLUE_MAP_H = 1440;
-rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260621identity1";
+rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260621identity2";
 rocketMiniMapImage.addEventListener("load", () => { rocketMiniMapCache = null; });
 let rocketCountryOverlayEnabled = false;
 
@@ -2545,7 +2546,8 @@ function showAuthDialog(message = "", options = {}) {
   els.authDialog.dataset.required = options.required ? "true" : "false";
   showAuthMessage(message || (hasNamedProfile() ? "Your pilot identity is active." : "Choose a pilot name before official play."), options.tone || "info");
   if (!els.authDialog.open) els.authDialog.showModal();
-  els.displayNameInput?.focus();
+  if (hasNamedProfile()) els.authDone?.focus();
+  else els.displayNameInput?.focus();
   return true;
 }
 
@@ -2573,7 +2575,12 @@ function syncProfileControls() {
   els.displayNameInput.value = isGuestDisplayName(profile.displayName) ? "" : profile.displayName;
   els.displayNameInput.disabled = locked;
   els.displayNameInput.title = locked ? "This browser profile name is locked on the Fly server." : "";
-  document.querySelector("#saveName")?.toggleAttribute("disabled", locked);
+  const saveButton = document.querySelector("#saveName");
+  if (saveButton) {
+    saveButton.hidden = locked;
+    saveButton.toggleAttribute("disabled", locked);
+  }
+  if (els.authDone) els.authDone.hidden = !locked;
 }
 
 function roundRect(ctx, x, y, w, h, r, fill = false) {
@@ -2610,6 +2617,8 @@ function makeRocketProgressSnapshot() {
     desiredRounds: rocketState.desiredRounds,
     round: rocketState.round,
     wins: rocketState.wins,
+    start: { ...(rocketState.start || {}) },
+    ship: { ...(rocketState.ship || {}) },
     score: Math.round(rocketState.score || 0),
     techPoints: rocketState.techPoints || 0,
     tech: { ...(rocketState.tech || {}) },
@@ -2668,6 +2677,13 @@ function restoreRocketProgressSnapshot() {
   const shouldAdvanceFromLoggedRound = loggedRoundCount > 0 && resumeRound > savedRound;
   rocketState.round = Math.max(1, Math.min(rocketState.desiredRounds, resumeRound));
   rocketState.wins = Math.max(0, Number(snapshot.wins) || 0);
+  const restoredStart = !shouldAdvanceFromLoggedRound && snapshot.start && Number.isFinite(Number(snapshot.start.x)) && Number.isFinite(Number(snapshot.start.y))
+    ? {
+      x: Math.max(0, Math.min(ROCKET_MAP_W, Number(snapshot.start.x))),
+      y: Math.max(0, Math.min(ROCKET_MAP_H, Number(snapshot.start.y))),
+      angle: Number.isFinite(Number(snapshot.start.angle)) ? Number(snapshot.start.angle) : 0
+    }
+    : null;
   rocketState.score = cleanRankPoints(snapshot.score);
   rocketState.techPoints = cleanRankPoints(snapshot.techPoints);
   rocketState.tech = { fuel: 0, speed: 0, turn: 0, sonar: 0, ...(snapshot.tech || {}) };
@@ -2682,6 +2698,20 @@ function restoreRocketProgressSnapshot() {
   rocketState.depots = shouldAdvanceFromLoggedRound
     ? makeRocketDepots()
     : Array.isArray(snapshot.depots) && snapshot.depots.length ? snapshot.depots : makeRocketDepots();
+  if (restoredStart) {
+    rocketState.start = restoredStart;
+    const savedShip = snapshot.ship && typeof snapshot.ship === "object" ? snapshot.ship : {};
+    rocketState.ship = {
+      x: Number.isFinite(Number(savedShip.x)) ? Math.max(0, Math.min(ROCKET_MAP_W, Number(savedShip.x))) : restoredStart.x,
+      y: Number.isFinite(Number(savedShip.y)) ? Math.max(0, Math.min(ROCKET_MAP_H, Number(savedShip.y))) : restoredStart.y,
+      vx: Number.isFinite(Number(savedShip.vx)) ? Number(savedShip.vx) : 0,
+      vy: Number.isFinite(Number(savedShip.vy)) ? Number(savedShip.vy) : 0,
+      angle: Number.isFinite(Number(savedShip.angle)) ? Number(savedShip.angle) : restoredStart.angle,
+      altitude: Number.isFinite(Number(savedShip.altitude)) ? Math.max(0, Number(savedShip.altitude)) : 0,
+      throttle: Number.isFinite(Number(savedShip.throttle)) ? Math.max(0, Math.min(1, Number(savedShip.throttle))) : 0,
+      bank: Number.isFinite(Number(savedShip.bank)) ? Number(savedShip.bank) : 0
+    };
+  }
   rocketState.roundDepotCountries = shouldAdvanceFromLoggedRound
     ? getRocketDepotCountryList(rocketState.depots)
     : Array.isArray(snapshot.roundDepotCountries) ? snapshot.roundDepotCountries : getRocketDepotCountryList(rocketState.depots);
@@ -7797,6 +7827,9 @@ document.querySelector("#saveName")?.addEventListener("click", (event) => {
 document.querySelector(".auth-panel")?.addEventListener("submit", (event) => {
   event.preventDefault();
   document.querySelector("#saveName")?.click();
+});
+els.authDone?.addEventListener("click", () => {
+  if (els.authDialog?.open) els.authDialog.close();
 });
 els.authDialog?.addEventListener("cancel", (event) => {
   if (els.authDialog?.dataset.required === "true" && !hasNamedProfile()) event.preventDefault();
