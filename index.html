@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Flag Hunter</title>
-  <link rel="stylesheet" href="styles.css?v=20260620itch1">
+  <link rel="stylesheet" href="styles.css?v=20260621identity1">
 </head>
 <body>
   <div class="private-api-status" id="privateApiStatus" aria-hidden="true"></div>
@@ -15,11 +15,12 @@
         <span>FLAG<br><b>HUNTER</b></span>
       </a>
       <nav class="main-nav" aria-label="Main navigation">
-        <button class="nav-btn active" data-view="play">Speed Flags</button>
-        <button class="nav-btn" data-view="rocket">Fly</button>
-        <button class="nav-btn" data-view="runs">Runs</button>
-        <button class="nav-btn" data-view="leaderboard">Leaderboard</button>
-        <button class="nav-btn" data-view="profile">Manual</button>
+        <button class="nav-btn active" data-view="play"><span>Speed</span><b>Flags</b></button>
+        <button class="nav-btn" data-view="rocket"><span>Rogue</span><b>Fly</b></button>
+        <button class="nav-btn" data-view="runs"><span>Flight</span><b>Runs</b></button>
+        <button class="nav-btn" data-view="leaderboard"><span>Online</span><b>Board</b></button>
+        <button class="nav-btn" data-view="shop"><span>Rank</span><b>Shop</b></button>
+        <button class="nav-btn" data-view="profile"><span>Pilot</span><b>Manual</b></button>
       </nav>
       <button class="profile-chip" id="profileOpen" type="button">
         <div>
@@ -149,16 +150,20 @@
               <b>Rogue Pilot Briefing</b>
               <p>You are a rogue pilot with access to alien technology. It looks like a propeller plane, but the handling is strange: everything is controlled with the mouse.</p>
               <p>Your goal is to collect hidden country locations using the visual clues and cockpit info: altitude, fins angle, speed, and whether you are accelerating or decelerating.</p>
+              <p>For takeoff, move the mouse toward the edge of the control ring and watch speed plus altitude. Low speed keeps the plane stuck forward with turning disabled; once you build enough speed and climb, the controls become instinctual.</p>
               <p>Fuel depots have perfect landing scores for altitude, speed, and center accuracy. New pilot, do not treat every target as mandatory: plan routes, upgrade fuel depot intel in the pause menu, and search for valuable black boxes.</p>
+              <p>Recommended: play on a dedicated GPU when available. Integrated laptop graphics can run the game, but the high-detail satellite layer is smoother on dedicated hardware.</p>
             </section>
             <nav class="rocket-setup-links" aria-label="Fly setup navigation">
               <button type="button" data-setup-view="play">Speed Flags</button>
               <button type="button" data-setup-view="runs">Runs</button>
               <button type="button" data-setup-view="leaderboard">Leaderboard</button>
+              <button type="button" data-setup-view="shop">Shop</button>
               <button type="button" data-setup-view="profile">Manual</button>
             </nav>
           </div>
           <button class="primary-btn rocket-start-button" id="rocketStart" type="button">Begin Takeoff</button>
+          <div class="rocket-save-hud" id="rocketSaveHud" hidden>Score saved</div>
           <div class="rocket-target-card" id="rocketTargetCard" hidden>
             <span>Destination</span>
             <img id="rocketTargetFlag" src="" alt="">
@@ -205,11 +210,13 @@
               </div>
               <div class="pause-actions">
                 <button type="button" id="pauseResume">Resume</button>
+                <button type="button" id="pauseEndRound">End Round</button>
                 <button type="button" id="pauseEndRun">End Run</button>
                 <button type="button" id="pauseScanTarget">Scan Destination -10 TP</button>
                 <button type="button" data-pause-view="play">Speed Flags</button>
                 <button type="button" data-pause-view="runs">Runs</button>
                 <button type="button" data-pause-view="leaderboard">Leaderboard</button>
+                <button type="button" data-pause-view="shop">Shop</button>
               </div>
               <label class="radio-select">Radio
                 <select id="rocketRadioSelect">
@@ -330,6 +337,18 @@
         </div>
       </section>
 
+      <section class="view data-view shop-view" id="shopView" aria-label="Rogue shop">
+        <div class="page-heading">
+          <span class="eyebrow">Rogue Team</span>
+          <h1>Shop</h1>
+          <p>Rank-point items will unlock here later. Your online profile keeps the identity and rank points used for leaderboard competition.</p>
+        </div>
+        <div class="manual-card settings-card">
+          <h2>Coming Next</h2>
+          <p>Cosmetic aircraft skins, special cockpit effects, and rank-point rewards will be added after the leaderboard identity system is stable.</p>
+        </div>
+      </section>
+
       <section class="view data-view" id="profileView" aria-label="Rules and settings">
         <div class="manual-dashboard">
           <header class="manual-hero">
@@ -363,7 +382,8 @@
             <h2>Fly</h2>
             <p>Fly the plane across the country map, manage fuel, and land in the assigned destination country or at a fuel depot. The final score is real math from the route events listed below.</p>
             <ul>
-              <li>Press Begin Takeoff to start moving immediately. Build about 65 m/s, then climb above 70 m to enter cruise.</li>
+              <li>Press Begin Takeoff to start moving immediately. Move the mouse toward the edge of the control ring, build about 65 m/s, then climb above 70 m to enter cruise.</li>
+              <li>During takeoff, low speed keeps the plane facing forward and turning is disabled. Watch the speed gauge and altitude meter until the aircraft lifts into cruise.</li>
               <li>Manual steering works inside the ring. The inner half-area airbrakes while still steering, the outer ring spools acceleration back up, and outside the ring autopilot holds a straight heading.</li>
               <li>Destination landing points use country-center distance, entry speed, entry altitude, and descent drop over the sampling second.</li>
               <li>After a destination succeeds, route-completion points are added: 1,200 base + timer bonus + difficulty bonus + fuel bonus.</li>
@@ -420,6 +440,11 @@
           </section>
 
           <section class="manual-card">
+            <h2>Recommended Hardware</h2>
+            <p>Use a dedicated GPU when your computer has one. The game can run on integrated graphics, but satellite tiles, route maps, and effects are smoother on dedicated Nvidia or AMD graphics.</p>
+          </section>
+
+          <section class="manual-card">
             <h2>Round Levels</h2>
             <p>Fly sessions support 10, 15, 20, and 50 destination rounds. Every saved score adds cumulative rank points for long-term plane unlocks.</p>
             <div class="manual-grid">
@@ -440,18 +465,20 @@
       <span class="eyebrow">Account</span>
       <h1>Create your hunter</h1>
       <p>This browser gets one Fly player profile. Saving a display name locks it to that profile and syncs rank points through the Fly API.</p>
+      <p>Online multiplayer means you compete against other pilots on the leaderboard. Later, the shop will use your rank points for special items.</p>
+      <p>A dedicated GPU is recommended for the high-detail Fly map. Integrated graphics can work, but may need lower browser load.</p>
       <label>
         Display name
         <input id="displayNameInput" maxlength="18" autocomplete="nickname" placeholder="Explorer">
       </label>
+      <p class="auth-message" id="authMessage" aria-live="polite"></p>
       <div class="auth-actions">
         <button class="primary-btn" id="saveName" value="default">Save Name</button>
-        <button class="secondary-btn" id="guestName" value="default">Continue Guest</button>
       </div>
     </form>
   </dialog>
 
-  <script src="fly-session-guard.js?v=20260620itch1"></script>
-  <script src="app.js?v=20260620itch1"></script>
+  <script src="fly-session-guard.js?v=20260621identity1"></script>
+  <script src="app.js?v=20260621identity1"></script>
 </body>
 </html>

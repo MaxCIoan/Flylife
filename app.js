@@ -154,6 +154,7 @@ const els = {
   techTreeOverlay: document.querySelector("#techTreeOverlay"),
   techTreeStatus: document.querySelector("#techTreeStatus"),
   pauseResume: document.querySelector("#pauseResume"),
+  pauseEndRound: document.querySelector("#pauseEndRound"),
   pauseEndRun: document.querySelector("#pauseEndRun"),
   pauseScanTarget: document.querySelector("#pauseScanTarget"),
   pauseRankList: document.querySelector("#pauseRankList"),
@@ -167,12 +168,15 @@ const els = {
   rocketResultDetails: document.querySelector("#rocketResultDetails"),
   rocketResultMap: document.querySelector("#rocketResultMap"),
   rocketResultRestart: document.querySelector("#rocketResultRestart"),
+  rocketSaveHud: document.querySelector("#rocketSaveHud"),
   authDialog: document.querySelector("#authDialog"),
-  displayNameInput: document.querySelector("#displayNameInput")
+  displayNameInput: document.querySelector("#displayNameInput"),
+  authMessage: document.querySelector("#authMessage")
 };
 
 const storeKey = "flagHunterLocalProfile";
 const playerIdKey = "flagHunterPlayerIdV1";
+const rocketResumeKey = "flagHunterRocketProgressV1";
 const runTime = 45;
 const defaultFlagRounds = 10;
 const allowedGameRounds = [10, 15, 20, 50];
@@ -214,10 +218,10 @@ let rocketImageryRetrySerial = 0;
 const rocketMiniMapImage = new Image();
 const ROCKET_STATIC_CACHE_SNAP = 768;
 const ROCKET_IMAGERY_TILE_SIZE = 512;
-const ROCKET_IMAGERY_CACHE_MAX = 104;
-const ROCKET_IMAGERY_MAX_LOADS = 4;
-const ROCKET_ATLAS_TILE_VERSION = "20260620itch1";
-const ROCKET_FIXED_CAMERA_ZOOM = 1.85;
+const ROCKET_IMAGERY_CACHE_MAX = 144;
+const ROCKET_IMAGERY_MAX_LOADS = 5;
+const ROCKET_ATLAS_TILE_VERSION = "20260621identity1";
+const ROCKET_FIXED_CAMERA_ZOOM = 2.05;
 const ROCKET_IMAGERY_PRELOAD_PAD = 1;
 const ROCKET_IMAGERY_AHEAD_STEPS = 6;
 const ROCKET_CONTROL_RADIUS = 220;
@@ -235,7 +239,7 @@ const ROCKET_NAV_CHECK_INTERVAL = 0.14;
 const ROCKET_TINY_COUNTRY_DOT_MAX = 30;
 const ROCKET_BLUE_MAP_W = 2880;
 const ROCKET_BLUE_MAP_H = 1440;
-rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260620itch1";
+rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260621identity1";
 rocketMiniMapImage.addEventListener("load", () => { rocketMiniMapCache = null; });
 let rocketCountryOverlayEnabled = false;
 
@@ -300,10 +304,41 @@ function cleanRankPoints(value) {
   return Math.max(0, Math.min(1000000000, Math.round(Number(value) || 0)));
 }
 
+function isGuestDisplayName(value) {
+  const name = String(value || "").trim().toLowerCase();
+  return !name || ["guest", "player", "anonymous"].includes(name);
+}
+
+function hasNamedProfile() {
+  return Boolean(profile?.playerId && profile.displayNameLocked && !isGuestDisplayName(profile.displayName));
+}
+
+function flagRunHasEvent(run = {}) {
+  return cleanRankPoints(run.score) > 0
+    && !isGuestDisplayName(run.displayName)
+    && ((Array.isArray(run.correct) && run.correct.length > 0)
+      || (Array.isArray(run.mistakes) && run.mistakes.length > 0));
+}
+
+function rocketRunHasScoringEvent(run = {}) {
+  return cleanRankPoints(run.score ?? run.finalScore) > 0
+    && !isGuestDisplayName(run.displayName)
+    && Array.isArray(run.logs)
+    && run.logs.some((log) => (
+      Boolean(log?.success)
+      || cleanRankPoints(log?.score) > 0
+      || cleanRankPoints(log?.techEarned) > 0
+      || (Array.isArray(log?.scoreEvents) && log.scoreEvents.length > 0)
+      || (Array.isArray(log?.landings) && log.landings.length > 0)
+    ));
+}
+
 function estimateRankPointsFromHistory(candidate = {}) {
-  const flagPoints = (candidate.runs || []).reduce((sum, run) => sum + cleanRankPoints(run.score), 0);
+  const flagPoints = (candidate.runs || [])
+    .filter(flagRunHasEvent)
+    .reduce((sum, run) => sum + cleanRankPoints(run.score), 0);
   const flyPoints = (candidate.rocketRuns || [])
-    .filter((run) => run.source !== "agent-simulation")
+    .filter((run) => run.source !== "agent-simulation" && rocketRunHasScoringEvent(run))
     .reduce((sum, run) => sum + cleanRankPoints(run.score ?? run.finalScore), 0);
   return cleanRankPoints(flagPoints + flyPoints);
 }
@@ -899,7 +934,10 @@ function compactStoredRocketTrace(trace = []) {
 }
 
 function compactRocketRunHistory(runs = []) {
-  return (Array.isArray(runs) ? runs : []).slice(0, 40).map((run) => ({
+  return (Array.isArray(runs) ? runs : [])
+    .filter((run) => run.source === "agent-simulation" || rocketRunHasScoringEvent(run))
+    .slice(0, 40)
+    .map((run) => ({
     ...run,
     logs: Array.isArray(run.logs)
       ? run.logs.map((log) => ({
@@ -926,11 +964,11 @@ function loadProfile() {
     const merged = { ...fallback, ...(loaded && typeof loaded === "object" ? loaded : {}) };
     merged.playerId = String(merged.playerId || fallback.playerId);
     localStorage.setItem(playerIdKey, merged.playerId);
-    merged.runs = Array.isArray(merged.runs) ? merged.runs : [];
+    merged.runs = Array.isArray(merged.runs) ? merged.runs.filter(flagRunHasEvent).slice(0, 50) : [];
     merged.rocketRuns = compactRocketRunHistory(merged.rocketRuns);
     merged.displayName = String(merged.displayName || "Guest").slice(0, 32);
     merged.displayNameLocked = Boolean(merged.displayNameLocked);
-    merged.rankPoints = Math.max(cleanRankPoints(merged.rankPoints), estimateRankPointsFromHistory(merged));
+    merged.rankPoints = estimateRankPointsFromHistory(merged);
     localStorage.setItem(storeKey, JSON.stringify(merged));
     return merged;
   } catch {
@@ -942,7 +980,7 @@ let profileSyncTimer = null;
 
 function compactRemoteProfile() {
   return {
-    displayName: profile.displayName || "Guest",
+    displayName: hasNamedProfile() ? profile.displayName : "",
     rankPoints: getRankPoints(),
     recentSpeedRuns: (profile.runs || []).slice(0, 8).map((run) => ({
       id: run.id,
@@ -978,13 +1016,13 @@ function mergeServerProfile(player = {}, options = {}) {
 }
 
 function scheduleProfileSync(delay = 900) {
-  if (!profile?.playerId) return;
+  if (!profile?.playerId || !hasNamedProfile()) return;
   clearTimeout(profileSyncTimer);
   profileSyncTimer = window.setTimeout(syncServerProfile, delay);
 }
 
 async function syncServerProfile() {
-  if (!profile?.playerId) return null;
+  if (!profile?.playerId || !hasNamedProfile()) return null;
   try {
     const response = await fetch(`${flyApiBase}/api/fly/player`, {
       method: "POST",
@@ -1009,7 +1047,7 @@ async function syncServerProfile() {
 }
 
 async function loadServerProfile() {
-  if (!profile?.playerId) return null;
+  if (!profile?.playerId || !hasNamedProfile()) return null;
   try {
     const response = await fetch(`${flyApiBase}/api/fly/player?playerId=${encodeURIComponent(profile.playerId)}`);
     if (!response.ok) throw new Error("profile load failed");
@@ -1324,6 +1362,7 @@ function showFlagSetup() {
 }
 
 function startRun(rounds = defaultFlagRounds) {
+  if (!requireNamedProfile("Create your rogue pilot before practicing flags or submitting scores.")) return;
   clearInterval(timer);
   clearTimeout(flagQuestionTimeout);
   const desiredRounds = allowedGameRounds.includes(Number(rounds)) ? Number(rounds) : defaultFlagRounds;
@@ -1544,6 +1583,13 @@ function endRun() {
     maxCombo: state.maxCombo,
     levelReached: Math.min(4, 1 + Math.floor(state.maxCombo / 4))
   };
+  if (!flagRunHasEvent(run)) {
+    renderResult(run);
+    renderProfile();
+    renderTables();
+    showView("results");
+    return;
+  }
   addRankPoints(run.score);
   profile.runs = [run, ...(profile.runs || [])].slice(0, 50);
   saveProfile();
@@ -1555,7 +1601,6 @@ function endRun() {
 
 function saveRocketSessionResult(title, summary) {
   if (!rocketState || rocketState.sessionSaved) return null;
-  rocketState.sessionSaved = true;
   const completedRounds = rocketState.roundLogs.filter((log) => log.success).length;
   const planeClass = getPlaneClass({ tech: rocketState.tech, telemetry: rocketState.telemetry, score: rocketState.score }).name;
   const session = {
@@ -1585,11 +1630,28 @@ function saveRocketSessionResult(title, summary) {
       landings: (log.landings || []).slice(0, 8)
     }))
   };
+  rocketState.sessionSaved = true;
+  clearRocketProgressSnapshot();
+  if (!rocketRunHasScoringEvent(session)) {
+    window.FlagGuard?.finishRun?.(session).then(() => showSaveHud("Empty run discarded"));
+    showSaveHud("Empty run discarded");
+    renderTablesIfDataView();
+    return session;
+  }
   window.FlagGuard?.finishRun?.(session).then((officialResult) => {
     if (officialResult) {
       session.officialResult = officialResult;
+      if (officialResult.discarded) {
+        profile.rocketRuns = (profile.rocketRuns || []).filter((run) => run.id !== session.id);
+        profile.rankPoints = estimateRankPointsFromHistory(profile);
+        saveProfile();
+        showSaveHud("Official run discarded");
+        renderTablesIfDataView();
+        return;
+      }
       mergeServerProfile(officialResult.player, { persist: false });
       saveProfile();
+      showSaveHud("Score saved");
       refreshOfficialFlyLeaderboard();
       renderTablesIfDataView();
     }
@@ -1597,6 +1659,7 @@ function saveRocketSessionResult(title, summary) {
   addRankPoints(session.score);
   profile.rocketRuns = [session, ...(profile.rocketRuns || [])].slice(0, 40);
   saveProfile();
+  showSaveHud("Score saved");
   renderTablesIfDataView();
   return session;
 }
@@ -1771,7 +1834,19 @@ function buildLocalLeaderboardEntries(flagRuns, flyRuns, officialFlyRuns = []) {
 }
 
 function buildOfficialLeaderboardEntries(officialFlyRuns = []) {
-  return (officialFlyRuns || [])
+  const bestByPlayer = new Map();
+  (officialFlyRuns || []).forEach((run) => {
+    if (isGuestDisplayName(run.displayName)) return;
+    const key = String(run.playerId || run.displayName || "").toLowerCase();
+    if (!key) return;
+    const current = bestByPlayer.get(key);
+    const currentScore = Number(current?.finalScore || current?.score || 0);
+    const nextScore = Number(run.finalScore || run.score || 0);
+    if (!current || nextScore > currentScore || (nextScore === currentScore && Number(run.elapsedMs || Infinity) < Number(current.elapsedMs || Infinity))) {
+      bestByPlayer.set(key, run);
+    }
+  });
+  return [...bestByPlayer.values()]
     .map((run) => {
       const selectedRounds = run.selectedRounds || run.rounds || 0;
       const completedRounds = run.completedRounds || 0;
@@ -2397,6 +2472,7 @@ function showView(name, updateHash = true) {
     results: "resultsView",
     runs: "runsView",
     leaderboard: "leaderboardView",
+    shop: "shopView",
     profile: "profileView"
   };
   const targetView = viewMap[name] ? document.querySelector(`#${viewMap[name]}`) : null;
@@ -2446,7 +2522,8 @@ function isViewActive(name) {
   const viewMap = {
     rocket: "rocketView",
     runs: "runsView",
-    leaderboard: "leaderboardView"
+    leaderboard: "leaderboardView",
+    shop: "shopView"
   };
   const id = viewMap[name];
   return Boolean(id && document.querySelector(`#${id}`)?.classList.contains("active"));
@@ -2456,14 +2533,47 @@ function renderTablesIfDataView() {
   if (isViewActive("runs") || isViewActive("leaderboard")) renderTables();
 }
 
+function showAuthMessage(message = "", tone = "info") {
+  if (!els.authMessage) return;
+  els.authMessage.textContent = message;
+  els.authMessage.dataset.tone = tone;
+}
+
+function showAuthDialog(message = "", options = {}) {
+  if (!els.authDialog) return false;
+  syncProfileControls();
+  els.authDialog.dataset.required = options.required ? "true" : "false";
+  showAuthMessage(message || (hasNamedProfile() ? "Your pilot identity is active." : "Choose a pilot name before official play."), options.tone || "info");
+  if (!els.authDialog.open) els.authDialog.showModal();
+  els.displayNameInput?.focus();
+  return true;
+}
+
+function requireNamedProfile(message = "Create a pilot name before starting official play.") {
+  if (hasNamedProfile()) return true;
+  showAuthDialog(message, { required: true, tone: "warn" });
+  return false;
+}
+
+let saveHudTimer = 0;
+
+function showSaveHud(message = "Score saved") {
+  if (!els.rocketSaveHud) return;
+  window.clearTimeout(saveHudTimer);
+  els.rocketSaveHud.textContent = message;
+  els.rocketSaveHud.hidden = false;
+  saveHudTimer = window.setTimeout(() => {
+    if (els.rocketSaveHud) els.rocketSaveHud.hidden = true;
+  }, 1900);
+}
+
 function syncProfileControls() {
   if (!els.displayNameInput) return;
-  const locked = Boolean(profile.displayNameLocked && profile.displayName !== "Guest");
-  els.displayNameInput.value = profile.displayName === "Guest" ? "" : profile.displayName;
+  const locked = Boolean(profile.displayNameLocked && !isGuestDisplayName(profile.displayName));
+  els.displayNameInput.value = isGuestDisplayName(profile.displayName) ? "" : profile.displayName;
   els.displayNameInput.disabled = locked;
   els.displayNameInput.title = locked ? "This browser profile name is locked on the Fly server." : "";
   document.querySelector("#saveName")?.toggleAttribute("disabled", locked);
-  document.querySelector("#guestName")?.toggleAttribute("disabled", locked);
 }
 
 function roundRect(ctx, x, y, w, h, r, fill = false) {
@@ -2483,6 +2593,136 @@ function roundRect(ctx, x, y, w, h, r, fill = false) {
     ctx.quadraticCurveTo(x, y, x + radius, y);
   }
   if (fill) ctx.fill();
+}
+
+function clearRocketProgressSnapshot() {
+  localStorage.removeItem(rocketResumeKey);
+}
+
+function makeRocketProgressSnapshot() {
+  if (!rocketState || !hasNamedProfile() || rocketState.sessionSaved) return null;
+  if (!rocketState.desiredRounds || (rocketState.roundLogs || []).length >= rocketState.desiredRounds) return null;
+  return {
+    version: 1,
+    playerId: profile.playerId,
+    displayName: profile.displayName,
+    savedAt: Date.now(),
+    desiredRounds: rocketState.desiredRounds,
+    round: rocketState.round,
+    wins: rocketState.wins,
+    score: Math.round(rocketState.score || 0),
+    techPoints: rocketState.techPoints || 0,
+    tech: { ...(rocketState.tech || {}) },
+    telemetry: { ...(rocketState.telemetry || {}) },
+    fuel: rocketState.fuel,
+    time: rocketState.time,
+    roundTimeLimit: rocketState.roundTimeLimit,
+    difficulty: rocketState.difficulty || 1,
+    target: rocketState.target,
+    targetIdeal: rocketState.targetIdeal,
+    sideQuest: rocketState.sideQuest,
+    depots: rocketState.depots || [],
+    roundDepotCountries: rocketState.roundDepotCountries || [],
+    roundDepotMarkers: rocketState.roundDepotMarkers || [],
+    roundLogs: rocketState.roundLogs || [],
+    targetHistory: rocketState.targetHistory || [],
+    targetQueue: rocketCountryQueues.targetQueue || [],
+    depotQueue: rocketCountryQueues.depotQueue || []
+  };
+}
+
+function saveRocketProgressSnapshot(showHud = false) {
+  const snapshot = makeRocketProgressSnapshot();
+  if (!snapshot) {
+    clearRocketProgressSnapshot();
+    return false;
+  }
+  localStorage.setItem(rocketResumeKey, JSON.stringify(snapshot));
+  if (showHud) showSaveHud("Progress saved");
+  return true;
+}
+
+function readRocketProgressSnapshot() {
+  try {
+    const snapshot = JSON.parse(localStorage.getItem(rocketResumeKey));
+    if (!snapshot || snapshot.version !== 1) return null;
+    if (!hasNamedProfile() || snapshot.playerId !== profile.playerId) return null;
+    if (Date.now() - Number(snapshot.savedAt || 0) > 1000 * 60 * 60 * 24 * 10) return null;
+    if (!allowedGameRounds.includes(Number(snapshot.desiredRounds))) return null;
+    if ((snapshot.roundLogs || []).length >= Number(snapshot.desiredRounds)) return null;
+    return snapshot;
+  } catch {
+    return null;
+  }
+}
+
+function restoreRocketProgressSnapshot() {
+  const snapshot = readRocketProgressSnapshot();
+  if (!snapshot) return false;
+  startRocketRun();
+  if (!rocketState) return false;
+  rocketState.desiredRounds = Number(snapshot.desiredRounds) || 10;
+  const loggedRoundCount = Array.isArray(snapshot.roundLogs) ? snapshot.roundLogs.length : 0;
+  const savedRound = Math.max(1, Number(snapshot.round) || 1);
+  const resumeRound = Math.max(savedRound, loggedRoundCount + 1);
+  const shouldAdvanceFromLoggedRound = loggedRoundCount > 0 && resumeRound > savedRound;
+  rocketState.round = Math.max(1, Math.min(rocketState.desiredRounds, resumeRound));
+  rocketState.wins = Math.max(0, Number(snapshot.wins) || 0);
+  rocketState.score = cleanRankPoints(snapshot.score);
+  rocketState.techPoints = cleanRankPoints(snapshot.techPoints);
+  rocketState.tech = { fuel: 0, speed: 0, turn: 0, sonar: 0, ...(snapshot.tech || {}) };
+  rocketState.telemetry = { peakSpeed: 0, peakAccel: 0, peakDecel: 0, peakTurn: 0, ...(snapshot.telemetry || {}) };
+  rocketState.fuel = Math.max(0, Math.min(100, Number(snapshot.fuel) || 0));
+  rocketState.difficulty = Math.max(1, Number(snapshot.difficulty) || 1);
+  rocketState.time = shouldAdvanceFromLoggedRound ? Math.max(60, 92 - rocketState.difficulty * 8) : Math.max(1, Number(snapshot.time) || 90);
+  rocketState.roundTimeLimit = shouldAdvanceFromLoggedRound ? rocketState.time : Math.max(1, Number(snapshot.roundTimeLimit) || rocketState.time);
+  rocketState.target = shouldAdvanceFromLoggedRound ? pickRocketTarget(rocketState.difficulty) : snapshot.target || pickRocketTarget(rocketState.difficulty);
+  rocketState.targetIdeal = shouldAdvanceFromLoggedRound ? makeRocketTargetIdeal() : snapshot.targetIdeal || makeRocketTargetIdeal();
+  rocketState.sideQuest = shouldAdvanceFromLoggedRound ? pickRocketSideQuest(rocketState.difficulty) : snapshot.sideQuest || pickRocketSideQuest(rocketState.difficulty);
+  rocketState.depots = shouldAdvanceFromLoggedRound
+    ? makeRocketDepots()
+    : Array.isArray(snapshot.depots) && snapshot.depots.length ? snapshot.depots : makeRocketDepots();
+  rocketState.roundDepotCountries = shouldAdvanceFromLoggedRound
+    ? getRocketDepotCountryList(rocketState.depots)
+    : Array.isArray(snapshot.roundDepotCountries) ? snapshot.roundDepotCountries : getRocketDepotCountryList(rocketState.depots);
+  rocketState.roundDepotMarkers = shouldAdvanceFromLoggedRound
+    ? rocketState.depots.map(serializeRocketDepotMarker)
+    : Array.isArray(snapshot.roundDepotMarkers) && snapshot.roundDepotMarkers.length
+    ? snapshot.roundDepotMarkers
+    : rocketState.depots.map(serializeRocketDepotMarker);
+  rocketState.roundLogs = Array.isArray(snapshot.roundLogs)
+    ? snapshot.roundLogs.map((log) => ({
+      ...log,
+      trace: compactStoredRocketTrace(log.trace),
+      depotMarkers: Array.isArray(log.depotMarkers) ? log.depotMarkers.slice(0, 8) : [],
+      landings: Array.isArray(log.landings) ? log.landings.slice(0, 8) : []
+    }))
+    : [];
+  rocketState.targetHistory = Array.isArray(snapshot.targetHistory) ? snapshot.targetHistory : [];
+  rocketCountryQueues.targetQueue = Array.isArray(snapshot.targetQueue) ? snapshot.targetQueue : rocketCountryQueues.targetQueue;
+  rocketCountryQueues.depotQueue = Array.isArray(snapshot.depotQueue) ? snapshot.depotQueue : rocketCountryQueues.depotQueue;
+  rocketState.targetQueue = rocketCountryQueues.targetQueue;
+  rocketState.depotQueue = rocketCountryQueues.depotQueue;
+  rememberRocketTarget(rocketState.target);
+  rocketState.active = false;
+  rocketState.phase = "briefing";
+  rocketState.roundLogged = false;
+  rocketState.sessionSaved = false;
+  rocketState.targetCardUntil = Infinity;
+  updateRocketRoundSetup(false);
+  updateRocketRoundButtons(rocketState.desiredRounds);
+  updateRocketTargetCard(true);
+  renderRocketDepotIntel();
+  if (els.rocketStart) {
+    els.rocketStart.hidden = false;
+    els.rocketStart.textContent = "Resume Takeoff";
+    els.rocketStart.classList.add("is-briefing");
+    els.rocketStart.classList.remove("in-flight");
+  }
+  els.rocketMessage.textContent = `Progress restored at round ${rocketState.round}/${rocketState.desiredRounds}. Begin takeoff when ready.`;
+  renderRocketHud(true);
+  showSaveHud("Progress restored");
+  return true;
 }
 
 function startRocketRun() {
@@ -2608,6 +2848,7 @@ function startRocketRun() {
 }
 
 function prepareRocketBriefing(rounds) {
+  if (!requireNamedProfile("Create your rogue pilot before starting an official Fly run.")) return;
   if (!rocketState) startRocketRun();
   rocketState.desiredRounds = rounds;
   rocketState.phase = "briefing";
@@ -2627,9 +2868,12 @@ function prepareRocketBriefing(rounds) {
   }
   window.FlagGuard?.startRun?.({
     playerId: profile.playerId,
-    displayName: profile.displayName || "Guest",
+    displayName: profile.displayName,
     rounds
   });
+  rocketState.serverRunStarted = true;
+  rocketState.serverRunRounds = rounds;
+  saveRocketProgressSnapshot();
   rocketFeedback(`${rounds} rounds selected`, "#45f875", "success");
   renderRocketHud();
 }
@@ -3172,6 +3416,7 @@ function recordRocketRound(success, reason = "route") {
     depotMarkers,
     landings
   });
+  saveRocketProgressSnapshot(true);
 }
 
 function buildRocketRoundTrace(routeTrail = []) {
@@ -3227,6 +3472,8 @@ function simplifyRocketTrace(points = []) {
 
 function nextRocketRound(success) {
   if (!rocketState) return;
+  const currentLog = (rocketState.roundLogs || []).find((log) => log.round === rocketState.round);
+  const abandoned = !success && currentLog?.reason === "abandoned by player";
   if (success) {
     rocketState.wins += 1;
     const timeBonus = Math.round(rocketState.time * 120);
@@ -3244,6 +3491,9 @@ function nextRocketRound(success) {
     rocketState.fuel = Math.min(100, rocketState.fuel + 8 + rocketState.tech.fuel * 2.4);
     rocketFeedback("Route reached", "#45f875", "success");
     playTone("correct");
+  } else if (abandoned) {
+    rocketState.fuel = Math.min(100, 54 + getRocketStartingFuelBonus(rocketState.tech.fuel));
+    rocketFeedback("Round abandoned", "#ffd33d", "info");
   } else {
     rocketState.score = Math.max(0, rocketState.score - 850);
     rocketState.fuel = Math.min(100, 54 + getRocketStartingFuelBonus(rocketState.tech.fuel));
@@ -3316,6 +3566,7 @@ function nextRocketRound(success) {
   updateRocketTargetCard(true);
   if (els.rocketStart) els.rocketStart.textContent = "Begin Takeoff";
   els.rocketMessage.textContent = success ? "Route confirmed. Fuel carried over. Read the next route, then begin takeoff." : "Missed timer. Easier route loaded at a new runway. Begin takeoff when ready.";
+  saveRocketProgressSnapshot(true);
 }
 
 function failRocketRound(reason, message) {
@@ -5895,6 +6146,9 @@ function updateRocketTechLabels() {
     els.pauseScanTarget.textContent = active ? "Scan Active" : "Scan Destination -10 TP";
     els.pauseScanTarget.disabled = blocked || active || rocketState.techPoints < 10;
   }
+  if (els.pauseEndRound) {
+    els.pauseEndRound.disabled = !rocketState || ["setup", "result", "round-summary"].includes(rocketState.phase);
+  }
 }
 
 function buyRocketTargetScan() {
@@ -5988,10 +6242,15 @@ function showRocketRoundSummary(log) {
   const biggestEvent = getRocketBiggestRoundEvent(log);
   const fuel = Number(log.fuel || 0);
   const time = Number(log.time || 0);
-  els.rocketResultTitle.textContent = `Round ${log.round} Failed`;
+  const reasonText = log.reason === "out of fuel"
+    ? "Fuel exhausted"
+    : log.reason === "abandoned by player"
+      ? "Abandoned"
+      : "Time expired";
+  els.rocketResultTitle.textContent = log.reason === "abandoned by player" ? `Round ${log.round} Abandoned` : `Round ${log.round} Failed`;
   els.rocketResultSummary.innerHTML = `
     <span class="rocket-summary-target">${rocketLogFlagHtml(log)}<b>${escapeHtml(log.target || "Unknown")}</b></span>
-    <span>${escapeHtml(log.reason === "out of fuel" ? "Fuel exhausted" : "Time expired")} | Time ${Math.max(0, time).toFixed(1)}s | Score ${formatScore(log.score || 0)}</span>
+    <span>${escapeHtml(reasonText)} | Time ${Math.max(0, time).toFixed(1)}s | Score ${formatScore(log.score || 0)}</span>
     <span>Fuel ${fuel.toFixed(0)}% | Depots ${depotCount}${depotTotal ? ` / ${depotTotal}` : ""} | TP +${log.techEarned || 0}</span>
     ${rocketDepotStatusHtml(log)}
     <span class="${biggestEvent.className || ""}">Biggest event: ${escapeHtml(rocketEventText(biggestEvent))}</span>
@@ -6003,6 +6262,35 @@ function showRocketRoundSummary(log) {
   renderRocketResultDetails([log]);
   drawRocketResultMap([log]);
   els.rocketResultOverlay.hidden = false;
+}
+
+function clearCurrentRocketRoundGains() {
+  if (!rocketState) return;
+  const round = rocketState.round;
+  const currentEvents = (rocketState.scoreEvents || []).filter((event) => event.round === round);
+  const pointGain = currentEvents.reduce((sum, event) => sum + cleanRankPoints(event.points), 0)
+    + (rocketState.landingLogs || []).reduce((sum, landing) => sum + cleanRankPoints(landing.points), 0);
+  const techGain = cleanRankPoints(rocketState.roundTechEarned);
+  rocketState.score = Math.max(0, rocketState.score - pointGain);
+  rocketState.techPoints = Math.max(0, rocketState.techPoints - techGain);
+  rocketState.roundTechEarned = 0;
+  rocketState.scoreEvents = (rocketState.scoreEvents || []).filter((event) => event.round !== round);
+  rocketState.landingLogs = [];
+  rocketState.allObjectivesBonusAwarded = false;
+}
+
+function abandonRocketRound() {
+  if (!rocketState || rocketState.sessionSaved || rocketState.pendingNextRound) return;
+  if (["setup", "result", "round-summary"].includes(rocketState.phase)) return;
+  clearCurrentRocketRoundGains();
+  rocketState.active = false;
+  rocketState.paused = false;
+  rocketState.pausedWasActive = false;
+  stopPropellerSound();
+  recordRocketRound(false, "abandoned by player");
+  rocketFeedback("Round abandoned", "#ffd33d", "info");
+  showRocketRoundSummary(rocketState.roundLogs.at(-1));
+  renderRocketHud(true);
 }
 
 function endRocketRun(title = "Run Ended", summary = "Flight run ended.", action = "setup") {
@@ -7215,6 +7503,7 @@ function handleRocketRoundChoice(rounds, event = null) {
   if (event) event.flylifeHandled = true;
   const value = Number(rounds);
   if (!Number.isFinite(value)) return;
+  if (!requireNamedProfile("Create your rogue pilot before starting an official Fly run.")) return;
   if (!rocketState) {
     showView("rocket");
     startRocketRun();
@@ -7239,6 +7528,7 @@ document.querySelectorAll(".nav-btn").forEach((button) => {
       return;
     }
     if (button.dataset.view === "rocket") {
+      if (!requireNamedProfile("Create your rogue pilot before entering Fly.")) return;
       if (rocketState && !rocketState.sessionSaved) {
         if (!["setup", "briefing"].includes(rocketState.phase)) {
           rocketState.active = true;
@@ -7248,7 +7538,7 @@ document.querySelectorAll(".nav-btn").forEach((button) => {
         return;
       }
       showView("rocket");
-      startRocketRun();
+      if (!restoreRocketProgressSnapshot()) startRocketRun();
       return;
     }
     showPreparedView(button.dataset.view);
@@ -7383,6 +7673,7 @@ els.rocketResultRestart?.addEventListener("click", () => {
 els.rocketTutorialNext?.addEventListener("click", continueRocketTutorial);
 els.techTreeClose?.addEventListener("click", closeRocketPause);
 els.pauseResume?.addEventListener("click", closeRocketPause);
+els.pauseEndRound?.addEventListener("click", abandonRocketRound);
 els.pauseEndRun?.addEventListener("click", () => endRocketRun("Run Ended", "Flight run ended from pause menu.", "setup"));
 els.pauseScanTarget?.addEventListener("click", buyRocketTargetScan);
 document.querySelectorAll("[data-pause-view]").forEach((button) => {
@@ -7477,25 +7768,43 @@ els.rocketCanvas?.addEventListener("click", (event) => {
   els.rocketMessage.textContent = "Manual steering engaged. Inner ring airbrakes, outer ring spools acceleration; exit the ring for straight autopilot.";
   rocketFeedback("Manual control", "#45f875", "info");
 });
-document.querySelector("#authOpen")?.addEventListener("click", () => els.authDialog?.showModal());
+document.querySelector("#authOpen")?.addEventListener("click", () => showAuthDialog("", { required: !hasNamedProfile() }));
 document.querySelector("#profileOpen")?.addEventListener("click", () => {
   renderProfile();
   showView("profile");
 });
-document.querySelector("#saveName")?.addEventListener("click", () => {
-  if (profile.displayNameLocked && profile.displayName !== "Guest") return;
+document.querySelector("#saveName")?.addEventListener("click", (event) => {
+  event.preventDefault();
+  if (profile.displayNameLocked && !isGuestDisplayName(profile.displayName)) return;
   const clean = els.displayNameInput.value.trim().replace(/[^a-z0-9 _-]/gi, "").slice(0, 18);
-  profile.displayName = clean || "Guest";
-  profile.displayNameLocked = profile.displayName !== "Guest";
+  if (isGuestDisplayName(clean)) {
+    showAuthMessage("Choose a real pilot name before playing online.", "warn");
+    return;
+  }
+  profile.displayName = clean;
+  profile.displayNameLocked = true;
   saveProfile();
   renderProfile();
+  showAuthMessage("Congratulations, you are now part of the rogue team. You can practice flags to earn score or go to Fly directly to climb the ranks.", "success");
+  els.authDialog.dataset.required = "false";
+  if (document.querySelector("#rocketView")?.classList.contains("active") && !rocketState) {
+    if (!restoreRocketProgressSnapshot()) startRocketRun();
+  }
+  window.setTimeout(() => {
+    if (els.authDialog?.open) els.authDialog.close();
+  }, 1700);
 });
-document.querySelector("#guestName")?.addEventListener("click", () => {
-  if (profile.displayNameLocked && profile.displayName !== "Guest") return;
-  profile.displayName = "Guest";
-  profile.displayNameLocked = false;
-  saveProfile();
-  renderProfile();
+document.querySelector(".auth-panel")?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  document.querySelector("#saveName")?.click();
+});
+els.authDialog?.addEventListener("cancel", (event) => {
+  if (els.authDialog?.dataset.required === "true" && !hasNamedProfile()) event.preventDefault();
+});
+els.authDialog?.addEventListener("close", () => {
+  if (els.authDialog?.dataset.required === "true" && !hasNamedProfile()) {
+    window.setTimeout(() => showAuthDialog("Choose a pilot name before official play.", { required: true, tone: "warn" }), 0);
+  }
 });
 window.addEventListener("resize", resizeFireworksCanvas);
 window.addEventListener("resize", resizeRocketCanvas);
@@ -7510,10 +7819,15 @@ if (bootParams.get("simulateAgents") === "1") {
   showView("runs", false);
 } else if (initialView === "rocket") {
   showView("rocket", false);
-  startRocketRun();
-} else if (["runs", "leaderboard", "profile", "results"].includes(initialView)) {
+  if (hasNamedProfile() && !restoreRocketProgressSnapshot()) startRocketRun();
+} else if (["runs", "leaderboard", "profile", "results", "shop"].includes(initialView)) {
   showPreparedView(initialView, false);
 } else {
   showFlagSetup();
 }
+window.setTimeout(() => {
+  if (!hasNamedProfile()) {
+    showAuthDialog("Create your rogue pilot name before playing online.", { required: true, tone: "warn" });
+  }
+}, 120);
 window.FlylifeAppReady = true;

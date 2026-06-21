@@ -1,6 +1,6 @@
 import { query } from "../../db/index.js";
 import { ALLOWED_ROUNDS } from "../../lib/fly-scoring.js";
-import { cleanDisplayName, cleanPlayerId, emptyResponse, jsonResponse, readRequestJson } from "./_shared.js";
+import { cleanDisplayName, cleanPlayerId, emptyResponse, isGuestDisplayName, jsonResponse, logError, logMetric, readRequestJson } from "./_shared.js";
 
 export default async (request) => {
   if (request.method === "OPTIONS") return emptyResponse();
@@ -15,6 +15,10 @@ export default async (request) => {
     const token = crypto.randomUUID();
     const playerId = cleanPlayerId(body.playerId);
     const requestedName = cleanDisplayName(body.displayName);
+    if (isGuestDisplayName(requestedName)) {
+      logMetric("fly-run-start", "rejected guest run", { playerId, rounds });
+      return jsonResponse(400, { error: "display name is required before starting an official Fly run" });
+    }
     const shouldLockName = requestedName !== "Guest";
 
     const { rows: players } = await query(
@@ -40,10 +44,10 @@ export default async (request) => {
        returning run_id as "runId", token, player_id as "playerId", display_name as "displayName", rounds, started_at as "startedAt"`,
       [runId, token, playerId, player.displayName, rounds]
     );
-
+    logMetric("fly-run-start", "started run", { runId, playerId, rounds, displayName: player.displayName });
     return jsonResponse(200, { ...rows[0], player: { playerId, ...player } });
   } catch (error) {
-    console.error("fly-run-start failed", error);
+    logError("fly-run-start", "failed", error);
     return jsonResponse(500, { error: error instanceof Error ? error.message : "fly run start failed" });
   }
 };

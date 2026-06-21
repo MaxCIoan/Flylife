@@ -1,6 +1,6 @@
 import { query } from "../../db/index.js";
 import { computeFlyScore } from "../../lib/fly-scoring.js";
-import { cleanDisplayName, cleanPlayerId, emptyResponse, jsonResponse, readRequestJson } from "./_shared.js";
+import { cleanDisplayName, cleanPlayerId, emptyResponse, isGuestDisplayName, jsonResponse, logError, logMetric, readRequestJson } from "./_shared.js";
 
 function dateMs(value) {
   if (value instanceof Date) return value.getTime();
@@ -47,6 +47,10 @@ export default async (request) => {
     const session = body.session || {};
     const playerId = run.playerId || cleanPlayerId(body.playerId || session.playerId);
     const requestedName = cleanDisplayName(body.displayName || session.displayName);
+    if (isGuestDisplayName(requestedName)) {
+      logMetric("fly-run-finish", "rejected guest finish", { runId: body.runId, playerId });
+      return jsonResponse(400, { error: "display name is required for official Fly scores" });
+    }
     const { rows: players } = await query(
       `insert into fly_players (player_id, display_name, display_name_locked)
        values ($1, $2, $3)
@@ -68,6 +72,40 @@ export default async (request) => {
       finishedMs: finishedAt.getTime(),
       session
     });
+    const hasEvents = Array.isArray(session.logs)
+      && session.logs.some((log) => (
+        Boolean(log?.success)
+        || Number(log?.score || 0) > 0
+        || Number(log?.techEarned || 0) > 0
+        || (Array.isArray(log?.scoreEvents) && log.scoreEvents.length > 0)
+        || (Array.isArray(log?.landings) && log.landings.length > 0)
+      ));
+    if (result.finalScore <= 0 || !hasEvents) {
+      await query(
+        `update fly_runs
+         set display_name = $1,
+             player_id = $2,
+             finished_at = $3,
+             status = 'discarded',
+             payload = $4::jsonb,
+             final_score = 0,
+             elapsed_ms = $5,
+             tampered = false,
+             tamper_reason = $6
+         where run_id = $7`,
+        [
+          playerName,
+          playerId,
+          finishedAt,
+          JSON.stringify(session),
+          result.elapsedMs,
+          result.finalScore <= 0 ? "zero score discarded" : "no scoring events discarded",
+          body.runId
+        ]
+      );
+      logMetric("fly-run-finish", "discarded empty run", { runId: body.runId, playerId, finalScore: result.finalScore, hasEvents });
+      return jsonResponse(200, { ...result, discarded: true, player: players[0] ? { playerId, ...players[0] } : null });
+    }
 
     await query(
       `update fly_runs
@@ -109,10 +147,10 @@ export default async (request) => {
       );
       player = updatedPlayers[0] || player;
     }
-
+    logMetric("fly-run-finish", "completed run", { runId: body.runId, playerId, finalScore: result.finalScore, tampered: result.tampered });
     return jsonResponse(200, { ...result, player });
   } catch (error) {
-    console.error("fly-run-finish failed", error);
+    logError("fly-run-finish", "failed", error);
     return jsonResponse(500, { error: error instanceof Error ? error.message : "fly run finish failed" });
   }
 };

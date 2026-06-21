@@ -1,5 +1,5 @@
 import { query } from "../../db/index.js";
-import { emptyResponse, jsonResponse } from "./_shared.js";
+import { emptyResponse, jsonResponse, logError, logMetric } from "./_shared.js";
 
 const FLY_TRACE_POINT_LIMIT = 720;
 
@@ -44,31 +44,42 @@ export default async (request) => {
 
   try {
     const { rows } = await query(
-      `select run_id as "runId",
-              player_id as "playerId",
-              display_name as "displayName",
-              rounds,
-              coalesce((payload->>'selectedRounds')::int, rounds) as "selectedRounds",
-              coalesce((payload->>'completedRounds')::int, 0) as "completedRounds",
-              coalesce(payload->>'planeClass', '') as "planeClass",
-              final_score as "finalScore",
-              elapsed_ms as "elapsedMs",
-              finished_at as "finishedAt",
-              payload
-       from fly_runs
-       where status = 'completed' and tampered = false and final_score > 0
-         and display_name not in ('CodexProbe', 'CodexPartialProbe')
-       order by final_score desc, elapsed_ms asc, finished_at asc
+      `select *
+       from (
+         select run_id as "runId",
+                player_id as "playerId",
+                display_name as "displayName",
+                rounds,
+                coalesce((payload->>'selectedRounds')::int, rounds) as "selectedRounds",
+                coalesce((payload->>'completedRounds')::int, 0) as "completedRounds",
+                coalesce(payload->>'planeClass', '') as "planeClass",
+                final_score as "finalScore",
+                elapsed_ms as "elapsedMs",
+                finished_at as "finishedAt",
+                payload,
+                row_number() over (
+                  partition by player_id
+                  order by final_score desc, elapsed_ms asc, finished_at asc
+                ) as rank_for_player
+         from fly_runs
+         where status = 'completed'
+           and tampered = false
+           and final_score > 0
+           and coalesce(jsonb_array_length(payload->'logs'), 0) > 0
+           and lower(display_name) not in ('guest', 'anonymous', 'player', 'codexprobe', 'codexpartialprobe')
+       ) ranked
+       where rank_for_player = 1
+       order by "finalScore" desc, "elapsedMs" asc, "finishedAt" asc
        limit 20`
     );
     const leaders = rows.map((leader) => ({
       ...leader,
       payload: compactPayload(leader.payload)
     }));
-
+    logMetric("fly-leaderboard", "loaded leaders", { count: leaders.length });
     return jsonResponse(200, { leaders });
   } catch (error) {
-    console.error("fly-leaderboard failed", error);
+    logError("fly-leaderboard", "failed", error);
     return jsonResponse(500, { error: error instanceof Error ? error.message : "fly leaderboard failed" });
   }
 };

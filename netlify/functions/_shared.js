@@ -47,6 +47,11 @@ export function cleanDisplayName(value) {
   return name || "Guest";
 }
 
+export function isGuestDisplayName(value) {
+  const name = cleanDisplayName(value).toLowerCase();
+  return !name || name === "guest" || name === "player" || name === "anonymous";
+}
+
 export function cleanPlayerId(value) {
   const id = String(value || "")
     .replace(/[^a-zA-Z0-9_-]/g, "")
@@ -56,4 +61,26 @@ export function cleanPlayerId(value) {
 
 export function cleanRankPoints(value) {
   return Math.max(0, Math.min(1000000000, Math.round(Number(value) || 0)));
+}
+
+export function logMetric(fn, msg, data = {}) {
+  console.log(JSON.stringify({
+    level: "info",
+    fn,
+    msg,
+    at: new Date().toISOString(),
+    ...data
+  }));
+}
+
+export function logError(fn, msg, error, data = {}) {
+  console.error(JSON.stringify({
+    level: "error",
+    fn,
+    msg,
+    at: new Date().toISOString(),
+    error: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined,
+    ...data
+  }));
 }

@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "20260613b";
+  const VERSION = "20260621identity1";
   const PROFILE_KEY = "flagHunterLocalProfile";
   const TRUST_KEY = "flagHunterTrustedProfileV1";
   const ROCKET_ROUNDS_KEY = "flagHunterRocketRounds";
@@ -17,7 +17,7 @@
   let tampered = false;
   let tamperReason = null;
   let runStartedAt = 0;
-  let serverRun = readJsonSafe(sessionStorage.getItem(SERVER_RUN_KEY));
+  let serverRun = readJsonSafe(localStorage.getItem(SERVER_RUN_KEY)) || readJsonSafe(sessionStorage.getItem(SERVER_RUN_KEY));
   let serverRunPromise = null;
 
   function getFlyApiBase() {
@@ -204,6 +204,7 @@
         localStorage.removeItem(TRUST_KEY);
         localStorage.removeItem(ROCKET_ROUNDS_KEY);
         sessionStorage.removeItem(SERVER_RUN_KEY);
+        localStorage.removeItem(SERVER_RUN_KEY);
         location.href = "index.html#rocket";
         location.reload();
       });
@@ -299,10 +300,12 @@
     serverRun = null;
     serverRunPromise = null;
     sessionStorage.removeItem(SERVER_RUN_KEY);
+    localStorage.removeItem(SERVER_RUN_KEY);
     if (tampered || !ALLOWED_ROUNDS.includes(Number(rounds))) return;
     serverRunPromise = postJson(`${getFlyApiBase()}/api/fly/run/start`, { playerId, displayName, rounds })
       .then((run) => {
         serverRun = run;
+        localStorage.setItem(SERVER_RUN_KEY, JSON.stringify(run));
         sessionStorage.setItem(SERVER_RUN_KEY, JSON.stringify(run));
         return run;
       })
@@ -319,6 +322,7 @@
       return null;
     }
     const credentials = serverRun
+      || readJsonSafe(localStorage.getItem(SERVER_RUN_KEY))
       || readJsonSafe(sessionStorage.getItem(SERVER_RUN_KEY))
       || await serverRunPromise;
     if (!credentials?.runId || !credentials?.token) return null;
@@ -331,6 +335,7 @@
     })
       .then((result) => {
         sessionStorage.removeItem(SERVER_RUN_KEY);
+        localStorage.removeItem(SERVER_RUN_KEY);
         serverRun = null;
         return result;
       })
