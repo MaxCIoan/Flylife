@@ -1,5 +1,47 @@
 # Flaggame Change Log
 
+## 2026-06-21
+
+- Continued unstable release work on the `test-unstable-version` branch.
+- Corrected the itch.io launcher and production API fallback to use the real FlightRace host: `https://flightrace.netlify.app/?itchStatus=1#play`.
+- Rebuilt the itch.io packages in `dist-itch/`, including the tiny launcher ZIP and the full static ZIP.
+- Added itch.io deployment notes for launcher vs full upload, fullscreen/new-window behavior, scrollbars, and FlightRace API usage.
+- Replaced live NASA/WMS map fetching during play with local/static imagery tile loading so the browser no longer floods the network with uncached satellite requests.
+- Added visible satellite-world loading feedback so players know when map imagery is still preparing.
+- Fixed unstable map deployment issues that caused the satellite layer to disappear or load stale/prototype map art.
+- Tuned map tile loading, surrounding-tile preload, and headed-direction preload to reduce visible chunk loading at high speed.
+- Added and refined Blue Marble-style terrain imagery, sharper minimap assets, island/reef visibility work, and closer flight camera experiments.
+- Removed the expensive country overlay from active Fly gameplay for now because it was hurting frame rate.
+- Preserved the core run details, route maps, and route inspector while reducing heavy menu/map redraw work.
+- Added route-map zoom, click/drag map movement, depot marker selection, and clearer fuel depot result coloring.
+- Improved saved Fly route trace handling so report maps use recorded path data instead of invented-looking route shortcuts.
+- Reduced report clutter by focusing Fly results on route trace, time, score, fuel depots reached/missed, and the biggest round events.
+- Added richer end-of-round and end-of-run summaries with destination flags, missed destination names, fuel depot counts, TP, score, and route events.
+- Added identity-gated online Fly play: new players must create a named profile before official leaderboard submissions.
+- Locked profile display names after creation and added player-specific profile sync through the Netlify Fly API.
+- Changed the official Fly leaderboard to show only the best run per player instead of repeated entries from the same player.
+- Blocked guest/anonymous/zero-event/zero-score runs from official leaderboard storage.
+- Added server-side run start, heartbeat/ping, finish, inactivity discard, and admin flush support.
+- Added persistent Fly progress so refresh/close can resume the same active run instead of rerolling target, depots, TP, or route state.
+- Added a server-backed inactivity limit so abandoned sessions expire after about 15 minutes instead of staying open forever.
+- Added a larger visible End Run button and kept End Round/abandon behavior available from the pause menu.
+- Fixed account/profile dialog controls so an already-created identity no longer traps the player in a modal.
+- Fixed refresh-before-takeoff reroll behavior so a round's target and fuel depots stay stable once the round is created.
+- Preserved Fly tech points and upgrades across refresh/resume during an active run.
+- Rebalanced Fly ranks and tied plane class progression to player rank instead of only a single high-score run.
+- Added more plane class/progression work and made the alien propeller sound the default engine style.
+- Tuned Fly takeoff and controls: lower takeoff threshold, stronger sustained airbrake behavior, slower acceleration into extreme speed, and less slippery low-speed handling.
+- Reworked mouse control feedback so acceleration, deceleration, turning, climb, and descent read more clearly from cursor position and aircraft response.
+- Added biplane-style aircraft visuals, force cues, wind/boost effects, takeoff vibration, sonic boom cues, and separate audio volume controls.
+- Added multiple propeller/engine sound styles and more subtle alien-like audio feedback options.
+- Added the Rogue Pilot briefing under Fly round selection with the current lore, takeoff instructions, hidden-country objective explanation, depot scoring, black boxes, and hardware recommendation.
+- Fixed overlapping speed/altitude HUD text and kept key flight gauges more readable.
+- Restyled top navigation into illustrated adventure cards, then blue-tinted them to match the app color scheme.
+- Restored top navigation labels to `Flag Game`, `Fly Game`, `Runs`, `Leaderboard`, `Settings`, and `Shop`.
+- Replaced the off-style burger button with a compact gear-styled account/settings button using the same card art source.
+- Polished index/menu panels, page headings, tables, manual cards, and settings cards with a consistent blue mission-console identity.
+- Added cache-busting query updates for the latest UI and API-origin changes so browsers do not keep stale scripts.
+
 ## 2026-06-13
 
 - Kept work inside `C:\Users\maxco\Desktop\Flaggame`.
