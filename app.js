@@ -56,6 +56,7 @@ const ROCKET_MAP_W = 21600;
 const ROCKET_MAP_H = 10800;
 const ROCKET_TARGET_RADIUS = 86;
 const ROCKET_DEPOT_RADIUS = 104;
+const ROCKET_BONUS_RADIUS = 92;
 const ROCKET_OBJECTIVE_SAMPLE_SECONDS = 1;
 const ROCKET_TARGET_CARD_MS = 5200;
 const ROCKET_TARGET_CARD_FADE_MS = 1600;
@@ -204,6 +205,7 @@ let rocketBoundaryLines = null;
 let rocketBoundaryLoading = false;
 let rocketCatalog = null;
 let rocketCatalogLoading = false;
+const rocketWikiImageCache = new Map();
 let rocketMapCache = null;
 let rocketMiniMapCache = null;
 let rocketBlueWorldMapCache = null;
@@ -415,7 +417,7 @@ function commonsImageUrl(filename, width = 720) {
   return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(filename)}?width=${width}`;
 }
 
-function rocketLocationTarget(name, lon, lat, { category = "World Location", targetBonus = 3200, imageLabel = "", imageUrl = "", difficulty = 5 } = {}) {
+function rocketLocationTarget(name, lon, lat, { category = "World Location", targetBonus = 3200, imageLabel = "", imageUrl = "", wikiTitle = "", difficulty = 5 } = {}) {
   return {
     name,
     lon,
@@ -426,8 +428,17 @@ function rocketLocationTarget(name, lon, lat, { category = "World Location", tar
     targetType: "location",
     targetBonus,
     imageLabel: imageLabel || name,
-    imageUrl
+    imageUrl,
+    wikiTitle
   };
+}
+
+function rocketLocationTargetGroup(entries, defaults = {}) {
+  return entries.map(([name, lon, lat, imageLabel, wikiTitle]) => rocketLocationTarget(name, lon, lat, {
+    ...defaults,
+    imageLabel,
+    wikiTitle: wikiTitle || name
+  }));
 }
 
 const rocketLocationTargets = [
@@ -460,6 +471,122 @@ const rocketLocationTargets = [
   rocketLocationTarget("Catalonia Flag - Barcelona", 2.17, 41.39, { category: "Region Flag", targetBonus: 3800, imageLabel: "CATALONIA", imageUrl: commonsImageUrl("Flag of Catalonia.svg") }),
   rocketLocationTarget("Quebec Flag - Quebec City", -71.21, 46.81, { category: "Region Flag", targetBonus: 3600, imageLabel: "QUEBEC", imageUrl: commonsImageUrl("Flag of Quebec.svg") }),
   rocketLocationTarget("Bavaria Flag - Munich", 11.58, 48.14, { category: "Region Flag", targetBonus: 3600, imageLabel: "BAVARIA", imageUrl: commonsImageUrl("Flag of Bavaria (lozengy).svg") }),
+  ...rocketLocationTargetGroup([
+    ["Wright Brothers - Kitty Hawk", -75.67, 36.02, "WRIGHT", "Wright brothers"],
+    ["Henry Ford - Detroit", -83.05, 42.33, "FORD", "Henry Ford"],
+    ["Winston Churchill - Blenheim Palace", -1.36, 51.84, "CHURCHILL", "Winston Churchill"],
+    ["Dwight Eisenhower - Denison", -96.54, 33.76, "EISENHOWER", "Dwight D. Eisenhower"],
+    ["Carcassonne Walled City", 2.35, 43.21, "CARCASSONNE", "Cite de Carcassonne"],
+    ["Chateau de Chambord", 1.52, 47.62, "CHAMBORD", "Chateau de Chambord"],
+    ["Chateau de Chenonceau", 1.07, 47.32, "CHENONCEAU", "Chateau de Chenonceau"],
+    ["Mont Saint-Michel", -1.51, 48.64, "MONT ST-MICHEL", "Mont-Saint-Michel"],
+    ["Palace of Versailles", 2.12, 48.80, "VERSAILLES", "Palace of Versailles"],
+    ["Chateau de Pierrefonds", 2.98, 49.35, "PIERREFONDS", "Chateau de Pierrefonds"]
+  ], { category: "Historic / Social Landmark", targetBonus: 4600 }),
+  ...rocketLocationTargetGroup([
+    ["Sumer - Uruk", 45.64, 31.32, "URUK", "Uruk"],
+    ["Babylon", 44.42, 32.54, "BABYLON", "Babylon"],
+    ["Phoenician Tyre", 35.20, 33.27, "TYRE", "Tyre, Lebanon"],
+    ["Hittite Hattusa", 34.62, 40.02, "HATTUSA", "Hattusa"],
+    ["Persian Persepolis", 52.89, 29.94, "PERSEPOLIS", "Persepolis"],
+    ["Aksumite Empire - Axum", 38.72, 14.13, "AKSUM", "Axum"],
+    ["Khmer Empire - Angkor Wat", 103.87, 13.41, "ANGKOR", "Angkor Wat"],
+    ["Olmec La Venta", -94.04, 18.10, "OLMEC", "La Venta"],
+    ["Norte Chico - Caral", -77.52, -10.89, "CARAL", "Caral"],
+    ["Rapa Nui Moai", -109.35, -27.12, "RAPA NUI", "Moai"],
+    ["Great Zimbabwe", 30.93, -20.27, "ZIMBABWE", "Great Zimbabwe"],
+    ["Nabataean Petra", 35.44, 30.33, "PETRA", "Petra"],
+    ["Minoan Knossos", 25.16, 35.30, "KNOSSOS", "Knossos"],
+    ["Mycenaean Mycenae", 22.76, 37.73, "MYCENAE", "Mycenae"],
+    ["Etruscan Tarquinia", 11.76, 42.25, "ETRUSCAN", "Tarquinia"]
+  ], { category: "Ancient Civilization", targetBonus: 6100 }),
+  ...rocketLocationTargetGroup([
+    ["Grand Canyon", -112.11, 36.10, "GRAND CANYON", "Grand Canyon"],
+    ["Yellowstone Caldera", -110.59, 44.43, "YELLOWSTONE", "Yellowstone Caldera"],
+    ["Chicxulub Crater", -89.52, 21.40, "CHICXULUB", "Chicxulub crater"],
+    ["Vredefort Crater", 27.26, -27.00, "VREDEFORT", "Vredefort crater"],
+    ["Giant's Causeway", -6.51, 55.24, "CAUSEWAY", "Giant's Causeway"],
+    ["Uluru", 131.04, -25.34, "ULURU", "Uluru"],
+    ["Ngorongoro Crater", 35.59, -3.16, "NGORONGORO", "Ngorongoro Conservation Area"],
+    ["Salar de Uyuni", -67.49, -20.13, "UYUNI", "Salar de Uyuni"]
+  ], { category: "Geological Landmark", targetBonus: 5000 }),
+  ...rocketLocationTargetGroup([
+    ["Battle of Marathon", 24.00, 38.15, "MARATHON", "Battle of Marathon"],
+    ["Battle of Thermopylae", 22.54, 38.80, "THERMOPYLAE", "Battle of Thermopylae"],
+    ["Battle of Gaugamela", 43.36, 36.36, "GAUGAMELA", "Battle of Gaugamela"],
+    ["Battle of Cannae", 16.15, 41.30, "CANNAE", "Battle of Cannae"],
+    ["Battle of Hastings", 0.49, 50.91, "HASTINGS", "Battle of Hastings"],
+    ["Battle of Agincourt", 2.14, 50.46, "AGINCOURT", "Battle of Agincourt"],
+    ["Battle of Waterloo", 4.40, 50.68, "WATERLOO", "Battle of Waterloo"],
+    ["Battle of Gettysburg", -77.23, 39.83, "GETTYSBURG", "Battle of Gettysburg"],
+    ["D-Day Normandy", -0.86, 49.37, "D-DAY", "Normandy landings"],
+    ["Battle of Stalingrad", 44.51, 48.71, "STALINGRAD", "Battle of Stalingrad"],
+    ["Battle of Midway", -177.37, 28.21, "MIDWAY", "Battle of Midway"],
+    ["Siege of Yorktown", -76.51, 37.24, "YORKTOWN", "Siege of Yorktown"],
+    ["Battle of Saratoga", -73.64, 43.00, "SARATOGA", "Battles of Saratoga"],
+    ["Battle of Verdun", 5.43, 49.16, "VERDUN", "Battle of Verdun"],
+    ["Battle of the Somme", 2.70, 50.01, "SOMME", "Battle of the Somme"],
+    ["Battle of Bunker Hill", -71.06, 42.38, "BUNKER HILL", "Battle of Bunker Hill"]
+  ], { category: "Famous Battle", targetBonus: 5600 }),
+  ...rocketLocationTargetGroup([
+    ["Tyrannosaurus - Hell Creek", -104.05, 46.92, "T-REX", "Tyrannosaurus"],
+    ["Triceratops - Montana Fossils", -108.50, 47.00, "TRICERATOPS", "Triceratops"],
+    ["Woolly Mammoth - Siberia", 129.73, 62.03, "MAMMOTH", "Woolly mammoth"],
+    ["Dodo - Mauritius", 57.55, -20.16, "DODO", "Dodo"],
+    ["Thylacine - Hobart", 147.33, -42.88, "THYLACINE", "Thylacine"],
+    ["Passenger Pigeon - Cincinnati Zoo", -84.51, 39.14, "PIGEON", "Passenger pigeon"],
+    ["Great Auk - Eldey", -22.99, 63.74, "GREAT AUK", "Great auk"],
+    ["Saber-Toothed Cat - La Brea", -118.36, 34.06, "SMILODON", "Smilodon"],
+    ["Megalodon - Calvert Cliffs", -76.42, 38.41, "MEGALODON", "Megalodon"],
+    ["Argentinosaurus - Patagonia", -68.20, -38.95, "ARGENTINOSAURUS", "Argentinosaurus"]
+  ], { category: "Extinct Animal", targetBonus: 5800 }),
+  ...rocketLocationTargetGroup([
+    ["President George Washington - Popes Creek", -76.90, 38.19, "WASHINGTON", "George Washington"],
+    ["President John Adams - Quincy", -71.00, 42.25, "JOHN ADAMS", "John Adams"],
+    ["President Thomas Jefferson - Shadwell", -78.40, 38.02, "JEFFERSON", "Thomas Jefferson"],
+    ["President James Madison - Port Conway", -77.18, 38.24, "MADISON", "James Madison"],
+    ["President James Monroe - Monroe Hall", -76.95, 38.25, "MONROE", "James Monroe"],
+    ["President John Quincy Adams - Quincy", -71.00, 42.25, "JQ ADAMS", "John Quincy Adams"],
+    ["President Andrew Jackson - Waxhaws", -80.88, 34.84, "JACKSON", "Andrew Jackson"],
+    ["President Martin Van Buren - Kinderhook", -73.70, 42.40, "VAN BUREN", "Martin Van Buren"],
+    ["President William Henry Harrison - Berkeley", -77.18, 37.32, "HARRISON", "William Henry Harrison"],
+    ["President John Tyler - Charles City", -77.06, 37.34, "TYLER", "John Tyler"],
+    ["President James K. Polk - Pineville", -80.89, 35.08, "POLK", "James K. Polk"],
+    ["President Zachary Taylor - Barboursville", -78.28, 38.17, "TAYLOR", "Zachary Taylor"],
+    ["President Millard Fillmore - Summerhill", -76.32, 42.64, "FILLMORE", "Millard Fillmore"],
+    ["President Franklin Pierce - Hillsborough", -71.90, 43.11, "PIERCE", "Franklin Pierce"],
+    ["President James Buchanan - Cove Gap", -77.94, 39.87, "BUCHANAN", "James Buchanan"],
+    ["President Abraham Lincoln - Hodgenville", -85.74, 37.57, "LINCOLN", "Abraham Lincoln"],
+    ["President Andrew Johnson - Raleigh", -78.64, 35.78, "A JOHNSON", "Andrew Johnson"],
+    ["President Ulysses S. Grant - Point Pleasant", -84.23, 38.89, "GRANT", "Ulysses S. Grant"],
+    ["President Rutherford B. Hayes - Delaware", -83.07, 40.30, "HAYES", "Rutherford B. Hayes"],
+    ["President James Garfield - Moreland Hills", -81.43, 41.44, "GARFIELD", "James A. Garfield"],
+    ["President Chester A. Arthur - Fairfield", -72.94, 44.80, "ARTHUR", "Chester A. Arthur"],
+    ["President Grover Cleveland - Caldwell", -74.28, 40.84, "CLEVELAND", "Grover Cleveland"],
+    ["President Benjamin Harrison - North Bend", -84.75, 39.15, "B HARRISON", "Benjamin Harrison"],
+    ["President William McKinley - Niles", -80.76, 41.18, "MCKINLEY", "William McKinley"],
+    ["President Theodore Roosevelt - New York", -73.99, 40.74, "T ROOSEVELT", "Theodore Roosevelt"],
+    ["President William Howard Taft - Cincinnati", -84.51, 39.10, "TAFT", "William Howard Taft"],
+    ["President Woodrow Wilson - Staunton", -79.07, 38.15, "WILSON", "Woodrow Wilson"],
+    ["President Warren G. Harding - Blooming Grove", -82.72, 40.80, "HARDING", "Warren G. Harding"],
+    ["President Calvin Coolidge - Plymouth Notch", -72.72, 43.53, "COOLIDGE", "Calvin Coolidge"],
+    ["President Herbert Hoover - West Branch", -91.35, 41.67, "HOOVER", "Herbert Hoover"],
+    ["President Franklin D. Roosevelt - Hyde Park", -73.93, 41.77, "FDR", "Franklin D. Roosevelt"],
+    ["President Harry S. Truman - Lamar", -94.28, 37.50, "TRUMAN", "Harry S. Truman"],
+    ["President Dwight D. Eisenhower - Denison", -96.54, 33.76, "IKE", "Dwight D. Eisenhower"],
+    ["President John F. Kennedy - Brookline", -71.12, 42.35, "JFK", "John F. Kennedy"],
+    ["President Lyndon B. Johnson - Stonewall", -98.66, 30.24, "LBJ", "Lyndon B. Johnson"],
+    ["President Richard Nixon - Yorba Linda", -117.81, 33.89, "NIXON", "Richard Nixon"],
+    ["President Gerald Ford - Omaha", -95.94, 41.26, "GERALD FORD", "Gerald Ford"],
+    ["President Jimmy Carter - Plains", -84.39, 32.03, "CARTER", "Jimmy Carter"],
+    ["President Ronald Reagan - Tampico", -89.79, 41.63, "REAGAN", "Ronald Reagan"],
+    ["President George H. W. Bush - Milton", -71.07, 42.25, "GHW BUSH", "George H. W. Bush"],
+    ["President Bill Clinton - Hope", -93.59, 33.67, "CLINTON", "Bill Clinton"],
+    ["President George W. Bush - New Haven", -72.93, 41.31, "GW BUSH", "George W. Bush"],
+    ["President Barack Obama - Honolulu", -157.86, 21.31, "OBAMA", "Barack Obama"],
+    ["President Donald Trump - Queens", -73.79, 40.73, "TRUMP", "Donald Trump"],
+    ["President Joe Biden - Scranton", -75.66, 41.41, "BIDEN", "Joe Biden"]
+  ], { category: "US President", targetBonus: 4200 }),
   ...[
     ["Alabama", "Montgomery", -86.3, 32.38], ["Alaska", "Juneau", -134.42, 58.3],
     ["Arizona", "Phoenix", -112.07, 33.45], ["Arkansas", "Little Rock", -92.29, 34.75],
@@ -2762,6 +2889,7 @@ function startRocketRun() {
     sideQuest: pickRocketSideQuest(1),
     sideQuestPulse: 0,
     depots: [],
+    supplementalIntel: [],
     roundDepotCountries: [],
     roundDepotMarkers: [],
     trail: [],
@@ -2800,6 +2928,7 @@ function startRocketRun() {
     difficulty: 1
   };
   rocketState.depots = makeRocketDepots();
+  rocketState.supplementalIntel = makeRocketSupplementalIntel();
   rocketState.roundDepotCountries = getRocketDepotCountryList(rocketState.depots);
   rocketState.roundDepotMarkers = rocketState.depots.map(serializeRocketDepotMarker);
   if (externalRounds && !tutorialMode) {
@@ -3054,6 +3183,29 @@ function setRocketPreviewImage(image, target = {}, alt = "") {
     image.removeAttribute("src");
     image.alt = "";
   }
+  if (target.wikiTitle && !target.imageUrl && typeof fetch === "function") {
+    const cacheKey = target.wikiTitle;
+    const applyWikiImage = (url) => {
+      if (url) {
+        image.onerror = null;
+        image.src = url;
+      }
+    };
+    if (rocketWikiImageCache.has(cacheKey)) {
+      applyWikiImage(rocketWikiImageCache.get(cacheKey));
+      return;
+    }
+    fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(target.wikiTitle)}`)
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => {
+        const url = data?.thumbnail?.source || data?.originalimage?.source || "";
+        rocketWikiImageCache.set(cacheKey, url);
+        applyWikiImage(url);
+      })
+      .catch(() => {
+        rocketWikiImageCache.set(cacheKey, "");
+      });
+  }
 }
 
 function getRocketDepotPreviewTarget(name = "") {
@@ -3124,11 +3276,12 @@ function makeRocketDepots() {
         && itemAlias !== targetAlias;
     });
   const depots = [];
+  const depotCount = 4;
   const target = rocketState?.target;
   const minTargetDistance = 540;
   const minDepotDistance = 680;
   let guard = 0;
-  while (depots.length < 5 && guard < 600 && source.length) {
+  while (depots.length < depotCount && guard < 600 && source.length) {
     guard += 1;
     const excluded = [targetName, ...depots.map((depot) => depot.country)];
     const excludedSet = makeRocketCountryExclusion(excluded);
@@ -3151,7 +3304,7 @@ function makeRocketDepots() {
     depots.push({ x, y, fuel: 30, used: false, name: `Depot ${depots.length + 1}`, angle: Math.random() * Math.PI * 2, country: anchor.name });
   }
   let fallbackGuard = 0;
-  while (depots.length < 5 && fallbackGuard < 600) {
+  while (depots.length < depotCount && fallbackGuard < 600) {
     fallbackGuard += 1;
     const excluded = [targetName, ...depots.map((depot) => depot.country)];
     const excludedSet = makeRocketCountryExclusion(excluded);
@@ -3169,7 +3322,7 @@ function makeRocketDepots() {
     if (depots.some((depot) => Math.hypot(x - depot.x, y - depot.y) < minDepotDistance)) continue;
     depots.push({ x, y, fuel: 30, used: false, name: `Depot ${depots.length + 1}`, angle: Math.random() * Math.PI * 2, country: anchor?.name });
   }
-  while (depots.length < 5) {
+  while (depots.length < depotCount) {
     const excluded = [targetName, ...depots.map((depot) => depot.country)];
     const excludedSet = makeRocketCountryExclusion(excluded);
     const fallbackSource = source.filter((item) => {
@@ -3197,6 +3350,71 @@ function makeRocketDepots() {
 function getRocketDepotCountryList(depots = []) {
   return [...new Set((depots || []).map((depot) => depot.country).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b));
+}
+
+function makeRocketSupplementalIntel(count = 5) {
+  const categories = new Set([
+    "Ancient Civilization",
+    "Ancient Dynasty",
+    "Ancient Kingdom",
+    "Extinct Animal",
+    "Famous Battle",
+    "Geological Landmark",
+    "Historic / Social Landmark",
+    "Historic Figure",
+    "Historic Kingdom",
+    "Mythic Character",
+    "Mythic Location",
+    "US President"
+  ]);
+  const blockedNames = new Set([
+    rocketState?.target?.name,
+    ...(rocketState?.depots || []).map((depot) => depot.country)
+  ].filter(Boolean));
+  const blockedPoints = [
+    rocketState?.target,
+    ...(rocketState?.depots || [])
+  ].filter((point) => Number.isFinite(Number(point?.x)) && Number.isFinite(Number(point?.y)));
+  const pool = rocketLocationTargets.filter((target) => categories.has(target.category)
+    && !blockedNames.has(target.name)
+    && Number.isFinite(Number(target.x))
+    && Number.isFinite(Number(target.y)));
+  const chosen = [];
+  const seenCategories = new Set();
+  let guard = 0;
+  while (chosen.length < count && guard < 240 && pool.length) {
+    guard += 1;
+    const preferMixed = chosen.length < Math.min(count, categories.size);
+    const mixedPool = preferMixed ? pool.filter((target) => !seenCategories.has(target.category)) : pool;
+    const source = mixedPool.length ? mixedPool : pool;
+    const target = source[Math.floor(Math.random() * source.length)];
+    if (!target || chosen.some((item) => item.name === target.name)) continue;
+    const closeToBlocked = blockedPoints.some((point) => Math.hypot(target.x - point.x, target.y - point.y) < 360);
+    const closeToChosen = chosen.some((item) => Math.hypot(target.x - item.x, target.y - item.y) < 360);
+    if ((closeToBlocked || closeToChosen) && guard < 180) continue;
+    chosen.push({ ...target, collected: false, name: target.name });
+    seenCategories.add(target.category);
+  }
+  return chosen;
+}
+
+function serializeRocketBonusMarker(target = {}, index = 0) {
+  return {
+    name: target.name || `Bonus ${index + 1}`,
+    category: target.category || "Bonus location",
+    x: Number(target.x),
+    y: Number(target.y),
+    status: target.collected ? "hit" : "missed"
+  };
+}
+
+function getRocketBonusMarkersForLog(log = {}) {
+  return (Array.isArray(log.bonusMarkers) ? log.bonusMarkers : []).map((marker, index) => ({
+    ...marker,
+    name: marker.name || `Bonus ${index + 1}`,
+    category: marker.category || "Bonus location",
+    status: marker.status === "hit" ? "hit" : "missed"
+  }));
 }
 
 function serializeRocketDepotMarker(depot = {}, index = 0) {
@@ -3251,18 +3469,23 @@ function buildRocketRoundDepotMarkers(seedMarkers = [], landings = [], depotCoun
 function renderRocketDepotIntel() {
   if (!els.rocketDepotCountries) return;
   const countries = getRocketDepotCountryList((rocketState?.depots || []).filter((depot) => !depot.used));
-  els.rocketDepotCountries.replaceChildren(...(countries.length ? countries : ["Unknown country intel"]).map((name) => {
+  const depotItems = (countries.length ? countries : ["Unknown country intel"]).map((name) => ({ name, kind: "depot" }));
+  const supplementalItems = (rocketState?.supplementalIntel || []).slice(0, 5).map((target) => ({ name: target.name, target, kind: "supplemental" }));
+  const items = depotItems.concat(supplementalItems);
+  els.rocketDepotCountries.replaceChildren(...items.map(({ name, target: suppliedTarget, kind }) => {
     const item = document.createElement("b");
-    item.className = "rocket-depot-intel-chip";
+    item.className = `rocket-depot-intel-chip ${kind === "supplemental" ? "supplemental" : ""} ${suppliedTarget?.collected ? "collected" : ""}`.trim();
     item.dataset.depotPreview = "";
     item.dataset.depotCountry = name;
-    item.dataset.depotStatus = countries.length ? "Available fuel depot" : "No active fuel depot intel";
+    item.dataset.depotStatus = kind === "supplemental"
+      ? suppliedTarget?.collected ? "Collected bonus location" : "Historical / geological / social bonus location"
+      : countries.length ? "Available fuel depot" : "No active fuel depot intel";
     item.tabIndex = 0;
-    const target = getRocketDepotPreviewTarget(name);
+    const target = suppliedTarget || getRocketDepotPreviewTarget(name);
     const imageUrl = getRocketTargetFlagUrl(target);
     if (imageUrl) {
       const image = document.createElement("img");
-      setRocketPreviewImage(image, target, `${name} depot flag`);
+      setRocketPreviewImage(image, target, `${name} intel image`);
       item.append(image);
     }
     const label = document.createElement("span");
@@ -3424,6 +3647,7 @@ function recordRocketRound(success, reason = "route") {
     ? [...rocketState.roundDepotCountries]
     : getRocketDepotCountryList([...(rocketState.depots || []), ...landings]);
   const depotMarkers = buildRocketRoundDepotMarkers(rocketState.roundDepotMarkers || [], landings, depotCountries);
+  const bonusMarkers = (rocketState.supplementalIntel || []).map(serializeRocketBonusMarker);
   rocketState.roundLogs.push({
     round: rocketState.round,
     target: rocketState.target?.name || "Unknown",
@@ -3441,6 +3665,7 @@ function recordRocketRound(success, reason = "route") {
     depotCountries,
     visitedDepotCountries,
     depotMarkers,
+    bonusMarkers,
     landings
   });
 }
@@ -3500,19 +3725,24 @@ function nextRocketRound(success) {
   if (!rocketState) return;
   if (success) {
     rocketState.wins += 1;
-    const timeBonus = Math.round(rocketState.time * 120);
+    const ultimateSweep = Boolean(rocketState.allObjectivesBonusAwarded
+      && (rocketState.supplementalIntel || []).length
+      && (rocketState.supplementalIntel || []).every((target) => target.collected));
+    const rawTimeBonus = Math.round(rocketState.time * 120);
+    const timeBonus = ultimateSweep ? rawTimeBonus * 2 : rawTimeBonus;
     const difficultyBonus = rocketState.difficulty * 700;
     const fuelBonus = Math.round(rocketState.fuel * 18);
     const targetBonus = getRocketTargetBonus(rocketState.target);
-    const routeBonus = 1200 + timeBonus + difficultyBonus + fuelBonus + targetBonus;
+    const routeBase = 1200 + timeBonus + difficultyBonus + fuelBonus + targetBonus;
+    const routeBonus = ultimateSweep ? routeBase * 2 : routeBase;
     rocketState.score += routeBonus;
     rocketState.scoreEvents.push({
       round: rocketState.round,
-      type: "Route bonus",
+      type: ultimateSweep ? "Ultimate route bonus" : "Route bonus",
       points: routeBonus,
-      detail: `1,200 base + ${formatScore(timeBonus)} timer + ${formatScore(difficultyBonus)} difficulty + ${formatScore(fuelBonus)} fuel${targetBonus ? ` + ${formatScore(targetBonus)} ${rocketState.target.category || "target"} bonus` : ""}`
+      detail: `${ultimateSweep ? "x2 ultimate sweep; " : ""}1,200 base + ${formatScore(timeBonus)} timer${ultimateSweep ? " (doubled)" : ""} + ${formatScore(difficultyBonus)} difficulty + ${formatScore(fuelBonus)} fuel${targetBonus ? ` + ${formatScore(targetBonus)} ${rocketState.target.category || "target"} bonus` : ""}`
     });
-    awardRocketTechPoints(1 + Math.floor(rocketState.difficulty / 3));
+    awardRocketTechPoints((1 + Math.floor(rocketState.difficulty / 3)) * (ultimateSweep ? 2 : 1));
     rocketState.fuel = Math.min(100, rocketState.fuel + 8 + rocketState.tech.fuel * 2.4);
     rocketFeedback("Route reached", "#45f875", "success");
     playTone("correct");
@@ -3552,6 +3782,7 @@ function nextRocketRound(success) {
   rememberRocketTarget(rocketState.target);
   rocketState.sideQuest = pickRocketSideQuest(rocketState.difficulty);
   rocketState.depots = makeRocketDepots();
+  rocketState.supplementalIntel = makeRocketSupplementalIntel();
   rocketState.roundDepotCountries = getRocketDepotCountryList(rocketState.depots);
   rocketState.roundDepotMarkers = rocketState.depots.map(serializeRocketDepotMarker);
   renderRocketDepotIntel();
@@ -3851,6 +4082,7 @@ function updateRocket(dt) {
     els.rocketMessage.textContent = "Map edge reached. Turn back toward the world map.";
   }
   if (updateRocketObjectiveFlyThrough()) return;
+  updateRocketBonusLocationFlyThrough();
   const sideDist = Math.hypot(rocketState.ship.x - rocketState.sideQuest.x, rocketState.ship.y - rocketState.sideQuest.y);
   if (!rocketState.sideQuest.done && sideDist < 80 && rocketState.phase === "cruise") {
     rocketState.sideQuest.done = true;
@@ -3955,6 +4187,31 @@ function updateRocketObjectiveFlyThrough() {
   }
 
   return false;
+}
+
+function updateRocketBonusLocationFlyThrough() {
+  if (!rocketState || rocketState.phase !== "cruise") return false;
+  const bonus = (rocketState.supplementalIntel || []).find((target) => !target.collected
+    && Math.hypot(rocketState.ship.x - target.x, rocketState.ship.y - target.y) < ROCKET_BONUS_RADIUS);
+  if (!bonus) return false;
+  bonus.collected = true;
+  const speed = Math.hypot(rocketState.ship.vx, rocketState.ship.vy);
+  const points = 1100 + Math.max(0, Math.round((Number(bonus.targetBonus) || 0) * 0.45)) + Math.min(900, Math.round(speed * 1.1));
+  const techEarned = bonus.category === "US President" ? 5 : bonus.category === "Geological Landmark" ? 6 : 7;
+  rocketState.score += points;
+  awardRocketTechPoints(techEarned);
+  pushRocketRoutePoint("bonus");
+  rocketState.scoreEvents.push({
+    round: rocketState.round,
+    type: `Bonus location: ${bonus.name}`,
+    points,
+    detail: `${bonus.category || "bonus"} collected, +${techEarned} TP`
+  });
+  renderRocketDepotIntel();
+  els.rocketMessage.textContent = `${bonus.category || "Bonus"} collected: ${bonus.name}. +${formatScore(points)} pts, +${techEarned} TP.`;
+  rocketFeedback(`Bonus +${techEarned} TP`, "#ffc55a", "success");
+  playPowerUp();
+  return true;
 }
 
 function updateRocketLandingHold(dt) {
@@ -4078,9 +4335,14 @@ function completeRocketTargetLanding(dist, landingSnapshot = {}) {
   const speedBonus = approachSpeed >= 420 ? 720 : approachSpeed >= 300 ? 520 : approachSpeed >= 180 ? 320 : 120;
   const altitudeBonus = Math.min(520, Math.max(0, Math.round(approachAltitude * 0.16)));
   const descentBonus = getRocketTargetDescentBonus(descentDrop, descentTime);
-  const landingPoints = Math.max(80, Math.round(1040 - dist * 3.6 + speedBonus + altitudeBonus + descentBonus));
+  const baseLandingPoints = Math.max(80, Math.round(1040 - dist * 3.6 + speedBonus + altitudeBonus + descentBonus));
+  const clearedAllDepots = (rocketState.depots || []).every((depot) => depot.used);
+  const clearedAllBonuses = (rocketState.supplementalIntel || []).length > 0 && (rocketState.supplementalIntel || []).every((target) => target.collected);
+  const ultimateSweep = clearedAllDepots && clearedAllBonuses;
+  const landingPoints = ultimateSweep ? baseLandingPoints * 2 : baseLandingPoints;
   rocketState.score += landingPoints;
-  const targetResearchEarned = 8;
+  const baseTargetResearchEarned = 8;
+  const targetResearchEarned = ultimateSweep ? baseTargetResearchEarned * 2 : baseTargetResearchEarned;
   awardRocketTechPoints(targetResearchEarned);
   const idealBonus = getRocketTargetIdealBonus(approachSpeed, approachAltitude);
   if (idealBonus?.perfect) {
@@ -4093,14 +4355,23 @@ function completeRocketTargetLanding(dist, landingSnapshot = {}) {
       detail: `target ideal matched, +${idealBonus.reward} TP`
     });
   }
-  const clearedAllDepots = (rocketState.depots || []).every((depot) => depot.used);
-  if (clearedAllDepots && !rocketState.allObjectivesBonusAwarded) {
+  if (ultimateSweep && !rocketState.allObjectivesBonusAwarded) {
+    rocketState.allObjectivesBonusAwarded = true;
+    awardRocketTechPoints(20);
+    rocketState.score += 4800;
+    rocketState.scoreEvents.push({
+      round: rocketState.round,
+      type: "Ultimate sweep bonus",
+      points: 4800,
+      detail: "all 4 fuel depots, all 5 bonus locations, and the destination collected; double target points, +20 TP"
+    });
+  } else if (clearedAllDepots && !rocketState.allObjectivesBonusAwarded) {
     rocketState.allObjectivesBonusAwarded = true;
     awardRocketTechPoints(10);
     rocketState.score += 2400;
     rocketState.scoreEvents.push({
       round: rocketState.round,
-      type: "Full sweep bonus",
+      type: "Full depot sweep bonus",
       points: 2400,
       detail: "all fuel depots and the destination found correctly, +10 TP"
     });
@@ -4109,10 +4380,12 @@ function completeRocketTargetLanding(dist, landingSnapshot = {}) {
     round: rocketState.round,
     type: "Target landing",
     points: landingPoints,
-    detail: `${formatScore(Math.round(1040 - dist * 3.6))} distance + ${formatScore(speedBonus)} speed + ${formatScore(altitudeBonus)} altitude + ${formatScore(descentBonus)} descent`
+    detail: `${formatScore(Math.round(1040 - dist * 3.6))} distance + ${formatScore(speedBonus)} speed + ${formatScore(altitudeBonus)} altitude + ${formatScore(descentBonus)} descent${ultimateSweep ? " x2 ultimate sweep" : ""}`
   });
-  els.rocketMessage.textContent = clearedAllDepots
-    ? `Perfect sweep: every fuel depot and ${rocketState.target.name} found. +${targetResearchEarned + 10} TP and +${formatScore(landingPoints + 2400)} pts.`
+  els.rocketMessage.textContent = ultimateSweep
+    ? `Ultimate win: all 9 locations and ${rocketState.target.name} collected. +${targetResearchEarned + 20} TP and +${formatScore(landingPoints + 4800)} pts.`
+    : clearedAllDepots
+    ? `Perfect depot sweep: every fuel depot and ${rocketState.target.name} found. +${targetResearchEarned + 10} TP and +${formatScore(landingPoints + 2400)} pts.`
     : idealBonus?.perfect
       ? `Perfect approach in ${rocketState.target.name}. +${targetResearchEarned + idealBonus.reward} TP, +${formatScore(landingPoints + 1800)} pts.`
       : `Target completed in ${rocketState.target.name}. +${targetResearchEarned} TP, +${landingPoints} pts.`;
@@ -4128,8 +4401,8 @@ function completeRocketTargetLanding(dist, landingSnapshot = {}) {
     research: targetResearchEarned + (idealBonus?.reward || 0)
   });
   rocketFeedback(
-    idealBonus?.perfect ? `Perfect approach +${targetResearchEarned + idealBonus.reward} TP` : clearedAllDepots ? `Perfect sweep +${targetResearchEarned + 10} TP` : `Target +${targetResearchEarned} TP`,
-    idealBonus?.perfect || clearedAllDepots ? "#ffffff" : "#45f875",
+    ultimateSweep ? `Ultimate win +${targetResearchEarned + 20} TP` : idealBonus?.perfect ? `Perfect approach +${targetResearchEarned + idealBonus.reward} TP` : clearedAllDepots ? `Depot sweep +${targetResearchEarned + 10} TP` : `Target +${targetResearchEarned} TP`,
+    idealBonus?.perfect || clearedAllDepots || ultimateSweep ? "#ffffff" : "#45f875",
     "success"
   );
   playLandingSound(true, true);
@@ -4312,6 +4585,8 @@ function drawRocket() {
   ctx.save();
   ctx.scale(zoom, zoom);
   drawRocketMap(ctx, worldRect, camX, camY);
+  drawRocketDepots(ctx, camX, camY);
+  drawRocketBonusLocations(ctx, camX, camY);
   drawRocketTrail(ctx, camX, camY);
   drawRocketRunway(ctx, camX, camY);
   drawRocketSonar(ctx, worldRect, camX, camY);
@@ -5199,7 +5474,6 @@ function drawRocketSonar(ctx, rect, camX, camY) {
 }
 
 function drawRocketDepots(ctx, camX, camY) {
-  return;
   rocketState.depots.forEach((depot) => {
     if (depot.used) return;
     const x = depot.x - camX;
@@ -5276,6 +5550,56 @@ function drawRocketDepots(ctx, camX, camY) {
     ctx.strokeText("CENTER + <=20 m/s BONUS", 0, 96);
     ctx.fillStyle = "#22d9f2";
     ctx.fillText("CENTER + <=20 m/s BONUS", 0, 96);
+    ctx.restore();
+  });
+}
+
+function drawRocketBonusLocations(ctx, camX, camY) {
+  const bonuses = rocketState?.supplementalIntel || [];
+  if (!bonuses.length) return;
+  bonuses.forEach((bonus, index) => {
+    if (bonus.collected) return;
+    const x = bonus.x - camX;
+    const y = bonus.y - camY;
+    if (x < -220 || y < -220 || x > ROCKET_MAP_W + 220 || y > ROCKET_MAP_H + 220) return;
+    const pulse = 0.58 + Math.sin(performance.now() / 320 + index) * 0.28;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.strokeStyle = `rgba(255, 197, 90, ${0.42 + pulse * 0.28})`;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([10, 10]);
+    ctx.beginPath();
+    ctx.arc(0, 0, ROCKET_BONUS_RADIUS, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(8, 10, 16, .88)";
+    ctx.strokeStyle = "#ffc55a";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, -30);
+    ctx.bezierCurveTo(22, -30, 31, -12, 21, 7);
+    ctx.lineTo(0, 39);
+    ctx.lineTo(-21, 7);
+    ctx.bezierCurveTo(-31, -12, -22, -30, 0, -30);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#ffc55a";
+    ctx.beginPath();
+    ctx.arc(0, -8, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "950 12px system-ui";
+    ctx.textAlign = "center";
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = "rgba(0,0,0,.72)";
+    const label = String(bonus.category || "BONUS").toUpperCase().replace("HISTORIC / SOCIAL LANDMARK", "HISTORIC");
+    ctx.strokeText(label.slice(0, 18), 0, -50);
+    ctx.fillText(label.slice(0, 18), 0, -50);
+    ctx.font = "850 11px system-ui";
+    ctx.strokeText(String(index + 1), 0, -8);
+    ctx.fillStyle = "#101520";
+    ctx.fillText(String(index + 1), 0, -8);
     ctx.restore();
   });
 }
@@ -6320,6 +6644,14 @@ function getRocketRoundDepotTotal(log = {}) {
   return Math.max(getRocketDepotMarkersForLog(log).length, getRocketLogAllDepotCountries(log).length, getRocketRoundDepotCount(log));
 }
 
+function getRocketRoundBonusCount(log = {}) {
+  return getRocketBonusMarkersForLog(log).filter((marker) => marker.status === "hit").length;
+}
+
+function getRocketRoundBonusTotal(log = {}) {
+  return getRocketBonusMarkersForLog(log).length;
+}
+
 function getRocketDepotMarkersForLog(log = {}) {
   const markers = Array.isArray(log.depotMarkers) && log.depotMarkers.length
     ? log.depotMarkers
@@ -6378,11 +6710,19 @@ function getRocketBiggestRoundEvent(log = {}) {
     let label = type;
     let value = points ? `+${formatScore(points)} pts` : "";
     let tech = 0;
-    if (lower.includes("full sweep")) {
+    if (lower.includes("ultimate")) {
+      rank = 120;
+      label = "Ultimate sweep";
+      value = "+20 TP";
+      tech = 20;
+    } else if (lower.includes("full sweep") || lower.includes("depot sweep")) {
       rank = 100;
-      label = "Full sweep";
+      label = "Depot sweep";
       value = "+10 TP";
       tech = 10;
+    } else if (lower.includes("bonus location")) {
+      rank = 92;
+      label = "Bonus location";
     } else if (lower.includes("black box")) {
       rank = 90;
       label = "Black box";
@@ -6435,6 +6775,8 @@ function rocketLogDetailHtml(log = {}) {
   const status = log.success ? "reached" : "missed";
   const depotCount = getRocketRoundDepotCount(log);
   const depotTotal = getRocketRoundDepotTotal(log);
+  const bonusCount = getRocketRoundBonusCount(log);
+  const bonusTotal = getRocketRoundBonusTotal(log);
   const biggestEvent = getRocketBiggestRoundEvent(log);
   const flag = rocketLogFlagHtml(log);
   const target = escapeHtml(log.target || "Unknown");
@@ -6444,7 +6786,7 @@ function rocketLogDetailHtml(log = {}) {
     <article class="rocket-result-row ${status}">
       <strong>Round ${log.round || "?"}: ${flag}${target}</strong>
       <span class="${log.success ? "round-good" : "round-bad"}">${log.success ? "Reached" : "Missed"} | Time ${Math.max(0, time).toFixed(1)}s | Score ${formatScore(log.score || 0)}</span>
-      <small>Fuel ${fuel.toFixed(0)}% | Depots ${depotCount}${depotTotal ? ` / ${depotTotal}` : ""} | TP +${log.techEarned || 0}</small>
+      <small>Fuel ${fuel.toFixed(0)}% | Depots ${depotCount}${depotTotal ? ` / ${depotTotal}` : ""} | Bonus ${bonusCount}${bonusTotal ? ` / ${bonusTotal}` : ""} | TP +${log.techEarned || 0}</small>
       ${rocketDepotStatusHtml(log)}
       <small class="${biggestEvent.className || ""}">Biggest event: ${escapeHtml(rocketEventText(biggestEvent))}</small>
     </article>
@@ -6674,10 +7016,12 @@ function setupRocketRouteInspector(root, run) {
     const biggestEvent = getRocketBiggestRoundEvent(log);
     const depotCount = getRocketRoundDepotCount(log);
     const depotTotal = getRocketRoundDepotTotal(log);
+    const bonusCount = getRocketRoundBonusCount(log);
+    const bonusTotal = getRocketRoundBonusTotal(log);
     hover.innerHTML = `
       <strong>Round ${log.round}: ${escapeHtml(log.target || "Unknown")}</strong>
       <span>${Math.round(hit.progress * 100)}% of saved trace | Score ${formatScore(log.score || 0)}</span>
-      <span>Depots ${depotCount}${depotTotal ? ` / ${depotTotal}` : ""} | ${escapeHtml(rocketEventText(biggestEvent))}</span>
+      <span>Depots ${depotCount}${depotTotal ? ` / ${depotTotal}` : ""} | Bonus ${bonusCount}${bonusTotal ? ` / ${bonusTotal}` : ""} | ${escapeHtml(rocketEventText(biggestEvent))}</span>
     `;
     positionRocketRouteHover(canvas, hover, event);
     hover.hidden = false;
@@ -6712,6 +7056,7 @@ function makeRocketRouteView(log = {}, mapW = ROCKET_MAP_W, mapH = ROCKET_MAP_H)
   const points = [
     ...(log.trace || []),
     ...(getRocketDepotMarkersForLog(log) || []),
+    ...(getRocketBonusMarkersForLog(log) || []),
     ...(Number(log.targetX) > 0 && Number(log.targetY) > 0 ? [{ x: log.targetX, y: log.targetY }] : [])
   ].filter((point) => Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y)));
   if (!points.length) return makeRocketLogView(mapW, mapH);
@@ -7051,7 +7396,10 @@ function drawRocketLogMap(canvas, logs, mapW, mapH, selected = "all", view = nul
       ctx.font = "800 10px system-ui";
       ctx.fillText(String(log.round), tx + 7, ty - 5);
     }
-    if (selected === "all" || isSelected) drawRocketLogDepotStatusMarkers(ctx, log, viewport, isSelected ? selectedDepot : null);
+    if (selected === "all" || isSelected) {
+      drawRocketLogDepotStatusMarkers(ctx, log, viewport, isSelected ? selectedDepot : null);
+      drawRocketLogBonusStatusMarkers(ctx, log, viewport);
+    }
     ctx.globalAlpha = 1;
   });
   if (viewport.zoom > 1.02) {
@@ -7099,6 +7447,34 @@ function drawRocketLogDepotStatusMarkers(ctx, log, viewport, selectedDepot = nul
     }
     ctx.fillStyle = color;
     ctx.fillText(String(index + 1), point.x, point.y);
+  });
+  ctx.restore();
+}
+
+function drawRocketLogBonusStatusMarkers(ctx, log, viewport) {
+  const markers = getRocketBonusMarkersForLog(log).filter((marker) => Number.isFinite(Number(marker.x)) && Number.isFinite(Number(marker.y)));
+  if (!markers.length) return;
+  ctx.save();
+  ctx.font = "900 9px system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  markers.forEach((marker, index) => {
+    const point = rocketProjectLogPoint(marker, viewport);
+    if (point.x < -18 || point.y < -18 || point.x > viewport.scaleX * (viewport.maxX - viewport.minX) + 18 || point.y > viewport.scaleY * (viewport.maxY - viewport.minY) + 18) return;
+    const color = marker.status === "hit" ? "#ffc55a" : "#7b5260";
+    ctx.fillStyle = "rgba(10, 11, 18, .82)";
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y - 12);
+    ctx.lineTo(point.x + 10, point.y + 5);
+    ctx.lineTo(point.x, point.y + 16);
+    ctx.lineTo(point.x - 10, point.y + 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.fillText(`B${index + 1}`, point.x, point.y + 3);
   });
   ctx.restore();
 }

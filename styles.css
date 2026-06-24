@@ -1477,16 +1477,38 @@ body:has(#rocketView.active) .topbar {
   text-transform: uppercase;
 }
 
-.rocket-intel-box div {
+#rocketDepotCountries {
   display: flex;
-  flex-wrap: wrap;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
   gap: 0.4rem;
+  padding: 0.08rem 0 0.2rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(34, 217, 242, 0.62) rgba(255, 255, 255, 0.08);
+}
+
+#rocketDepotCountries::-webkit-scrollbar {
+  height: 0.45rem;
+}
+
+#rocketDepotCountries::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+}
+
+#rocketDepotCountries::-webkit-scrollbar-thumb {
+  background: rgba(34, 217, 242, 0.62);
+  border-radius: 999px;
 }
 
 .rocket-intel-box b {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 0.42rem;
+  max-width: 18rem;
   min-height: 1.75rem;
   padding: 0 0.55rem;
   border: 1px solid rgba(34, 217, 242, 0.24);
@@ -1500,6 +1522,15 @@ body:has(#rocketView.active) .topbar {
   cursor: help;
 }
 
+.rocket-depot-intel-chip.supplemental {
+  border-color: rgba(255, 197, 90, 0.42);
+  background: rgba(48, 35, 16, 0.88);
+}
+
+.rocket-depot-intel-chip.collected {
+  opacity: 0.62;
+}
+
 .rocket-depot-intel-chip img {
   width: 2rem;
   height: 1.28rem;
@@ -1510,9 +1541,12 @@ body:has(#rocketView.active) .topbar {
 }
 
 .rocket-depot-intel-chip span {
+  overflow: hidden;
   color: #ffffff;
   font-size: 0.8rem;
   text-transform: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rocket-route-inspector {
