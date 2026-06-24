@@ -6970,8 +6970,8 @@ function showRocketRoundSummary(log) {
   rocketState.ship.throttle = 0;
   if (els.techTreeOverlay) els.techTreeOverlay.hidden = true;
   stopPropellerSound();
-  const depotCount = getRocketRoundDepotCount(log);
-  const depotTotal = getRocketRoundDepotTotal(log);
+  const objectiveCount = getRocketRoundObjectiveCount(log);
+  const objectiveTotal = getRocketRoundObjectiveTotal(log);
   const biggestEvent = getRocketBiggestRoundEvent(log);
   const fuel = Number(log.fuel || 0);
   const time = Number(log.time || 0);
@@ -6984,7 +6984,7 @@ function showRocketRoundSummary(log) {
   els.rocketResultSummary.innerHTML = `
     <span class="rocket-summary-target">${rocketLogFlagHtml(log)}<b>${escapeHtml(log.target || "Unknown")}</b></span>
     <span>${escapeHtml(reasonText)} | Time ${Math.max(0, time).toFixed(1)}s | Score ${formatScore(log.score || 0)}</span>
-    <span>Fuel ${fuel.toFixed(0)}% | Depots ${depotCount}${depotTotal ? ` / ${depotTotal}` : ""} | TP +${log.techEarned || 0}</span>
+    <span>Fuel ${fuel.toFixed(0)}% | Route locations ${objectiveCount}${objectiveTotal ? ` / ${objectiveTotal}` : ""} | TP +${log.techEarned || 0}</span>
     ${rocketDepotStatusHtml(log)}
     <span class="${biggestEvent.className || ""}">Biggest event: ${escapeHtml(rocketEventText(biggestEvent))}</span>
   `;
@@ -7081,6 +7081,14 @@ function getRocketRoundBonusTotal(log = {}) {
   return getRocketBonusMarkersForLog(log).length;
 }
 
+function getRocketRoundObjectiveCount(log = {}) {
+  return getRocketRoundDepotCount(log) + getRocketRoundBonusCount(log);
+}
+
+function getRocketRoundObjectiveTotal(log = {}) {
+  return getRocketRoundDepotTotal(log) + getRocketRoundBonusTotal(log);
+}
+
 function getRocketDepotMarkersForLog(log = {}) {
   const markers = Array.isArray(log.depotMarkers) && log.depotMarkers.length
     ? log.depotMarkers
@@ -7093,21 +7101,29 @@ function getRocketDepotMarkersForLog(log = {}) {
 }
 
 function rocketDepotStatusHtml(log = {}, selectedIndex = null) {
-  const markers = getRocketDepotMarkersForLog(log);
+  const depotMarkers = getRocketDepotMarkersForLog(log).map((marker, index) => ({ ...marker, objectiveKind: "depot", objectiveIndex: index }));
+  const bonusMarkers = getRocketBonusMarkersForLog(log).map((marker, index) => ({ ...marker, objectiveKind: "bonus", objectiveIndex: index }));
+  const markers = depotMarkers.concat(bonusMarkers);
   if (!markers.length) return "";
   const dots = markers.map((marker, index) => {
-    const label = marker.status === "hit"
-      ? `${marker.name}: ${marker.country || "unknown"} clean/perfect`
-      : marker.status === "basic"
-        ? `${marker.name}: ${marker.country || "unknown"} basic +3 TP`
-        : `${marker.name}: ${marker.country || "unknown"} missed`;
+    const isBonus = marker.objectiveKind === "bonus";
+    const objectiveName = isBonus ? marker.name : marker.country || marker.name;
+    const label = isBonus
+      ? `${marker.name}: ${marker.status === "hit" ? "collected" : "missed"} bonus location`
+      : marker.status === "hit"
+        ? `${marker.name}: ${marker.country || "unknown"} clean/perfect`
+        : marker.status === "basic"
+          ? `${marker.name}: ${marker.country || "unknown"} basic +3 TP`
+          : `${marker.name}: ${marker.country || "unknown"} missed`;
     const selected = selectedIndex === index ? " selected" : "";
-    const target = getRocketDepotPreviewTarget(marker.country || marker.name);
+    const target = getRocketDepotPreviewTarget(objectiveName);
     const imageUrl = getRocketTargetFlagUrl(target);
-    const image = imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(marker.country || marker.name || "Depot")} flag">` : "";
-    return `<button type="button" class="rocket-depot-dot ${marker.status}${selected}" data-depot-preview data-depot-index="${index}" data-depot-country="${escapeHtml(marker.country || "")}" data-depot-status="${escapeHtml(rocketDepotStatusLabel(marker))}" title="${escapeHtml(label)}">${image}<span>${index + 1}</span></button>`;
+    const image = imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(objectiveName || "Objective")} preview">` : "";
+    const status = isBonus ? marker.status === "hit" ? "Collected bonus location" : "Missed bonus location" : rocketDepotStatusLabel(marker);
+    const dotText = isBonus ? `B${marker.objectiveIndex + 1}` : `D${marker.objectiveIndex + 1}`;
+    return `<button type="button" class="rocket-depot-dot ${marker.status}${selected} ${isBonus ? "bonus" : ""}" data-depot-preview data-depot-index="${index}" data-depot-country="${escapeHtml(objectiveName || "")}" data-depot-status="${escapeHtml(status)}" title="${escapeHtml(label)}">${image}<span>${dotText}</span></button>`;
   }).join("");
-  return `<span class="rocket-depot-status" aria-label="Fuel depot results">${dots}</span>`;
+  return `<span class="rocket-depot-status" aria-label="Route location results">${dots}</span>`;
 }
 
 function getRocketRoundPointGain(log = {}) {
@@ -7202,10 +7218,8 @@ function rocketEventText(event = {}) {
 
 function rocketLogDetailHtml(log = {}) {
   const status = log.success ? "reached" : "missed";
-  const depotCount = getRocketRoundDepotCount(log);
-  const depotTotal = getRocketRoundDepotTotal(log);
-  const bonusCount = getRocketRoundBonusCount(log);
-  const bonusTotal = getRocketRoundBonusTotal(log);
+  const objectiveCount = getRocketRoundObjectiveCount(log);
+  const objectiveTotal = getRocketRoundObjectiveTotal(log);
   const biggestEvent = getRocketBiggestRoundEvent(log);
   const flag = rocketLogFlagHtml(log);
   const target = escapeHtml(log.target || "Unknown");
@@ -7215,7 +7229,7 @@ function rocketLogDetailHtml(log = {}) {
     <article class="rocket-result-row ${status}">
       <strong>Round ${log.round || "?"}: ${flag}${target}</strong>
       <span class="${log.success ? "round-good" : "round-bad"}">${log.success ? "Reached" : "Missed"} | Time ${Math.max(0, time).toFixed(1)}s | Score ${formatScore(log.score || 0)}</span>
-      <small>Fuel ${fuel.toFixed(0)}% | Depots ${depotCount}${depotTotal ? ` / ${depotTotal}` : ""} | Bonus ${bonusCount}${bonusTotal ? ` / ${bonusTotal}` : ""} | TP +${log.techEarned || 0}</small>
+      <small>Fuel ${fuel.toFixed(0)}% | Route locations ${objectiveCount}${objectiveTotal ? ` / ${objectiveTotal}` : ""} | TP +${log.techEarned || 0}</small>
       ${rocketDepotStatusHtml(log)}
       <small class="${biggestEvent.className || ""}">Biggest event: ${escapeHtml(rocketEventText(biggestEvent))}</small>
     </article>
@@ -7443,14 +7457,12 @@ function setupRocketRouteInspector(root, run) {
     }
     const log = logs[hit.index];
     const biggestEvent = getRocketBiggestRoundEvent(log);
-    const depotCount = getRocketRoundDepotCount(log);
-    const depotTotal = getRocketRoundDepotTotal(log);
-    const bonusCount = getRocketRoundBonusCount(log);
-    const bonusTotal = getRocketRoundBonusTotal(log);
+    const objectiveCount = getRocketRoundObjectiveCount(log);
+    const objectiveTotal = getRocketRoundObjectiveTotal(log);
     hover.innerHTML = `
       <strong>Round ${log.round}: ${escapeHtml(log.target || "Unknown")}</strong>
       <span>${Math.round(hit.progress * 100)}% of saved trace | Score ${formatScore(log.score || 0)}</span>
-      <span>Depots ${depotCount}${depotTotal ? ` / ${depotTotal}` : ""} | Bonus ${bonusCount}${bonusTotal ? ` / ${bonusTotal}` : ""} | ${escapeHtml(rocketEventText(biggestEvent))}</span>
+      <span>Route locations ${objectiveCount}${objectiveTotal ? ` / ${objectiveTotal}` : ""} | ${escapeHtml(rocketEventText(biggestEvent))}</span>
     `;
     positionRocketRouteHover(canvas, hover, event);
     hover.hidden = false;
@@ -7666,25 +7678,25 @@ function renderRocketRouteMeta(meta, logs, selected, selectedDepot = null) {
   }
   if (selected === "all") {
     const reached = logs.filter((log) => log.success).length;
-    const depotCount = logs.reduce((total, log) => total + getRocketRoundDepotCount(log), 0);
-    const depotTotal = logs.reduce((total, log) => total + getRocketRoundDepotTotal(log), 0);
+    const objectiveCount = logs.reduce((total, log) => total + getRocketRoundObjectiveCount(log), 0);
+    const objectiveTotal = logs.reduce((total, log) => total + getRocketRoundObjectiveTotal(log), 0);
     meta.innerHTML = `
       <strong>All routes</strong>
       <span>${reached}/${logs.length} reached</span>
-      <span>Fuel depots ${depotCount}${depotTotal ? ` / ${depotTotal}` : ""}</span>
-      <span>Click a route line or choose a round for depot levels.</span>
+      <span>Route locations ${objectiveCount}${objectiveTotal ? ` / ${objectiveTotal}` : ""}</span>
+      <span>Click a route line or choose a round for location pins.</span>
     `;
     return;
   }
   const log = logs[selected];
   if (!log) return;
-  const depotCount = getRocketRoundDepotCount(log);
-  const depotTotal = getRocketRoundDepotTotal(log);
+  const objectiveCount = getRocketRoundObjectiveCount(log);
+  const objectiveTotal = getRocketRoundObjectiveTotal(log);
   const selectedMarker = Number.isInteger(selectedDepot) ? getRocketDepotMarkersForLog(log)[selectedDepot] : null;
   meta.innerHTML = `
     <strong>Round ${log.round}: ${rocketLogFlagHtml(log)}${escapeHtml(log.target || "Unknown")}</strong>
     <span class="${log.success ? "round-good" : "round-bad"}">${log.success ? "Reached" : "Missed"} | ${escapeHtml(log.reason || "route")} | ${Math.max(0, log.time || 0).toFixed(1)}s left</span>
-    <span>Fuel depots ${depotCount}${depotTotal ? ` / ${depotTotal}` : ""}</span>
+    <span>Route locations ${objectiveCount}${objectiveTotal ? ` / ${objectiveTotal}` : ""}</span>
     ${rocketDepotStatusHtml(log, selectedDepot)}
     ${selectedMarker ? `<span class="rocket-depot-selected">${rocketDepotDetailHtml(selectedMarker, selectedDepot)}</span>` : ""}
   `;
