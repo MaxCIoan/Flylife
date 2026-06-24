@@ -1175,10 +1175,17 @@ body:has(#rocketView.active) .topbar {
   background: linear-gradient(180deg, rgba(7, 15, 25, 0.92), rgba(14, 26, 43, 0.86));
   box-shadow: 0 1.6rem 4rem rgba(0, 0, 0, 0.42), 0 0 2rem rgba(255, 211, 61, 0.15);
   backdrop-filter: blur(0.45rem);
+  opacity: 1;
+  transition: opacity 1.6s ease;
+  pointer-events: none;
 }
 
 .rocket-target-card[hidden] {
   display: none;
+}
+
+.rocket-target-card.fading {
+  opacity: 0;
 }
 
 .rocket-target-card span {

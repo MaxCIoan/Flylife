@@ -57,6 +57,8 @@ const ROCKET_MAP_H = 10800;
 const ROCKET_TARGET_RADIUS = 86;
 const ROCKET_DEPOT_RADIUS = 104;
 const ROCKET_OBJECTIVE_SAMPLE_SECONDS = 1;
+const ROCKET_TARGET_CARD_MS = 5200;
+const ROCKET_TARGET_CARD_FADE_MS = 1600;
 
 const ranks = [
   { name: "Unranked", points: 0 },
@@ -2684,6 +2686,225 @@ function roundRect(ctx, x, y, w, h, r, fill = false) {
   if (fill) ctx.fill();
 }
 
+function clearRocketProgressSnapshot() {
+  localStorage.removeItem(rocketResumeKey);
+}
+
+function markRocketActivity() {
+  if (!rocketState) return;
+  rocketState.lastActivityAt = Date.now();
+}
+
+function shouldTrackRocketActivity() {
+  return Boolean(rocketState && !["setup", "result", "round-summary"].includes(rocketState.phase) && !rocketState.sessionSaved);
+}
+
+function pingRocketRun(force = false) {
+  if (!shouldTrackRocketActivity()) return;
+  const now = Date.now();
+  const activityAt = Number(rocketState.lastActivityAt || 0);
+  if (!force && (!activityAt || activityAt <= Number(rocketState.lastHeartbeatActivityAt || 0))) return;
+  if (!force && rocketState.lastHeartbeatAt && now - rocketState.lastHeartbeatAt < ROCKET_HEARTBEAT_INTERVAL_MS) return;
+  rocketState.lastHeartbeatAt = now;
+  rocketState.lastHeartbeatActivityAt = activityAt || now;
+  window.FlagGuard?.pingRun?.({
+    round: rocketState.round,
+    phase: rocketState.phase,
+    score: Math.round(rocketState.score || 0),
+    techPoints: rocketState.techPoints || 0
+  });
+}
+
+function expireRocketRunForInactivity() {
+  if (!rocketState || rocketState.inactivityExpired) return;
+  rocketState.inactivityExpired = true;
+  rocketState.active = false;
+  rocketState.paused = false;
+  rocketState.pausedWasActive = false;
+  rocketState.sessionSaved = true;
+  stopPropellerSound();
+  clearRocketProgressSnapshot();
+  window.FlagGuard?.discardRun?.("inactive for 15 minutes");
+  els.rocketMessage.textContent = "Fly session expired after 15 minutes without activity. Start a fresh run when ready.";
+  renderRocketHud(true);
+  showPreparedView("runs");
+}
+
+function checkRocketInactivity() {
+  if (!shouldTrackRocketActivity()) return;
+  const last = Number(rocketState.lastActivityAt || 0);
+  if (!last) {
+    markRocketActivity();
+    return;
+  }
+  if (Date.now() - last >= ROCKET_INACTIVITY_LIMIT_MS) {
+    expireRocketRunForInactivity();
+  }
+}
+
+function makeRocketProgressSnapshot() {
+  if (!rocketState || !hasNamedProfile() || rocketState.sessionSaved) return null;
+  if (!rocketState.desiredRounds || (rocketState.roundLogs || []).length >= rocketState.desiredRounds) return null;
+  return {
+    version: 1,
+    playerId: profile.playerId,
+    displayName: profile.displayName,
+    savedAt: Date.now(),
+    desiredRounds: rocketState.desiredRounds,
+    round: rocketState.round,
+    wins: rocketState.wins,
+    start: { ...(rocketState.start || {}) },
+    ship: { ...(rocketState.ship || {}) },
+    score: Math.round(rocketState.score || 0),
+    techPoints: rocketState.techPoints || 0,
+    tech: { ...(rocketState.tech || {}) },
+    telemetry: { ...(rocketState.telemetry || {}) },
+    fuel: rocketState.fuel,
+    time: rocketState.time,
+    roundTimeLimit: rocketState.roundTimeLimit,
+    difficulty: rocketState.difficulty || 1,
+    phase: rocketState.phase,
+    lastActivityAt: rocketState.lastActivityAt || Date.now(),
+    target: rocketState.target,
+    targetIdeal: rocketState.targetIdeal,
+    sideQuest: rocketState.sideQuest,
+    depots: rocketState.depots || [],
+    roundDepotCountries: rocketState.roundDepotCountries || [],
+    roundDepotMarkers: rocketState.roundDepotMarkers || [],
+    roundLogs: rocketState.roundLogs || [],
+    roundTechEarned: rocketState.roundTechEarned || 0,
+    scoreEvents: rocketState.scoreEvents || [],
+    landingLogs: rocketState.landingLogs || [],
+    routeTrail: buildRocketRoundTrace(rocketState.routeTrail || []),
+    allObjectivesBonusAwarded: Boolean(rocketState.allObjectivesBonusAwarded),
+    targetHistory: rocketState.targetHistory || [],
+    targetQueue: rocketCountryQueues.targetQueue || [],
+    depotQueue: rocketCountryQueues.depotQueue || []
+  };
+}
+
+function saveRocketProgressSnapshot(showHud = false) {
+  const snapshot = makeRocketProgressSnapshot();
+  if (!snapshot) {
+    clearRocketProgressSnapshot();
+    return false;
+  }
+  localStorage.setItem(rocketResumeKey, JSON.stringify(snapshot));
+  if (showHud) showSaveHud("Progress saved");
+  return true;
+}
+
+function readRocketProgressSnapshot() {
+  try {
+    const snapshot = JSON.parse(localStorage.getItem(rocketResumeKey));
+    if (!snapshot || snapshot.version !== 1) return null;
+    if (!hasNamedProfile() || snapshot.playerId !== profile.playerId) return null;
+    if (Date.now() - Number(snapshot.savedAt || 0) > 1000 * 60 * 60 * 24 * 10) return null;
+    if (!allowedGameRounds.includes(Number(snapshot.desiredRounds))) return null;
+    if ((snapshot.roundLogs || []).length >= Number(snapshot.desiredRounds)) return null;
+    return snapshot;
+  } catch {
+    return null;
+  }
+}
+
+function restoreRocketProgressSnapshot() {
+  const snapshot = readRocketProgressSnapshot();
+  if (!snapshot) return false;
+  startRocketRun();
+  if (!rocketState) return false;
+  rocketState.desiredRounds = Number(snapshot.desiredRounds) || 10;
+  const loggedRoundCount = Array.isArray(snapshot.roundLogs) ? snapshot.roundLogs.length : 0;
+  const savedRound = Math.max(1, Number(snapshot.round) || 1);
+  const resumeRound = Math.max(savedRound, loggedRoundCount + 1);
+  const shouldAdvanceFromLoggedRound = loggedRoundCount > 0 && resumeRound > savedRound;
+  rocketState.round = Math.max(1, Math.min(rocketState.desiredRounds, resumeRound));
+  rocketState.wins = Math.max(0, Number(snapshot.wins) || 0);
+  const restoredStart = !shouldAdvanceFromLoggedRound && snapshot.start && Number.isFinite(Number(snapshot.start.x)) && Number.isFinite(Number(snapshot.start.y))
+    ? {
+      x: Math.max(0, Math.min(ROCKET_MAP_W, Number(snapshot.start.x))),
+      y: Math.max(0, Math.min(ROCKET_MAP_H, Number(snapshot.start.y))),
+      angle: Number.isFinite(Number(snapshot.start.angle)) ? Number(snapshot.start.angle) : 0
+    }
+    : null;
+  rocketState.score = cleanRankPoints(snapshot.score);
+  rocketState.techPoints = cleanRankPoints(snapshot.techPoints);
+  rocketState.tech = { fuel: 0, speed: 0, turn: 0, sonar: 0, ...(snapshot.tech || {}) };
+  rocketState.telemetry = { peakSpeed: 0, peakAccel: 0, peakDecel: 0, peakTurn: 0, ...(snapshot.telemetry || {}) };
+  rocketState.roundTechEarned = cleanRankPoints(snapshot.roundTechEarned);
+  rocketState.scoreEvents = Array.isArray(snapshot.scoreEvents) ? snapshot.scoreEvents : [];
+  rocketState.landingLogs = Array.isArray(snapshot.landingLogs) ? snapshot.landingLogs : [];
+  rocketState.routeTrail = Array.isArray(snapshot.routeTrail) ? snapshot.routeTrail : [];
+  rocketState.allObjectivesBonusAwarded = Boolean(snapshot.allObjectivesBonusAwarded);
+  rocketState.fuel = Math.max(0, Math.min(100, Number(snapshot.fuel) || 0));
+  rocketState.difficulty = Math.max(1, Number(snapshot.difficulty) || 1);
+  rocketState.time = shouldAdvanceFromLoggedRound ? Math.max(60, 92 - rocketState.difficulty * 8) : Math.max(1, Number(snapshot.time) || 90);
+  rocketState.roundTimeLimit = shouldAdvanceFromLoggedRound ? rocketState.time : Math.max(1, Number(snapshot.roundTimeLimit) || rocketState.time);
+  rocketState.target = shouldAdvanceFromLoggedRound ? pickRocketTarget(rocketState.difficulty) : snapshot.target || pickRocketTarget(rocketState.difficulty);
+  rocketState.targetIdeal = shouldAdvanceFromLoggedRound ? makeRocketTargetIdeal() : snapshot.targetIdeal || makeRocketTargetIdeal();
+  rocketState.sideQuest = shouldAdvanceFromLoggedRound ? pickRocketSideQuest(rocketState.difficulty) : snapshot.sideQuest || pickRocketSideQuest(rocketState.difficulty);
+  rocketState.depots = shouldAdvanceFromLoggedRound
+    ? makeRocketDepots()
+    : Array.isArray(snapshot.depots) && snapshot.depots.length ? snapshot.depots : makeRocketDepots();
+  if (restoredStart) {
+    rocketState.start = restoredStart;
+    const savedShip = snapshot.ship && typeof snapshot.ship === "object" ? snapshot.ship : {};
+    rocketState.ship = {
+      x: Number.isFinite(Number(savedShip.x)) ? Math.max(0, Math.min(ROCKET_MAP_W, Number(savedShip.x))) : restoredStart.x,
+      y: Number.isFinite(Number(savedShip.y)) ? Math.max(0, Math.min(ROCKET_MAP_H, Number(savedShip.y))) : restoredStart.y,
+      vx: Number.isFinite(Number(savedShip.vx)) ? Number(savedShip.vx) : 0,
+      vy: Number.isFinite(Number(savedShip.vy)) ? Number(savedShip.vy) : 0,
+      angle: Number.isFinite(Number(savedShip.angle)) ? Number(savedShip.angle) : restoredStart.angle,
+      altitude: Number.isFinite(Number(savedShip.altitude)) ? Math.max(0, Number(savedShip.altitude)) : 0,
+      throttle: Number.isFinite(Number(savedShip.throttle)) ? Math.max(0, Math.min(1, Number(savedShip.throttle))) : 0,
+      bank: Number.isFinite(Number(savedShip.bank)) ? Number(savedShip.bank) : 0
+    };
+  }
+  rocketState.roundDepotCountries = shouldAdvanceFromLoggedRound
+    ? getRocketDepotCountryList(rocketState.depots)
+    : Array.isArray(snapshot.roundDepotCountries) ? snapshot.roundDepotCountries : getRocketDepotCountryList(rocketState.depots);
+  rocketState.roundDepotMarkers = shouldAdvanceFromLoggedRound
+    ? rocketState.depots.map(serializeRocketDepotMarker)
+    : Array.isArray(snapshot.roundDepotMarkers) && snapshot.roundDepotMarkers.length
+    ? snapshot.roundDepotMarkers
+    : rocketState.depots.map(serializeRocketDepotMarker);
+  rocketState.roundLogs = Array.isArray(snapshot.roundLogs)
+    ? snapshot.roundLogs.map((log) => ({
+      ...log,
+      trace: compactStoredRocketTrace(log.trace),
+      depotMarkers: Array.isArray(log.depotMarkers) ? log.depotMarkers.slice(0, 8) : [],
+      landings: Array.isArray(log.landings) ? log.landings.slice(0, 8) : []
+    }))
+    : [];
+  rocketState.targetHistory = Array.isArray(snapshot.targetHistory) ? snapshot.targetHistory : [];
+  rocketCountryQueues.targetQueue = Array.isArray(snapshot.targetQueue) ? snapshot.targetQueue : rocketCountryQueues.targetQueue;
+  rocketCountryQueues.depotQueue = Array.isArray(snapshot.depotQueue) ? snapshot.depotQueue : rocketCountryQueues.depotQueue;
+  rocketState.targetQueue = rocketCountryQueues.targetQueue;
+  rocketState.depotQueue = rocketCountryQueues.depotQueue;
+  rememberRocketTarget(rocketState.target);
+  rocketState.active = false;
+  rocketState.phase = ["briefing", "takeoff", "cruise"].includes(snapshot.phase) ? snapshot.phase : "briefing";
+  rocketState.lastActivityAt = Date.now();
+  rocketState.lastHeartbeatAt = 0;
+  rocketState.lastHeartbeatActivityAt = 0;
+  rocketState.roundLogged = false;
+  rocketState.sessionSaved = false;
+  updateRocketRoundSetup(false);
+  updateRocketRoundButtons(rocketState.desiredRounds);
+  updateRocketTargetCard(true);
+  renderRocketDepotIntel();
+  if (els.rocketStart) {
+    els.rocketStart.hidden = false;
+    els.rocketStart.textContent = rocketState.phase === "briefing" ? "Resume Takeoff" : "Resume Flight";
+    els.rocketStart.classList.add("is-briefing");
+    els.rocketStart.classList.remove("in-flight");
+  }
+  els.rocketMessage.textContent = `Progress restored at round ${rocketState.round}/${rocketState.desiredRounds}. Begin takeoff when ready.`;
+  renderRocketHud(true);
+  showSaveHud("Progress restored");
+  return true;
+}
+
 function startRocketRun() {
   loadRocketWorldMap();
   loadRocketBoundaryLines();
@@ -2769,7 +2990,8 @@ function startRocketRun() {
     feedback: [],
     flash: null,
     phase: externalRounds ? "briefing" : "setup",
-    targetCardUntil: Infinity,
+    targetCardUntil: 0,
+    targetCardFadeUntil: 0,
     badLandingCooldown: 0,
     last: performance.now(),
     difficulty: 1
@@ -2810,7 +3032,6 @@ function prepareRocketBriefing(rounds) {
   if (!rocketState) startRocketRun();
   rocketState.desiredRounds = rounds;
   rocketState.phase = "briefing";
-  rocketState.targetCardUntil = Infinity;
   rocketState.round = 1;
   rocketState.wins = 0;
   updateRocketRoundSetup(false);
@@ -2934,7 +3155,6 @@ function beginRocketTakeoff() {
   const rect = els.rocketCanvas.getBoundingClientRect();
   rocketState.active = true;
   rocketState.phase = "takeoff";
-  rocketState.targetCardUntil = performance.now() + 4200;
   rocketState.last = performance.now();
   rocketState.mouse = { x: rect.width / 2, y: rect.height / 2 };
   rocketState.mouse.inside = false;
@@ -2974,6 +3194,14 @@ function enterRocketRefuelStop(message) {
 function updateRocketTargetCard(show) {
   if (!els.rocketTargetCard || !rocketState?.target) return;
   els.rocketTargetCard.hidden = !show;
+  els.rocketTargetCard.classList.remove("fading");
+  if (show) {
+    rocketState.targetCardUntil = performance.now() + ROCKET_TARGET_CARD_MS;
+    rocketState.targetCardFadeUntil = rocketState.targetCardUntil + ROCKET_TARGET_CARD_FADE_MS;
+  } else {
+    rocketState.targetCardUntil = 0;
+    rocketState.targetCardFadeUntil = 0;
+  }
   els.rocketTargetName.textContent = rocketState.target.name;
   if (els.rocketTargetMini) els.rocketTargetMini.hidden = !show;
   if (els.rocketTargetMiniName) els.rocketTargetMiniName.textContent = rocketState.target.name;
@@ -2998,6 +3226,19 @@ function updateRocketTargetCard(show) {
       els.rocketTargetMiniFlag.alt = "";
     }
   }
+}
+
+function updateRocketTargetCardVisibility(now = performance.now()) {
+  if (!els.rocketTargetCard || els.rocketTargetCard.hidden || !rocketState) return;
+  const fadeStart = Number(rocketState.targetCardUntil || 0);
+  const fadeEnd = Number(rocketState.targetCardFadeUntil || 0);
+  if (!Number.isFinite(fadeStart) || fadeStart <= 0) return;
+  if (now >= fadeEnd) {
+    els.rocketTargetCard.hidden = true;
+    els.rocketTargetCard.classList.remove("fading");
+    return;
+  }
+  els.rocketTargetCard.classList.toggle("fading", now >= fadeStart);
 }
 
 function getRocketTargetFlagUrl(target = {}) {
@@ -3536,7 +3777,6 @@ function nextRocketRound(success) {
   rocketState.restartTakeoffOnReentry = false;
   rocketState.active = false;
   rocketState.phase = "briefing";
-  rocketState.targetCardUntil = Infinity;
   updateRocketRoundSetup(false);
   updateRocketTargetCard(true);
   if (els.rocketStart) els.rocketStart.textContent = "Begin Takeoff";
@@ -3561,9 +3801,7 @@ function tickRocket(now) {
     return;
   }
   startRocketAnimationLoop();
-  if (els.rocketTargetCard && rocketState.phase !== "briefing" && now > rocketState.targetCardUntil) {
-    els.rocketTargetCard.hidden = true;
-  }
+  updateRocketTargetCardVisibility(now);
   const dt = Math.min(0.033, (now - rocketState.last) / 1000 || 0.016);
   rocketState.last = now;
   if (!rocketState.paused && rocketState.phase !== "result") {
