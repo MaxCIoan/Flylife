@@ -4874,8 +4874,6 @@ function drawRocket() {
   ctx.save();
   ctx.scale(zoom, zoom);
   drawRocketMap(ctx, worldRect, camX, camY);
-  drawRocketDepots(ctx, camX, camY);
-  drawRocketBonusLocations(ctx, camX, camY);
   drawRocketTrail(ctx, camX, camY);
   drawRocketRunway(ctx, camX, camY);
   drawRocketSonar(ctx, worldRect, camX, camY);
