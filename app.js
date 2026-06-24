@@ -409,6 +409,70 @@ function rocketTarget(name, lon, lat, difficulty) {
   return { name, lon, lat, ...worldPoint(lon, lat), difficulty };
 }
 
+function rocketLocationTarget(name, lon, lat, { category = "World Location", targetBonus = 3200, imageLabel = "", difficulty = 5 } = {}) {
+  return {
+    name,
+    lon,
+    lat,
+    ...worldPoint(lon, lat),
+    difficulty,
+    category,
+    targetType: "location",
+    targetBonus,
+    imageLabel: imageLabel || name
+  };
+}
+
+const rocketLocationTargets = [
+  rocketLocationTarget("Carthaginian Carthage", 10.32, 36.85, { category: "Ancient Civilization", targetBonus: 5200, imageLabel: "CARTHAGE" }),
+  rocketLocationTarget("Ancient Egypt North - Giza", 31.13, 29.98, { category: "Ancient Civilization", targetBonus: 4700, imageLabel: "GIZA" }),
+  rocketLocationTarget("Ancient Egypt South - Thebes", 32.64, 25.69, { category: "Ancient Civilization", targetBonus: 5200, imageLabel: "THEBES" }),
+  rocketLocationTarget("Olympian Gods - Mount Olympus", 22.36, 40.08, { category: "Mythic Location", targetBonus: 5600, imageLabel: "OLYMPUS" }),
+  rocketLocationTarget("Macedonia - Pella", 22.52, 40.76, { category: "Ancient Kingdom", targetBonus: 5000, imageLabel: "PELLA" }),
+  rocketLocationTarget("Alexander the Great - Alexandria", 29.91, 31.2, { category: "Historic Figure", targetBonus: 5200, imageLabel: "ALEXANDRIA" }),
+  rocketLocationTarget("Assyrian Nineveh", 43.13, 36.36, { category: "Ancient Civilization", targetBonus: 6000, imageLabel: "NINEVEH" }),
+  rocketLocationTarget("Inca Machu Picchu", -72.55, -13.16, { category: "Ancient Civilization", targetBonus: 6200, imageLabel: "INCA" }),
+  rocketLocationTarget("Maya Tikal", -89.62, 17.22, { category: "Ancient Civilization", targetBonus: 6200, imageLabel: "MAYA" }),
+  rocketLocationTarget("Thai Empire - Ayutthaya", 100.56, 14.36, { category: "Historic Kingdom", targetBonus: 5400, imageLabel: "AYUTTHAYA" }),
+  rocketLocationTarget("Zhou Dynasty - Haojing", 108.78, 34.2, { category: "Ancient Dynasty", targetBonus: 6000, imageLabel: "ZHOU" }),
+  rocketLocationTarget("Shang Dynasty - Anyang", 114.35, 36.1, { category: "Ancient Dynasty", targetBonus: 6000, imageLabel: "SHANG" }),
+  rocketLocationTarget("Shakespeare - Stratford-upon-Avon", -1.71, 52.19, { category: "Cultural Figure", targetBonus: 5200, imageLabel: "SHAKESPEARE" }),
+  rocketLocationTarget("Civil War Richmond", -77.44, 37.54, { category: "Historic City", targetBonus: 4200, imageLabel: "RICHMOND" }),
+  rocketLocationTarget("Pirate Havana", -82.37, 23.11, { category: "Pirate Port", targetBonus: 5000, imageLabel: "HAVANA" }),
+  rocketLocationTarget("Seattle", -122.33, 47.61, { category: "City", targetBonus: 3000, imageLabel: "SEATTLE" }),
+  ...[
+    ["Alabama", "Montgomery", -86.3, 32.38], ["Alaska", "Juneau", -134.42, 58.3],
+    ["Arizona", "Phoenix", -112.07, 33.45], ["Arkansas", "Little Rock", -92.29, 34.75],
+    ["California", "Sacramento", -121.49, 38.58], ["Colorado", "Denver", -104.99, 39.74],
+    ["Connecticut", "Hartford", -72.69, 41.76], ["Delaware", "Dover", -75.52, 39.16],
+    ["Florida", "Tallahassee", -84.28, 30.44], ["Georgia", "Atlanta", -84.39, 33.75],
+    ["Hawaii", "Honolulu", -157.86, 21.31], ["Idaho", "Boise", -116.2, 43.62],
+    ["Illinois", "Springfield", -89.65, 39.78], ["Indiana", "Indianapolis", -86.16, 39.77],
+    ["Iowa", "Des Moines", -93.61, 41.59], ["Kansas", "Topeka", -95.68, 39.05],
+    ["Kentucky", "Frankfort", -84.87, 38.2], ["Louisiana", "Baton Rouge", -91.19, 30.45],
+    ["Maine", "Augusta", -69.78, 44.31], ["Maryland", "Annapolis", -76.49, 38.98],
+    ["Massachusetts", "Boston", -71.06, 42.36], ["Michigan", "Lansing", -84.56, 42.73],
+    ["Minnesota", "Saint Paul", -93.09, 44.95], ["Mississippi", "Jackson", -90.18, 32.3],
+    ["Missouri", "Jefferson City", -92.17, 38.58], ["Montana", "Helena", -112.04, 46.59],
+    ["Nebraska", "Lincoln", -96.69, 40.81], ["Nevada", "Carson City", -119.77, 39.16],
+    ["New Hampshire", "Concord", -71.54, 43.21], ["New Jersey", "Trenton", -74.76, 40.22],
+    ["New Mexico", "Santa Fe", -105.94, 35.69], ["New York", "Albany", -73.76, 42.65],
+    ["North Carolina", "Raleigh", -78.64, 35.78], ["North Dakota", "Bismarck", -100.78, 46.81],
+    ["Ohio", "Columbus", -82.99, 39.96], ["Oklahoma", "Oklahoma City", -97.52, 35.47],
+    ["Oregon", "Salem", -123.03, 44.94], ["Pennsylvania", "Harrisburg", -76.89, 40.27],
+    ["Rhode Island", "Providence", -71.41, 41.82], ["South Carolina", "Columbia", -81.03, 34.0],
+    ["South Dakota", "Pierre", -100.35, 44.37], ["Tennessee", "Nashville", -86.78, 36.16],
+    ["Texas", "Austin", -97.74, 30.27], ["Utah", "Salt Lake City", -111.89, 40.76],
+    ["Vermont", "Montpelier", -72.58, 44.26], ["Virginia", "Richmond", -77.44, 37.54],
+    ["Washington", "Olympia", -122.9, 47.04], ["West Virginia", "Charleston", -81.63, 38.35],
+    ["Wisconsin", "Madison", -89.4, 43.07], ["Wyoming", "Cheyenne", -104.82, 41.14]
+  ].map(([state, capital, lon, lat]) => rocketLocationTarget(`${state} State Capital - ${capital}`, lon, lat, {
+    category: "US State Capital",
+    targetBonus: 2600,
+    imageLabel: state.toUpperCase()
+  }))
+];
+
 function worldPoint(lon, lat, mapW = ROCKET_MAP_W, mapH = ROCKET_MAP_H) {
   return {
     x: (lon + 180) / 360 * mapW,
@@ -498,11 +562,14 @@ function loadRocketCatalog() {
           ...item,
           ...worldPoint(item.lon, item.lat),
           capitalPoint: worldPoint(item.capitalLon ?? item.lon, item.capitalLat ?? item.lat),
-          difficulty: Math.min(5, 1 + Math.floor(index / 50))
-        }));
+          difficulty: item.difficulty || Math.min(5, 1 + Math.floor(index / 50)),
+          targetBonus: Number(item.targetBonus) || 0,
+          category: item.category || "Country"
+        }))
+        .concat(rocketLocationTargets);
     })
     .catch(() => {
-      rocketCatalog = rocketTargets.map((target) => ({
+      rocketCatalog = rocketTargets.concat(rocketLocationTargets).map((target) => ({
         ...target,
         capital: "Capital",
         capitalPoint: { x: target.x, y: target.y }
@@ -515,8 +582,33 @@ function loadRocketCatalog() {
 }
 
 function getRocketPool(difficulty) {
-  const list = rocketCatalog?.length ? rocketCatalog : rocketTargets;
+  const list = rocketCatalog?.length ? rocketCatalog : rocketTargets.concat(rocketLocationTargets);
   return list.filter((target) => !blockedRocketCountries.has(target.name) && (target.lat === undefined || target.lat > -60));
+}
+
+function getRocketTargetBonus(target = {}) {
+  return Math.max(0, Math.round(Number(target.targetBonus) || 0));
+}
+
+function getRocketRouteBaseValue(difficulty = 1, target = {}) {
+  return 1200 + difficulty * 700 + getRocketTargetBonus(target);
+}
+
+function escapeSvgText(value = "") {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;"
+  })[char]);
+}
+
+function makeRocketTargetImage(target = {}) {
+  const label = escapeSvgText(String(target.imageLabel || target.name || "LOCATION").slice(0, 24));
+  const category = escapeSvgText(String(target.category || "World Location").slice(0, 28));
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400"><rect width="640" height="400" fill="#101923"/><path d="M0 285 C120 250 190 320 320 285 S520 245 640 292 V400 H0Z" fill="#28485f"/><circle cx="500" cy="92" r="46" fill="#ffd33d"/><rect x="54" y="62" width="532" height="276" rx="22" fill="none" stroke="#22d9f2" stroke-width="8"/><text x="320" y="186" fill="#f5fbff" font-family="Arial, sans-serif" font-size="54" font-weight="800" text-anchor="middle">${label}</text><text x="320" y="246" fill="#9fd6e8" font-family="Arial, sans-serif" font-size="28" font-weight="700" text-anchor="middle">${category}</text></svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
 function rocketCanonicalCountryName(name = "") {
@@ -2877,16 +2969,17 @@ function updateRocketTargetCard(show) {
   if (els.rocketTargetMini) els.rocketTargetMini.hidden = !show;
   if (els.rocketTargetMiniName) els.rocketTargetMiniName.textContent = rocketState.target.name;
   if (els.rocketTargetMiniValue) {
-    const value = 1200 + rocketState.difficulty * 700;
-    els.rocketTargetMiniValue.textContent = `Worth ${formatScore(value)} + timer bonus`;
+    const value = getRocketRouteBaseValue(rocketState.difficulty, rocketState.target);
+    const category = rocketState.target.category || "Country";
+    els.rocketTargetMiniValue.textContent = `${category} | Worth ${formatScore(value)} + timer bonus`;
   }
   const flagUrl = getRocketTargetFlagUrl(rocketState.target);
   if (flagUrl) {
     els.rocketTargetFlag.src = flagUrl;
-    els.rocketTargetFlag.alt = `${rocketState.target.name} flag`;
+    els.rocketTargetFlag.alt = `${rocketState.target.name} briefing image`;
     if (els.rocketTargetMiniFlag) {
       els.rocketTargetMiniFlag.src = flagUrl;
-      els.rocketTargetMiniFlag.alt = `${rocketState.target.name} flag`;
+      els.rocketTargetMiniFlag.alt = `${rocketState.target.name} briefing image`;
     }
   } else {
     els.rocketTargetFlag.removeAttribute("src");
@@ -2899,13 +2992,16 @@ function updateRocketTargetCard(show) {
 }
 
 function getRocketTargetFlagUrl(target = {}) {
+  if (target.imageUrl) return target.imageUrl;
+  if (target.image) return target.image;
   if (target.flag) return target.flag;
   const code = target.code || flags.find((flag) => flag.name === target.name)?.code;
-  return code ? getFlagUrl(code) : "";
+  if (code) return getFlagUrl(code);
+  return target.targetType === "location" ? makeRocketTargetImage(target) : "";
 }
 
 function randomRocketStart() {
-  const anchors = rocketCatalog?.length ? rocketCatalog : rocketTargets;
+  const anchors = rocketCatalog?.length ? rocketCatalog : rocketTargets.concat(rocketLocationTargets);
   const anchor = anchors[Math.floor(Math.random() * anchors.length)];
   const mapW = rocketState?.mapW || ROCKET_MAP_W;
   const mapH = rocketState?.mapH || ROCKET_MAP_H;
@@ -3330,13 +3426,14 @@ function nextRocketRound(success) {
     const timeBonus = Math.round(rocketState.time * 120);
     const difficultyBonus = rocketState.difficulty * 700;
     const fuelBonus = Math.round(rocketState.fuel * 18);
-    const routeBonus = 1200 + timeBonus + difficultyBonus + fuelBonus;
+    const targetBonus = getRocketTargetBonus(rocketState.target);
+    const routeBonus = 1200 + timeBonus + difficultyBonus + fuelBonus + targetBonus;
     rocketState.score += routeBonus;
     rocketState.scoreEvents.push({
       round: rocketState.round,
       type: "Route bonus",
       points: routeBonus,
-      detail: `1,200 base + ${formatScore(timeBonus)} timer + ${formatScore(difficultyBonus)} difficulty + ${formatScore(fuelBonus)} fuel`
+      detail: `1,200 base + ${formatScore(timeBonus)} timer + ${formatScore(difficultyBonus)} difficulty + ${formatScore(fuelBonus)} fuel${targetBonus ? ` + ${formatScore(targetBonus)} ${rocketState.target.category || "target"} bonus` : ""}`
     });
     awardRocketTechPoints(1 + Math.floor(rocketState.difficulty / 3));
     rocketState.fuel = Math.min(100, rocketState.fuel + 8 + rocketState.tech.fuel * 2.4);
