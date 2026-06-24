@@ -338,6 +338,15 @@ function rocketRunHasScoringEvent(run = {}) {
     ));
 }
 
+function rocketRunHasRenderableDetails(run = {}) {
+  return Array.isArray(run.logs)
+    && run.logs.some((log) => (
+      (Array.isArray(log?.trace) && log.trace.length > 1)
+      || (Array.isArray(log?.landings) && log.landings.length > 0)
+      || (Number(log?.targetX) > 0 && Number(log?.targetY) > 0)
+    ));
+}
+
 function estimateRankPointsFromHistory(candidate = {}) {
   const flagPoints = (candidate.runs || [])
     .filter(flagRunHasEvent)
@@ -940,7 +949,7 @@ function compactStoredRocketTrace(trace = []) {
 
 function compactRocketRunHistory(runs = []) {
   return (Array.isArray(runs) ? runs : [])
-    .filter((run) => run.source === "agent-simulation" || rocketRunHasScoringEvent(run))
+    .filter((run) => run.source === "agent-simulation" || (rocketRunHasScoringEvent(run) && rocketRunHasRenderableDetails(run)))
     .slice(0, 40)
     .map((run) => ({
     ...run,
