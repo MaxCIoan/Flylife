@@ -339,12 +339,16 @@ function rocketRunHasScoringEvent(run = {}) {
 }
 
 function rocketRunHasRenderableDetails(run = {}) {
-  return Array.isArray(run.logs)
-    && run.logs.some((log) => (
-      (Array.isArray(log?.trace) && log.trace.length > 1)
-      || (Array.isArray(log?.landings) && log.landings.length > 0)
-      || (Number(log?.targetX) > 0 && Number(log?.targetY) > 0)
-    ));
+  const logs = Array.isArray(run.logs) ? run.logs : [];
+  const hasMapRoute = logs.some((log) =>
+    (Array.isArray(log?.trace) && log.trace.length > 1)
+    || (Number(log?.targetX) > 0 && Number(log?.targetY) > 0)
+  );
+  const hasDepotStatus = logs.some((log) =>
+    (Array.isArray(log?.landings) && log.landings.length > 0)
+    || (Array.isArray(log?.depotMarkers) && log.depotMarkers.length > 0)
+  );
+  return hasMapRoute && hasDepotStatus;
 }
 
 function estimateRankPointsFromHistory(candidate = {}) {
