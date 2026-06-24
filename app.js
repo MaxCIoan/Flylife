@@ -6535,7 +6535,11 @@ function normalizeRocketLogView(view, mapW, mapH) {
 }
 
 function makeRocketRouteView(log = {}, mapW = ROCKET_MAP_W, mapH = ROCKET_MAP_H) {
-  const points = (log.trace || []).filter((point) => Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y)));
+  const points = [
+    ...(log.trace || []),
+    ...(getRocketDepotMarkersForLog(log) || []),
+    ...(Number(log.targetX) > 0 && Number(log.targetY) > 0 ? [{ x: log.targetX, y: log.targetY }] : [])
+  ].filter((point) => Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y)));
   if (!points.length) return makeRocketLogView(mapW, mapH);
   const xs = points.map((point) => Number(point.x));
   const ys = points.map((point) => Number(point.y));
@@ -6813,7 +6817,7 @@ function drawRocketLogMap(canvas, logs, mapW, mapH, selected = "all", view = nul
       ctx.font = "800 10px system-ui";
       ctx.fillText(String(log.round), tx + 7, ty - 5);
     }
-    if (isSelected) drawRocketLogDepotStatusMarkers(ctx, log, viewport, selectedDepot);
+    if (selected === "all" || isSelected) drawRocketLogDepotStatusMarkers(ctx, log, viewport, isSelected ? selectedDepot : null);
     ctx.globalAlpha = 1;
   });
   if (viewport.zoom > 1.02) {
