@@ -1714,6 +1714,16 @@ body:has(#rocketView.active) .topbar {
   background: rgba(255, 61, 90, 0.12);
 }
 
+.rocket-depot-dot.bonus {
+  color: #ffc55a;
+  background: rgba(255, 197, 90, 0.12);
+}
+
+.rocket-depot-dot.bonus.hit {
+  color: #ffe6a8;
+  background: rgba(255, 197, 90, 0.2);
+}
+
 .rocket-depot-dot.selected,
 .rocket-depot-dot:hover {
   box-shadow: 0 0 0 0.18rem rgba(34, 217, 242, 0.28);
