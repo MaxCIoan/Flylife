@@ -57,6 +57,8 @@ const ROCKET_MAP_H = 10800;
 const ROCKET_TARGET_RADIUS = 86;
 const ROCKET_DEPOT_RADIUS = 104;
 const ROCKET_OBJECTIVE_SAMPLE_SECONDS = 1;
+const ROCKET_TARGET_CARD_MS = 5200;
+const ROCKET_TARGET_CARD_FADE_MS = 1600;
 
 const ranks = [
   { name: "Unranked", points: 0 },
@@ -2785,7 +2787,8 @@ function startRocketRun() {
     feedback: [],
     flash: null,
     phase: externalRounds ? "briefing" : "setup",
-    targetCardUntil: Infinity,
+    targetCardUntil: 0,
+    targetCardFadeUntil: 0,
     badLandingCooldown: 0,
     last: performance.now(),
     difficulty: 1
@@ -2826,7 +2829,6 @@ function prepareRocketBriefing(rounds) {
   if (!rocketState) startRocketRun();
   rocketState.desiredRounds = rounds;
   rocketState.phase = "briefing";
-  rocketState.targetCardUntil = Infinity;
   rocketState.round = 1;
   rocketState.wins = 0;
   updateRocketRoundSetup(false);
@@ -2950,7 +2952,6 @@ function beginRocketTakeoff() {
   const rect = els.rocketCanvas.getBoundingClientRect();
   rocketState.active = true;
   rocketState.phase = "takeoff";
-  rocketState.targetCardUntil = performance.now() + 4200;
   rocketState.last = performance.now();
   rocketState.mouse = { x: rect.width / 2, y: rect.height / 2 };
   rocketState.mouse.inside = false;
@@ -2990,6 +2991,14 @@ function enterRocketRefuelStop(message) {
 function updateRocketTargetCard(show) {
   if (!els.rocketTargetCard || !rocketState?.target) return;
   els.rocketTargetCard.hidden = !show;
+  els.rocketTargetCard.classList.remove("fading");
+  if (show) {
+    rocketState.targetCardUntil = performance.now() + ROCKET_TARGET_CARD_MS;
+    rocketState.targetCardFadeUntil = rocketState.targetCardUntil + ROCKET_TARGET_CARD_FADE_MS;
+  } else {
+    rocketState.targetCardUntil = 0;
+    rocketState.targetCardFadeUntil = 0;
+  }
   els.rocketTargetName.textContent = rocketState.target.name;
   if (els.rocketTargetMini) els.rocketTargetMini.hidden = !show;
   if (els.rocketTargetMiniName) els.rocketTargetMiniName.textContent = rocketState.target.name;
@@ -3014,6 +3023,19 @@ function updateRocketTargetCard(show) {
       els.rocketTargetMiniFlag.alt = "";
     }
   }
+}
+
+function updateRocketTargetCardVisibility(now = performance.now()) {
+  if (!els.rocketTargetCard || els.rocketTargetCard.hidden || !rocketState) return;
+  const fadeStart = Number(rocketState.targetCardUntil || 0);
+  const fadeEnd = Number(rocketState.targetCardFadeUntil || 0);
+  if (!Number.isFinite(fadeStart) || fadeStart <= 0) return;
+  if (now >= fadeEnd) {
+    els.rocketTargetCard.hidden = true;
+    els.rocketTargetCard.classList.remove("fading");
+    return;
+  }
+  els.rocketTargetCard.classList.toggle("fading", now >= fadeStart);
 }
 
 function getRocketTargetFlagUrl(target = {}) {
@@ -3552,7 +3574,6 @@ function nextRocketRound(success) {
   rocketState.restartTakeoffOnReentry = false;
   rocketState.active = false;
   rocketState.phase = "briefing";
-  rocketState.targetCardUntil = Infinity;
   updateRocketRoundSetup(false);
   updateRocketTargetCard(true);
   if (els.rocketStart) els.rocketStart.textContent = "Begin Takeoff";
@@ -3577,9 +3598,7 @@ function tickRocket(now) {
     return;
   }
   startRocketAnimationLoop();
-  if (els.rocketTargetCard && rocketState.phase !== "briefing" && now > rocketState.targetCardUntil) {
-    els.rocketTargetCard.hidden = true;
-  }
+  updateRocketTargetCardVisibility(now);
   const dt = Math.min(0.033, (now - rocketState.last) / 1000 || 0.016);
   rocketState.last = now;
   if (!rocketState.paused && rocketState.phase !== "result") {
