@@ -216,6 +216,7 @@ const rocketWikiImageCache = new Map();
 let rocketMapCache = null;
 let rocketMiniMapCache = null;
 let rocketBlueWorldMapCache = null;
+let rocketLogMapRedrawTimer = 0;
 let rocketImageryTileCache = new Map();
 let rocketImageryTileSerial = 0;
 let rocketImageryActiveLoads = 0;
@@ -246,8 +247,8 @@ const ROCKET_NAV_CHECK_INTERVAL = 0.14;
 const ROCKET_INACTIVITY_LIMIT_MS = 15 * 60 * 1000;
 const ROCKET_HEARTBEAT_INTERVAL_MS = 60 * 1000;
 const ROCKET_TINY_COUNTRY_DOT_MAX = 30;
-const ROCKET_BLUE_MAP_W = 2880;
-const ROCKET_BLUE_MAP_H = 1440;
+const ROCKET_BLUE_MAP_W = 5760;
+const ROCKET_BLUE_MAP_H = 2880;
 rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260621inactive1";
 rocketMiniMapImage.addEventListener("load", () => { rocketMiniMapCache = null; });
 let rocketCountryOverlayEnabled = false;
@@ -7166,7 +7167,7 @@ function rocketEventText(event = {}) {
   return `${event.label || "No major event"}${event.value ? ` ${event.value}` : ""}`;
 }
 
-function rocketLogDetailHtml(log = {}) {
+function rocketLogDetailHtml(log = {}, index = 0) {
   const status = log.success ? "reached" : "missed";
   const objectiveCount = getRocketRoundObjectiveCount(log);
   const objectiveTotal = getRocketRoundObjectiveTotal(log);
@@ -7176,7 +7177,7 @@ function rocketLogDetailHtml(log = {}) {
   const fuel = Number(log.fuel || 0);
   const time = Number(log.time || 0);
   return `
-    <article class="rocket-result-row ${status}">
+    <article class="rocket-result-row ${status}" data-route-result-index="${index}">
       <strong>Round ${log.round || "?"}: ${flag}${target}</strong>
       <span class="${log.success ? "round-good" : "round-bad"}">${log.success ? "Reached" : "Missed"} | Time ${Math.max(0, time).toFixed(1)}s | Score ${formatScore(log.score || 0)}</span>
       <small>Fuel ${fuel.toFixed(0)}% | Route locations ${objectiveCount}${objectiveTotal ? ` / ${objectiveTotal}` : ""} | TP +${log.techEarned || 0}</small>
@@ -7186,9 +7187,9 @@ function rocketLogDetailHtml(log = {}) {
   `;
 }
 
-function renderRocketResultRow(log) {
+function renderRocketResultRow(log, index = 0) {
   const template = document.createElement("template");
-  template.innerHTML = rocketLogDetailHtml(log).trim();
+  template.innerHTML = rocketLogDetailHtml(log, index).trim();
   const row = template.content.firstElementChild;
   return row;
 }
@@ -7266,6 +7267,29 @@ function setupRocketRouteInspector(root, run) {
     redraw(true, !options.immediate);
   }
 
+  function focusRocketRouteObjective(routeIndex, objectiveIndex, options = {}) {
+    if (!logs[routeIndex]) return false;
+    selected = Number(routeIndex);
+    selectedDepot = Number(objectiveIndex);
+    toolbar?.querySelectorAll("[data-route-index]").forEach((button) => {
+      button.classList.toggle("selected", button.dataset.routeIndex === String(selected));
+    });
+    const routeSelect = toolbar?.querySelector("[data-route-select]");
+    if (routeSelect) routeSelect.value = String(selected);
+    const marker = getRocketObjectiveMarkersForLog(logs[selected])[selectedDepot];
+    if (marker && Number.isFinite(Number(marker.x)) && Number.isFinite(Number(marker.y))) {
+      view = makeRocketLogView(mapW, mapH, {
+        zoom: Math.max(options.zoom || 3.1, view.zoom || 1),
+        cx: Number(marker.x),
+        cy: Number(marker.y)
+      });
+    } else {
+      view = makeRocketRouteView(logs[selected], mapW, mapH);
+    }
+    redraw(true, true);
+    return true;
+  }
+
   if (toolbar) {
     toolbar.innerHTML = `
       <button type="button" class="selected" data-route-index="all">All Routes</button>
@@ -7290,17 +7314,18 @@ function setupRocketRouteInspector(root, run) {
     meta.onclick = (event) => {
       const dot = event.target.closest?.("[data-depot-index]");
       if (!dot || selected === "all") return;
-      selectedDepot = Number(dot.dataset.depotIndex);
-      const marker = getRocketObjectiveMarkersForLog(logs[selected])[selectedDepot];
-      if (marker && Number.isFinite(Number(marker.x)) && Number.isFinite(Number(marker.y))) {
-        view = makeRocketLogView(mapW, mapH, {
-          zoom: Math.max(3.1, view.zoom || 1),
-          cx: Number(marker.x),
-          cy: Number(marker.y)
-        });
-      }
-      redraw(true, true);
+      focusRocketRouteObjective(selected, Number(dot.dataset.depotIndex));
     };
+  }
+  const detailsRoot = root.closest("section")?.querySelector("#rocketResultDetails, [data-rocket-result-details]");
+  if (detailsRoot && detailsRoot.dataset.routeObjectiveClickBound !== "1") {
+    detailsRoot.dataset.routeObjectiveClickBound = "1";
+    detailsRoot.addEventListener("click", (event) => {
+    const dot = event.target.closest?.("[data-depot-index]");
+    const row = event.target.closest?.("[data-route-result-index]");
+    if (!dot || !row) return;
+    focusRocketRouteObjective(Number(row.dataset.routeResultIndex), Number(dot.dataset.depotIndex));
+    });
   }
   canvas.onwheel = (event) => {
     event.preventDefault();
@@ -7337,16 +7362,13 @@ function setupRocketRouteInspector(root, run) {
     if (selected !== "all") {
       const objectiveIndex = pickRocketObjectiveFromCanvas(canvas, logs[selected], mapW, mapH, event, view);
       if (objectiveIndex != null) {
-        selectedDepot = objectiveIndex;
-        const marker = getRocketObjectiveMarkersForLog(logs[selected])[selectedDepot];
-        if (marker) {
-          view = makeRocketLogView(mapW, mapH, {
-            zoom: Math.max(3.1, view.zoom || 1),
-            cx: Number(marker.x),
-            cy: Number(marker.y)
-          });
-        }
-        redraw(true, true);
+        focusRocketRouteObjective(selected, objectiveIndex);
+        return;
+      }
+    } else {
+      const hitObjective = pickRocketObjectiveFromCanvasLogs(canvas, logs, mapW, mapH, event, view);
+      if (hitObjective) {
+        focusRocketRouteObjective(hitObjective.routeIndex, hitObjective.objectiveIndex);
         return;
       }
     }
@@ -7395,6 +7417,15 @@ function setupRocketRouteInspector(root, run) {
       if (objectiveIndex != null) {
         const marker = getRocketObjectiveMarkersForLog(logs[selected])[objectiveIndex];
         hover.innerHTML = rocketDepotHoverHtml(marker, objectiveIndex);
+        positionRocketRouteHover(canvas, hover, event);
+        hover.hidden = false;
+        return;
+      }
+    } else {
+      const hitObjective = pickRocketObjectiveFromCanvasLogs(canvas, logs, mapW, mapH, event, view, 18);
+      if (hitObjective) {
+        const marker = getRocketObjectiveMarkersForLog(logs[hitObjective.routeIndex])[hitObjective.objectiveIndex];
+        hover.innerHTML = rocketDepotHoverHtml(marker, hitObjective.objectiveIndex);
         positionRocketRouteHover(canvas, hover, event);
         hover.hidden = false;
         return;
@@ -7697,6 +7728,23 @@ function pickRocketObjectiveFromCanvas(canvas, log, mapW, mapH, event, view = nu
   return best.distance <= radius ? best.index : null;
 }
 
+function pickRocketObjectiveFromCanvasLogs(canvas, logs = [], mapW, mapH, event, view = null, radius = 18) {
+  const rect = canvas.getBoundingClientRect();
+  const x = (event.clientX - rect.left) * (canvas.width / rect.width);
+  const y = (event.clientY - rect.top) * (canvas.height / rect.height);
+  const viewport = getRocketLogViewport(canvas, mapW, mapH, view);
+  let best = { routeIndex: null, objectiveIndex: null, distance: Infinity };
+  (logs || []).forEach((log, routeIndex) => {
+    getRocketObjectiveMarkersForLog(log).forEach((marker, objectiveIndex) => {
+      if (!Number.isFinite(Number(marker.x)) || !Number.isFinite(Number(marker.y))) return;
+      const point = rocketProjectLogPoint(marker, viewport);
+      const distance = Math.hypot(point.x - x, point.y - y);
+      if (distance < best.distance) best = { routeIndex, objectiveIndex, distance };
+    });
+  });
+  return best.distance <= radius ? best : null;
+}
+
 function getRouteHitDistance(trace, x, y, viewport) {
   let best = { distance: Infinity, progress: 0 };
   let previous = null;
@@ -7734,19 +7782,19 @@ function pointToSegmentDistance(px, py, ax, ay, bx, by) {
 }
 
 function drawRocketLogMap(canvas, logs, mapW, mapH, selected = "all", view = null, selectedDepot = null) {
+  resizeRocketLogCanvas(canvas);
   const ctx = canvas.getContext("2d");
   const w = canvas.width;
   const h = canvas.height;
   const viewport = getRocketLogViewport(canvas, mapW, mapH, view);
   ctx.clearRect(0, 0, w, h);
-  const base = getRocketBlueWorldMapBase(ROCKET_BLUE_MAP_W, ROCKET_BLUE_MAP_H, mapW, mapH);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  const sx = viewport.minX / mapW * base.width;
-  const sy = viewport.minY / mapH * base.height;
-  const sw = (viewport.maxX - viewport.minX) / mapW * base.width;
-  const sh = (viewport.maxY - viewport.minY) / mapH * base.height;
-  ctx.drawImage(base, sx, sy, sw, sh, 0, 0, w, h);
+  const baseStatus = drawRocketLogMapBase(ctx, w, h, viewport, mapW, mapH);
+  if (baseStatus.visibleTiles && baseStatus.paintedTiles < baseStatus.visibleTiles && !rocketLogMapRedrawTimer) {
+    rocketLogMapRedrawTimer = window.setTimeout(() => {
+      rocketLogMapRedrawTimer = 0;
+      if (canvas.isConnected) drawRocketLogMap(canvas, logs, mapW, mapH, selected, view, selectedDepot);
+    }, 180);
+  }
 
   ctx.strokeStyle = "rgba(255,255,255,.1)";
   ctx.lineWidth = 1;
@@ -7824,6 +7872,56 @@ function drawRocketLogMap(canvas, logs, mapW, mapH, selected = "all", view = nul
   ctx.strokeStyle = "rgba(255,255,255,.24)";
   ctx.lineWidth = 2;
   ctx.strokeRect(1, 1, w - 2, h - 2);
+}
+
+function resizeRocketLogCanvas(canvas) {
+  const rect = canvas.getBoundingClientRect();
+  const ratio = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+  const width = Math.max(900, Math.round((rect.width || canvas.clientWidth || 900) * ratio));
+  const height = Math.max(430, Math.round((rect.height || canvas.clientHeight || 430) * ratio));
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+}
+
+function drawRocketLogMapBase(ctx, w, h, viewport, mapW, mapH) {
+  const base = getRocketBlueWorldMapBase(ROCKET_BLUE_MAP_W, ROCKET_BLUE_MAP_H, mapW, mapH);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  const sx = viewport.minX / mapW * base.width;
+  const sy = viewport.minY / mapH * base.height;
+  const sw = (viewport.maxX - viewport.minX) / mapW * base.width;
+  const sh = (viewport.maxY - viewport.minY) / mapH * base.height;
+  ctx.drawImage(base, sx, sy, sw, sh, 0, 0, w, h);
+  const tileSize = ROCKET_IMAGERY_TILE_SIZE;
+  const minTileX = Math.max(0, Math.floor(viewport.minX / tileSize));
+  const maxTileX = Math.min(Math.ceil(mapW / tileSize) - 1, Math.floor(viewport.maxX / tileSize));
+  const minTileY = Math.max(0, Math.floor(viewport.minY / tileSize));
+  const maxTileY = Math.min(Math.ceil(mapH / tileSize) - 1, Math.floor(viewport.maxY / tileSize));
+  let visibleTiles = 0;
+  let paintedTiles = 0;
+  for (let ty = minTileY; ty <= maxTileY; ty += 1) {
+    for (let tx = minTileX; tx <= maxTileX; tx += 1) {
+      visibleTiles += 1;
+      const tile = getRocketImageryTile(tx, ty, 760);
+      if (!tile?.image || tile.status !== "loaded") continue;
+      paintedTiles += 1;
+      const worldX = tx * tileSize;
+      const worldY = ty * tileSize;
+      const worldW = Math.min(tileSize, mapW - worldX);
+      const worldH = Math.min(tileSize, mapH - worldY);
+      const dx = (worldX - viewport.minX) * viewport.scaleX;
+      const dy = (worldY - viewport.minY) * viewport.scaleY;
+      const dw = worldW * viewport.scaleX;
+      const dh = worldH * viewport.scaleY;
+      ctx.drawImage(tile.image, dx, dy, dw, dh);
+    }
+  }
+  if (visibleTiles && paintedTiles < visibleTiles) {
+    startRocketImageryPendingLoads();
+  }
+  return { visibleTiles, paintedTiles };
 }
 
 function drawRocketLogDepotStatusMarkers(ctx, log, viewport, selectedDepot = null) {
