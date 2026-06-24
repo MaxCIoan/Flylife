@@ -210,6 +210,7 @@ let rocketBoundaryLines = null;
 let rocketBoundaryLoading = false;
 let rocketCatalog = null;
 let rocketCatalogLoading = false;
+const rocketWikiImageCache = new Map();
 let rocketMapCache = null;
 let rocketMiniMapCache = null;
 let rocketBlueWorldMapCache = null;
@@ -455,7 +456,7 @@ function commonsImageUrl(filename, width = 720) {
   return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(filename)}?width=${width}`;
 }
 
-function rocketLocationTarget(name, lon, lat, { category = "World Location", targetBonus = 3200, imageLabel = "", imageUrl = "", difficulty = 5 } = {}) {
+function rocketLocationTarget(name, lon, lat, { category = "World Location", targetBonus = 3200, imageLabel = "", imageUrl = "", wikiTitle = "", difficulty = 5 } = {}) {
   return {
     name,
     lon,
@@ -466,8 +467,17 @@ function rocketLocationTarget(name, lon, lat, { category = "World Location", tar
     targetType: "location",
     targetBonus,
     imageLabel: imageLabel || name,
-    imageUrl
+    imageUrl,
+    wikiTitle
   };
+}
+
+function rocketLocationTargetGroup(entries, defaults = {}) {
+  return entries.map(([name, lon, lat, imageLabel, wikiTitle]) => rocketLocationTarget(name, lon, lat, {
+    ...defaults,
+    imageLabel,
+    wikiTitle: wikiTitle || name
+  }));
 }
 
 const rocketLocationTargets = [
@@ -500,6 +510,122 @@ const rocketLocationTargets = [
   rocketLocationTarget("Catalonia Flag - Barcelona", 2.17, 41.39, { category: "Region Flag", targetBonus: 3800, imageLabel: "CATALONIA", imageUrl: commonsImageUrl("Flag of Catalonia.svg") }),
   rocketLocationTarget("Quebec Flag - Quebec City", -71.21, 46.81, { category: "Region Flag", targetBonus: 3600, imageLabel: "QUEBEC", imageUrl: commonsImageUrl("Flag of Quebec.svg") }),
   rocketLocationTarget("Bavaria Flag - Munich", 11.58, 48.14, { category: "Region Flag", targetBonus: 3600, imageLabel: "BAVARIA", imageUrl: commonsImageUrl("Flag of Bavaria (lozengy).svg") }),
+  ...rocketLocationTargetGroup([
+    ["Wright Brothers - Kitty Hawk", -75.67, 36.02, "WRIGHT", "Wright brothers"],
+    ["Henry Ford - Detroit", -83.05, 42.33, "FORD", "Henry Ford"],
+    ["Winston Churchill - Blenheim Palace", -1.36, 51.84, "CHURCHILL", "Winston Churchill"],
+    ["Dwight Eisenhower - Denison", -96.54, 33.76, "EISENHOWER", "Dwight D. Eisenhower"],
+    ["Carcassonne Walled City", 2.35, 43.21, "CARCASSONNE", "Cite de Carcassonne"],
+    ["Chateau de Chambord", 1.52, 47.62, "CHAMBORD", "Chateau de Chambord"],
+    ["Chateau de Chenonceau", 1.07, 47.32, "CHENONCEAU", "Chateau de Chenonceau"],
+    ["Mont Saint-Michel", -1.51, 48.64, "MONT ST-MICHEL", "Mont-Saint-Michel"],
+    ["Palace of Versailles", 2.12, 48.80, "VERSAILLES", "Palace of Versailles"],
+    ["Chateau de Pierrefonds", 2.98, 49.35, "PIERREFONDS", "Chateau de Pierrefonds"]
+  ], { category: "Historic / Social Landmark", targetBonus: 4600 }),
+  ...rocketLocationTargetGroup([
+    ["Sumer - Uruk", 45.64, 31.32, "URUK", "Uruk"],
+    ["Babylon", 44.42, 32.54, "BABYLON", "Babylon"],
+    ["Phoenician Tyre", 35.20, 33.27, "TYRE", "Tyre, Lebanon"],
+    ["Hittite Hattusa", 34.62, 40.02, "HATTUSA", "Hattusa"],
+    ["Persian Persepolis", 52.89, 29.94, "PERSEPOLIS", "Persepolis"],
+    ["Aksumite Empire - Axum", 38.72, 14.13, "AKSUM", "Axum"],
+    ["Khmer Empire - Angkor Wat", 103.87, 13.41, "ANGKOR", "Angkor Wat"],
+    ["Olmec La Venta", -94.04, 18.10, "OLMEC", "La Venta"],
+    ["Norte Chico - Caral", -77.52, -10.89, "CARAL", "Caral"],
+    ["Rapa Nui Moai", -109.35, -27.12, "RAPA NUI", "Moai"],
+    ["Great Zimbabwe", 30.93, -20.27, "ZIMBABWE", "Great Zimbabwe"],
+    ["Nabataean Petra", 35.44, 30.33, "PETRA", "Petra"],
+    ["Minoan Knossos", 25.16, 35.30, "KNOSSOS", "Knossos"],
+    ["Mycenaean Mycenae", 22.76, 37.73, "MYCENAE", "Mycenae"],
+    ["Etruscan Tarquinia", 11.76, 42.25, "ETRUSCAN", "Tarquinia"]
+  ], { category: "Ancient Civilization", targetBonus: 6100 }),
+  ...rocketLocationTargetGroup([
+    ["Grand Canyon", -112.11, 36.10, "GRAND CANYON", "Grand Canyon"],
+    ["Yellowstone Caldera", -110.59, 44.43, "YELLOWSTONE", "Yellowstone Caldera"],
+    ["Chicxulub Crater", -89.52, 21.40, "CHICXULUB", "Chicxulub crater"],
+    ["Vredefort Crater", 27.26, -27.00, "VREDEFORT", "Vredefort crater"],
+    ["Giant's Causeway", -6.51, 55.24, "CAUSEWAY", "Giant's Causeway"],
+    ["Uluru", 131.04, -25.34, "ULURU", "Uluru"],
+    ["Ngorongoro Crater", 35.59, -3.16, "NGORONGORO", "Ngorongoro Conservation Area"],
+    ["Salar de Uyuni", -67.49, -20.13, "UYUNI", "Salar de Uyuni"]
+  ], { category: "Geological Landmark", targetBonus: 5000 }),
+  ...rocketLocationTargetGroup([
+    ["Battle of Marathon", 24.00, 38.15, "MARATHON", "Battle of Marathon"],
+    ["Battle of Thermopylae", 22.54, 38.80, "THERMOPYLAE", "Battle of Thermopylae"],
+    ["Battle of Gaugamela", 43.36, 36.36, "GAUGAMELA", "Battle of Gaugamela"],
+    ["Battle of Cannae", 16.15, 41.30, "CANNAE", "Battle of Cannae"],
+    ["Battle of Hastings", 0.49, 50.91, "HASTINGS", "Battle of Hastings"],
+    ["Battle of Agincourt", 2.14, 50.46, "AGINCOURT", "Battle of Agincourt"],
+    ["Battle of Waterloo", 4.40, 50.68, "WATERLOO", "Battle of Waterloo"],
+    ["Battle of Gettysburg", -77.23, 39.83, "GETTYSBURG", "Battle of Gettysburg"],
+    ["D-Day Normandy", -0.86, 49.37, "D-DAY", "Normandy landings"],
+    ["Battle of Stalingrad", 44.51, 48.71, "STALINGRAD", "Battle of Stalingrad"],
+    ["Battle of Midway", -177.37, 28.21, "MIDWAY", "Battle of Midway"],
+    ["Siege of Yorktown", -76.51, 37.24, "YORKTOWN", "Siege of Yorktown"],
+    ["Battle of Saratoga", -73.64, 43.00, "SARATOGA", "Battles of Saratoga"],
+    ["Battle of Verdun", 5.43, 49.16, "VERDUN", "Battle of Verdun"],
+    ["Battle of the Somme", 2.70, 50.01, "SOMME", "Battle of the Somme"],
+    ["Battle of Bunker Hill", -71.06, 42.38, "BUNKER HILL", "Battle of Bunker Hill"]
+  ], { category: "Famous Battle", targetBonus: 5600 }),
+  ...rocketLocationTargetGroup([
+    ["Tyrannosaurus - Hell Creek", -104.05, 46.92, "T-REX", "Tyrannosaurus"],
+    ["Triceratops - Montana Fossils", -108.50, 47.00, "TRICERATOPS", "Triceratops"],
+    ["Woolly Mammoth - Siberia", 129.73, 62.03, "MAMMOTH", "Woolly mammoth"],
+    ["Dodo - Mauritius", 57.55, -20.16, "DODO", "Dodo"],
+    ["Thylacine - Hobart", 147.33, -42.88, "THYLACINE", "Thylacine"],
+    ["Passenger Pigeon - Cincinnati Zoo", -84.51, 39.14, "PIGEON", "Passenger pigeon"],
+    ["Great Auk - Eldey", -22.99, 63.74, "GREAT AUK", "Great auk"],
+    ["Saber-Toothed Cat - La Brea", -118.36, 34.06, "SMILODON", "Smilodon"],
+    ["Megalodon - Calvert Cliffs", -76.42, 38.41, "MEGALODON", "Megalodon"],
+    ["Argentinosaurus - Patagonia", -68.20, -38.95, "ARGENTINOSAURUS", "Argentinosaurus"]
+  ], { category: "Extinct Animal", targetBonus: 5800 }),
+  ...rocketLocationTargetGroup([
+    ["President George Washington - Popes Creek", -76.90, 38.19, "WASHINGTON", "George Washington"],
+    ["President John Adams - Quincy", -71.00, 42.25, "JOHN ADAMS", "John Adams"],
+    ["President Thomas Jefferson - Shadwell", -78.40, 38.02, "JEFFERSON", "Thomas Jefferson"],
+    ["President James Madison - Port Conway", -77.18, 38.24, "MADISON", "James Madison"],
+    ["President James Monroe - Monroe Hall", -76.95, 38.25, "MONROE", "James Monroe"],
+    ["President John Quincy Adams - Quincy", -71.00, 42.25, "JQ ADAMS", "John Quincy Adams"],
+    ["President Andrew Jackson - Waxhaws", -80.88, 34.84, "JACKSON", "Andrew Jackson"],
+    ["President Martin Van Buren - Kinderhook", -73.70, 42.40, "VAN BUREN", "Martin Van Buren"],
+    ["President William Henry Harrison - Berkeley", -77.18, 37.32, "HARRISON", "William Henry Harrison"],
+    ["President John Tyler - Charles City", -77.06, 37.34, "TYLER", "John Tyler"],
+    ["President James K. Polk - Pineville", -80.89, 35.08, "POLK", "James K. Polk"],
+    ["President Zachary Taylor - Barboursville", -78.28, 38.17, "TAYLOR", "Zachary Taylor"],
+    ["President Millard Fillmore - Summerhill", -76.32, 42.64, "FILLMORE", "Millard Fillmore"],
+    ["President Franklin Pierce - Hillsborough", -71.90, 43.11, "PIERCE", "Franklin Pierce"],
+    ["President James Buchanan - Cove Gap", -77.94, 39.87, "BUCHANAN", "James Buchanan"],
+    ["President Abraham Lincoln - Hodgenville", -85.74, 37.57, "LINCOLN", "Abraham Lincoln"],
+    ["President Andrew Johnson - Raleigh", -78.64, 35.78, "A JOHNSON", "Andrew Johnson"],
+    ["President Ulysses S. Grant - Point Pleasant", -84.23, 38.89, "GRANT", "Ulysses S. Grant"],
+    ["President Rutherford B. Hayes - Delaware", -83.07, 40.30, "HAYES", "Rutherford B. Hayes"],
+    ["President James Garfield - Moreland Hills", -81.43, 41.44, "GARFIELD", "James A. Garfield"],
+    ["President Chester A. Arthur - Fairfield", -72.94, 44.80, "ARTHUR", "Chester A. Arthur"],
+    ["President Grover Cleveland - Caldwell", -74.28, 40.84, "CLEVELAND", "Grover Cleveland"],
+    ["President Benjamin Harrison - North Bend", -84.75, 39.15, "B HARRISON", "Benjamin Harrison"],
+    ["President William McKinley - Niles", -80.76, 41.18, "MCKINLEY", "William McKinley"],
+    ["President Theodore Roosevelt - New York", -73.99, 40.74, "T ROOSEVELT", "Theodore Roosevelt"],
+    ["President William Howard Taft - Cincinnati", -84.51, 39.10, "TAFT", "William Howard Taft"],
+    ["President Woodrow Wilson - Staunton", -79.07, 38.15, "WILSON", "Woodrow Wilson"],
+    ["President Warren G. Harding - Blooming Grove", -82.72, 40.80, "HARDING", "Warren G. Harding"],
+    ["President Calvin Coolidge - Plymouth Notch", -72.72, 43.53, "COOLIDGE", "Calvin Coolidge"],
+    ["President Herbert Hoover - West Branch", -91.35, 41.67, "HOOVER", "Herbert Hoover"],
+    ["President Franklin D. Roosevelt - Hyde Park", -73.93, 41.77, "FDR", "Franklin D. Roosevelt"],
+    ["President Harry S. Truman - Lamar", -94.28, 37.50, "TRUMAN", "Harry S. Truman"],
+    ["President Dwight D. Eisenhower - Denison", -96.54, 33.76, "IKE", "Dwight D. Eisenhower"],
+    ["President John F. Kennedy - Brookline", -71.12, 42.35, "JFK", "John F. Kennedy"],
+    ["President Lyndon B. Johnson - Stonewall", -98.66, 30.24, "LBJ", "Lyndon B. Johnson"],
+    ["President Richard Nixon - Yorba Linda", -117.81, 33.89, "NIXON", "Richard Nixon"],
+    ["President Gerald Ford - Omaha", -95.94, 41.26, "GERALD FORD", "Gerald Ford"],
+    ["President Jimmy Carter - Plains", -84.39, 32.03, "CARTER", "Jimmy Carter"],
+    ["President Ronald Reagan - Tampico", -89.79, 41.63, "REAGAN", "Ronald Reagan"],
+    ["President George H. W. Bush - Milton", -71.07, 42.25, "GHW BUSH", "George H. W. Bush"],
+    ["President Bill Clinton - Hope", -93.59, 33.67, "CLINTON", "Bill Clinton"],
+    ["President George W. Bush - New Haven", -72.93, 41.31, "GW BUSH", "George W. Bush"],
+    ["President Barack Obama - Honolulu", -157.86, 21.31, "OBAMA", "Barack Obama"],
+    ["President Donald Trump - Queens", -73.79, 40.73, "TRUMP", "Donald Trump"],
+    ["President Joe Biden - Scranton", -75.66, 41.41, "BIDEN", "Joe Biden"]
+  ], { category: "US President", targetBonus: 4200 }),
   ...[
     ["Alabama", "Montgomery", -86.3, 32.38], ["Alaska", "Juneau", -134.42, 58.3],
     ["Arizona", "Phoenix", -112.07, 33.45], ["Arkansas", "Little Rock", -92.29, 34.75],
@@ -2836,6 +2962,7 @@ function makeRocketProgressSnapshot() {
     targetIdeal: rocketState.targetIdeal,
     sideQuest: rocketState.sideQuest,
     depots: rocketState.depots || [],
+    supplementalIntel: rocketState.supplementalIntel || [],
     roundDepotCountries: rocketState.roundDepotCountries || [],
     roundDepotMarkers: rocketState.roundDepotMarkers || [],
     roundLogs: rocketState.roundLogs || [],
@@ -2913,6 +3040,9 @@ function restoreRocketProgressSnapshot() {
   rocketState.depots = shouldAdvanceFromLoggedRound
     ? makeRocketDepots()
     : Array.isArray(snapshot.depots) && snapshot.depots.length ? snapshot.depots : makeRocketDepots();
+  rocketState.supplementalIntel = shouldAdvanceFromLoggedRound
+    ? makeRocketSupplementalIntel()
+    : Array.isArray(snapshot.supplementalIntel) && snapshot.supplementalIntel.length ? snapshot.supplementalIntel : makeRocketSupplementalIntel();
   if (restoredStart) {
     rocketState.start = restoredStart;
     const savedShip = snapshot.ship && typeof snapshot.ship === "object" ? snapshot.ship : {};
@@ -3026,6 +3156,7 @@ function startRocketRun() {
     sideQuest: pickRocketSideQuest(1),
     sideQuestPulse: 0,
     depots: [],
+    supplementalIntel: [],
     roundDepotCountries: [],
     roundDepotMarkers: [],
     trail: [],
@@ -3068,6 +3199,7 @@ function startRocketRun() {
     difficulty: 1
   };
   rocketState.depots = makeRocketDepots();
+  rocketState.supplementalIntel = makeRocketSupplementalIntel();
   rocketState.roundDepotCountries = getRocketDepotCountryList(rocketState.depots);
   rocketState.roundDepotMarkers = rocketState.depots.map(serializeRocketDepotMarker);
   if (externalRounds && !tutorialMode) {
@@ -3334,6 +3466,29 @@ function setRocketPreviewImage(image, target = {}, alt = "") {
     image.removeAttribute("src");
     image.alt = "";
   }
+  if (target.wikiTitle && !target.imageUrl && typeof fetch === "function") {
+    const cacheKey = target.wikiTitle;
+    const applyWikiImage = (url) => {
+      if (url) {
+        image.onerror = null;
+        image.src = url;
+      }
+    };
+    if (rocketWikiImageCache.has(cacheKey)) {
+      applyWikiImage(rocketWikiImageCache.get(cacheKey));
+      return;
+    }
+    fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(target.wikiTitle)}`)
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => {
+        const url = data?.thumbnail?.source || data?.originalimage?.source || "";
+        rocketWikiImageCache.set(cacheKey, url);
+        applyWikiImage(url);
+      })
+      .catch(() => {
+        rocketWikiImageCache.set(cacheKey, "");
+      });
+  }
 }
 
 function getRocketDepotPreviewTarget(name = "") {
@@ -3479,6 +3634,42 @@ function getRocketDepotCountryList(depots = []) {
     .sort((a, b) => a.localeCompare(b));
 }
 
+function makeRocketSupplementalIntel(count = 5) {
+  const categories = new Set([
+    "Ancient Civilization",
+    "Ancient Dynasty",
+    "Ancient Kingdom",
+    "Extinct Animal",
+    "Famous Battle",
+    "Geological Landmark",
+    "Historic / Social Landmark",
+    "Historic Figure",
+    "Historic Kingdom",
+    "Mythic Character",
+    "Mythic Location",
+    "US President"
+  ]);
+  const blockedNames = new Set([
+    rocketState?.target?.name,
+    ...(rocketState?.depots || []).map((depot) => depot.country)
+  ].filter(Boolean));
+  const pool = rocketLocationTargets.filter((target) => categories.has(target.category) && !blockedNames.has(target.name));
+  const chosen = [];
+  const seenCategories = new Set();
+  let guard = 0;
+  while (chosen.length < count && guard < 240 && pool.length) {
+    guard += 1;
+    const preferMixed = chosen.length < Math.min(count, categories.size);
+    const mixedPool = preferMixed ? pool.filter((target) => !seenCategories.has(target.category)) : pool;
+    const source = mixedPool.length ? mixedPool : pool;
+    const target = source[Math.floor(Math.random() * source.length)];
+    if (!target || chosen.some((item) => item.name === target.name)) continue;
+    chosen.push(target);
+    seenCategories.add(target.category);
+  }
+  return chosen;
+}
+
 function serializeRocketDepotMarker(depot = {}, index = 0) {
   return {
     name: depot.name || `Depot ${index + 1}`,
@@ -3531,18 +3722,23 @@ function buildRocketRoundDepotMarkers(seedMarkers = [], landings = [], depotCoun
 function renderRocketDepotIntel() {
   if (!els.rocketDepotCountries) return;
   const countries = getRocketDepotCountryList((rocketState?.depots || []).filter((depot) => !depot.used));
-  els.rocketDepotCountries.replaceChildren(...(countries.length ? countries : ["Unknown country intel"]).map((name) => {
+  const depotItems = (countries.length ? countries : ["Unknown country intel"]).map((name) => ({ name, kind: "depot" }));
+  const supplementalItems = (rocketState?.supplementalIntel || []).slice(0, 5).map((target) => ({ name: target.name, target, kind: "supplemental" }));
+  const items = depotItems.concat(supplementalItems);
+  els.rocketDepotCountries.replaceChildren(...items.map(({ name, target: suppliedTarget, kind }) => {
     const item = document.createElement("b");
-    item.className = "rocket-depot-intel-chip";
+    item.className = `rocket-depot-intel-chip ${kind === "supplemental" ? "supplemental" : ""}`.trim();
     item.dataset.depotPreview = "";
     item.dataset.depotCountry = name;
-    item.dataset.depotStatus = countries.length ? "Available fuel depot" : "No active fuel depot intel";
+    item.dataset.depotStatus = kind === "supplemental"
+      ? "Historical / geological / social intel"
+      : countries.length ? "Available fuel depot" : "No active fuel depot intel";
     item.tabIndex = 0;
-    const target = getRocketDepotPreviewTarget(name);
+    const target = suppliedTarget || getRocketDepotPreviewTarget(name);
     const imageUrl = getRocketTargetFlagUrl(target);
     if (imageUrl) {
       const image = document.createElement("img");
-      setRocketPreviewImage(image, target, `${name} depot flag`);
+      setRocketPreviewImage(image, target, `${name} intel image`);
       item.append(image);
     }
     const label = document.createElement("span");
@@ -3839,6 +4035,7 @@ function nextRocketRound(success) {
   rememberRocketTarget(rocketState.target);
   rocketState.sideQuest = pickRocketSideQuest(rocketState.difficulty);
   rocketState.depots = makeRocketDepots();
+  rocketState.supplementalIntel = makeRocketSupplementalIntel();
   rocketState.roundDepotCountries = getRocketDepotCountryList(rocketState.depots);
   rocketState.roundDepotMarkers = rocketState.depots.map(serializeRocketDepotMarker);
   renderRocketDepotIntel();
