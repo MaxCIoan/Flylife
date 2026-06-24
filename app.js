@@ -437,9 +437,22 @@ const rocketLocationTargets = [
   rocketLocationTarget("Zhou Dynasty - Haojing", 108.78, 34.2, { category: "Ancient Dynasty", targetBonus: 6000, imageLabel: "ZHOU" }),
   rocketLocationTarget("Shang Dynasty - Anyang", 114.35, 36.1, { category: "Ancient Dynasty", targetBonus: 6000, imageLabel: "SHANG" }),
   rocketLocationTarget("Shakespeare - Stratford-upon-Avon", -1.71, 52.19, { category: "Cultural Figure", targetBonus: 5200, imageLabel: "SHAKESPEARE" }),
+  rocketLocationTarget("Cleopatra - Alexandria", 29.91, 31.2, { category: "Historic Figure", targetBonus: 5600, imageLabel: "CLEOPATRA" }),
+  rocketLocationTarget("Julius Caesar - Rome", 12.49, 41.89, { category: "Historic Figure", targetBonus: 5400, imageLabel: "CAESAR" }),
+  rocketLocationTarget("Joan of Arc - Orleans", 1.91, 47.9, { category: "Historic Figure", targetBonus: 5400, imageLabel: "JOAN OF ARC" }),
+  rocketLocationTarget("Napoleon - Ajaccio", 8.74, 41.92, { category: "Historic Figure", targetBonus: 5300, imageLabel: "NAPOLEON" }),
+  rocketLocationTarget("Albert Einstein - Ulm", 9.99, 48.4, { category: "Cultural Figure", targetBonus: 5200, imageLabel: "EINSTEIN" }),
+  rocketLocationTarget("Athena - Athens", 23.73, 37.98, { category: "Mythic Character", targetBonus: 5600, imageLabel: "ATHENA" }),
+  rocketLocationTarget("Hercules - Thebes", 23.32, 38.32, { category: "Mythic Character", targetBonus: 5600, imageLabel: "HERCULES" }),
+  rocketLocationTarget("King Arthur - Tintagel", -4.75, 50.66, { category: "Legendary Figure", targetBonus: 5700, imageLabel: "ARTHUR" }),
   rocketLocationTarget("Civil War Richmond", -77.44, 37.54, { category: "Historic City", targetBonus: 4200, imageLabel: "RICHMOND" }),
   rocketLocationTarget("Pirate Havana", -82.37, 23.11, { category: "Pirate Port", targetBonus: 5000, imageLabel: "HAVANA" }),
   rocketLocationTarget("Seattle", -122.33, 47.61, { category: "City", targetBonus: 3000, imageLabel: "SEATTLE" }),
+  rocketLocationTarget("Scotland Flag - Edinburgh", -3.19, 55.95, { category: "Region Flag", targetBonus: 3600, imageLabel: "SCOTLAND" }),
+  rocketLocationTarget("Wales Flag - Cardiff", -3.18, 51.48, { category: "Region Flag", targetBonus: 3600, imageLabel: "WALES" }),
+  rocketLocationTarget("Catalonia Flag - Barcelona", 2.17, 41.39, { category: "Region Flag", targetBonus: 3800, imageLabel: "CATALONIA" }),
+  rocketLocationTarget("Quebec Flag - Quebec City", -71.21, 46.81, { category: "Region Flag", targetBonus: 3600, imageLabel: "QUEBEC" }),
+  rocketLocationTarget("Bavaria Flag - Munich", 11.58, 48.14, { category: "Region Flag", targetBonus: 3600, imageLabel: "BAVARIA" }),
   ...[
     ["Alabama", "Montgomery", -86.3, 32.38], ["Alaska", "Juneau", -134.42, 58.3],
     ["Arizona", "Phoenix", -112.07, 33.45], ["Arkansas", "Little Rock", -92.29, 34.75],
@@ -467,7 +480,7 @@ const rocketLocationTargets = [
     ["Washington", "Olympia", -122.9, 47.04], ["West Virginia", "Charleston", -81.63, 38.35],
     ["Wisconsin", "Madison", -89.4, 43.07], ["Wyoming", "Cheyenne", -104.82, 41.14]
   ].map(([state, capital, lon, lat]) => rocketLocationTarget(`${state} State Capital - ${capital}`, lon, lat, {
-    category: "US State Capital",
+    category: "US State Flag / Capital",
     targetBonus: 2600,
     imageLabel: state.toUpperCase()
   }))
@@ -584,6 +597,18 @@ function loadRocketCatalog() {
 function getRocketPool(difficulty) {
   const list = rocketCatalog?.length ? rocketCatalog : rocketTargets.concat(rocketLocationTargets);
   return list.filter((target) => !blockedRocketCountries.has(target.name) && (target.lat === undefined || target.lat > -60));
+}
+
+function getRocketTargetByName(name = "") {
+  const canonical = rocketCanonicalCountryName(name);
+  const list = [
+    ...(rocketCatalog || []),
+    ...rocketTargets,
+    ...rocketLocationTargets
+  ];
+  return list.find((item) => item.name === name || rocketCanonicalCountryName(item.name) === canonical)
+    || flags.find((flag) => flag.name === name || rocketCanonicalCountryName(flag.name) === canonical)
+    || null;
 }
 
 function getRocketTargetBonus(target = {}) {
@@ -3000,6 +3025,12 @@ function getRocketTargetFlagUrl(target = {}) {
   return target.targetType === "location" ? makeRocketTargetImage(target) : "";
 }
 
+function getRocketDepotPreviewTarget(name = "") {
+  const target = getRocketTargetByName(name);
+  if (target) return target;
+  return { name, category: "Fuel Depot Intel", targetType: "location", imageLabel: name || "DEPOT" };
+}
+
 function randomRocketStart() {
   const anchors = rocketCatalog?.length ? rocketCatalog : rocketTargets.concat(rocketLocationTargets);
   const anchor = anchors[Math.floor(Math.random() * anchors.length)];
@@ -3190,7 +3221,22 @@ function renderRocketDepotIntel() {
   const countries = getRocketDepotCountryList((rocketState?.depots || []).filter((depot) => !depot.used));
   els.rocketDepotCountries.replaceChildren(...(countries.length ? countries : ["Unknown country intel"]).map((name) => {
     const item = document.createElement("b");
-    item.textContent = name;
+    item.className = "rocket-depot-intel-chip";
+    item.dataset.depotPreview = "";
+    item.dataset.depotCountry = name;
+    item.dataset.depotStatus = countries.length ? "Available fuel depot" : "No active fuel depot intel";
+    item.tabIndex = 0;
+    const target = getRocketDepotPreviewTarget(name);
+    const imageUrl = getRocketTargetFlagUrl(target);
+    if (imageUrl) {
+      const image = document.createElement("img");
+      image.src = imageUrl;
+      image.alt = `${name} depot flag`;
+      item.append(image);
+    }
+    const label = document.createElement("span");
+    label.textContent = name;
+    item.append(label);
     return item;
   }));
 }
@@ -6267,7 +6313,10 @@ function rocketDepotStatusHtml(log = {}, selectedIndex = null) {
         ? `${marker.name}: ${marker.country || "unknown"} basic +3 TP`
         : `${marker.name}: ${marker.country || "unknown"} missed`;
     const selected = selectedIndex === index ? " selected" : "";
-    return `<button type="button" class="rocket-depot-dot ${marker.status}${selected}" data-depot-index="${index}" title="${escapeHtml(label)}">${index + 1}</button>`;
+    const target = getRocketDepotPreviewTarget(marker.country || marker.name);
+    const imageUrl = getRocketTargetFlagUrl(target);
+    const image = imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(marker.country || marker.name || "Depot")} flag">` : "";
+    return `<button type="button" class="rocket-depot-dot ${marker.status}${selected}" data-depot-preview data-depot-index="${index}" data-depot-country="${escapeHtml(marker.country || "")}" data-depot-status="${escapeHtml(rocketDepotStatusLabel(marker))}" title="${escapeHtml(label)}">${image}<span>${index + 1}</span></button>`;
   }).join("");
   return `<span class="rocket-depot-status" aria-label="Fuel depot results">${dots}</span>`;
 }
@@ -6718,6 +6767,64 @@ function positionRocketRouteHover(canvas, hover, event) {
   const rect = canvas.getBoundingClientRect();
   hover.style.left = `${Math.min(rect.width - 220, Math.max(8, event.clientX - rect.left + 12))}px`;
   hover.style.top = `${Math.min(rect.height - 78, Math.max(8, event.clientY - rect.top + 12))}px`;
+}
+
+function ensureRocketDepotPreview() {
+  let preview = document.querySelector("[data-rocket-depot-preview-card]");
+  if (preview) return preview;
+  preview = document.createElement("aside");
+  preview.className = "rocket-depot-preview";
+  preview.dataset.rocketDepotPreviewCard = "";
+  preview.hidden = true;
+  document.body.append(preview);
+  return preview;
+}
+
+function rocketDepotPreviewHtml(trigger) {
+  const country = trigger?.dataset?.depotCountry || trigger?.textContent?.trim() || "Fuel depot";
+  const status = trigger?.dataset?.depotStatus || "Fuel depot intel";
+  const index = trigger?.dataset?.depotIndex;
+  const target = getRocketDepotPreviewTarget(country);
+  const imageUrl = getRocketTargetFlagUrl(target) || makeRocketTargetImage(target);
+  const category = target.category || "Country";
+  const dpr = Number(window.devicePixelRatio || 1);
+  const sourceW = 640;
+  const sourceH = 400;
+  const displayW = 320;
+  const displayH = 200;
+  const density = sourceW / displayW;
+  return `
+    <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(country)} depot preview">
+    <div>
+      <small>${escapeHtml(category)}${index !== undefined ? ` | Depot ${Number(index) + 1}` : ""}</small>
+      <strong>${escapeHtml(country)}</strong>
+      <span>${escapeHtml(status)}</span>
+      <em>HD preview ${sourceW} x ${sourceH}px source | ${displayW} x ${displayH}px display | ${density.toFixed(1)} image px/CSS px | screen DPR ${dpr.toFixed(2)}x | physical PPI unavailable in browser</em>
+    </div>
+  `;
+}
+
+function positionRocketDepotPreview(preview, event) {
+  const width = preview.offsetWidth || 360;
+  const height = preview.offsetHeight || 310;
+  const margin = 14;
+  const x = Math.min(window.innerWidth - width - margin, Math.max(margin, event.clientX + 18));
+  const y = Math.min(window.innerHeight - height - margin, Math.max(margin, event.clientY + 18));
+  preview.style.left = `${x}px`;
+  preview.style.top = `${y}px`;
+}
+
+function showRocketDepotPreview(trigger, event = null) {
+  if (!trigger) return;
+  const preview = ensureRocketDepotPreview();
+  preview.innerHTML = rocketDepotPreviewHtml(trigger);
+  preview.hidden = false;
+  if (event) positionRocketDepotPreview(preview, event);
+}
+
+function hideRocketDepotPreview() {
+  const preview = document.querySelector("[data-rocket-depot-preview-card]");
+  if (preview) preview.hidden = true;
 }
 
 function rocketDepotStatusLabel(marker = {}) {
@@ -7695,6 +7802,32 @@ document.querySelector("#guestName")?.addEventListener("click", () => {
   profile.displayNameLocked = false;
   saveProfile();
   renderProfile();
+});
+document.addEventListener("pointerover", (event) => {
+  const trigger = event.target?.closest?.("[data-depot-preview]");
+  if (!trigger) return;
+  showRocketDepotPreview(trigger, event);
+});
+document.addEventListener("pointermove", (event) => {
+  const trigger = event.target?.closest?.("[data-depot-preview]");
+  if (!trigger) return;
+  showRocketDepotPreview(trigger, event);
+});
+document.addEventListener("pointerout", (event) => {
+  const trigger = event.target?.closest?.("[data-depot-preview]");
+  if (!trigger) return;
+  const next = event.relatedTarget?.closest?.("[data-depot-preview]");
+  if (next === trigger) return;
+  hideRocketDepotPreview();
+});
+document.addEventListener("focusin", (event) => {
+  const trigger = event.target?.closest?.("[data-depot-preview]");
+  if (!trigger) return;
+  const rect = trigger.getBoundingClientRect();
+  showRocketDepotPreview(trigger, { clientX: rect.left, clientY: rect.bottom });
+});
+document.addEventListener("focusout", (event) => {
+  if (event.target?.closest?.("[data-depot-preview]")) hideRocketDepotPreview();
 });
 window.addEventListener("resize", resizeFireworksCanvas);
 window.addEventListener("resize", resizeRocketCanvas);
