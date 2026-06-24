@@ -1702,6 +1702,7 @@ body:has(#rocketView.active) .topbar {
 .rocket-intel-box b {
   display: inline-flex;
   align-items: center;
+  gap: 0.42rem;
   min-height: 1.75rem;
   padding: 0 0.55rem;
   border: 1px solid rgba(34, 217, 242, 0.24);
@@ -1709,6 +1710,25 @@ body:has(#rocketView.active) .topbar {
   color: #ffffff;
   background: rgba(17, 28, 44, 0.86);
   font-size: 0.8rem;
+}
+
+.rocket-depot-intel-chip {
+  cursor: help;
+}
+
+.rocket-depot-intel-chip img {
+  width: 2rem;
+  height: 1.28rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 0.22rem;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.rocket-depot-intel-chip span {
+  color: #ffffff;
+  font-size: 0.8rem;
+  text-transform: none;
 }
 
 .rocket-route-inspector {
@@ -1832,13 +1852,14 @@ body:has(#rocketView.active) .topbar {
 
 .rocket-depot-dot {
   appearance: none;
-  display: inline-grid;
-  place-items: center;
-  width: 1.25rem;
-  height: 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  min-width: 2.35rem;
+  height: 1.45rem;
   border: 2px solid currentColor;
   border-radius: 999px;
-  padding: 0;
+  padding: 0 0.34rem 0 0.18rem;
   color: #ff6578;
   background: rgba(255, 61, 90, 0.12);
   font-size: 0.68rem;
@@ -1846,6 +1867,18 @@ body:has(#rocketView.active) .topbar {
   font-weight: 950;
   line-height: 1;
   cursor: pointer;
+}
+
+.rocket-depot-dot img {
+  width: 1.32rem;
+  height: 0.88rem;
+  border-radius: 0.16rem;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.rocket-depot-dot span {
+  min-width: 0.7rem;
 }
 
 .rocket-depot-dot.hit {
@@ -1877,6 +1910,62 @@ body:has(#rocketView.active) .topbar {
   color: #ffffff;
   background: rgba(34, 217, 242, 0.08);
   font-weight: 850;
+}
+
+.rocket-depot-preview {
+  position: fixed;
+  z-index: 1000;
+  width: min(22.5rem, calc(100vw - 1.5rem));
+  border: 1px solid rgba(34, 217, 242, 0.44);
+  border-radius: 0.7rem;
+  overflow: hidden;
+  color: #f5fbff;
+  background: rgba(5, 13, 22, 0.96);
+  box-shadow: 0 1.2rem 3.2rem rgba(0, 0, 0, 0.52), 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+  pointer-events: none;
+}
+
+.rocket-depot-preview[hidden] {
+  display: none;
+}
+
+.rocket-depot-preview img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.rocket-depot-preview div {
+  display: grid;
+  gap: 0.24rem;
+  padding: 0.72rem 0.8rem 0.85rem;
+}
+
+.rocket-depot-preview small {
+  color: #22d9f2;
+  font-size: 0.68rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.rocket-depot-preview strong {
+  font-size: 1.02rem;
+  line-height: 1.18;
+}
+
+.rocket-depot-preview span {
+  color: #dce8f5;
+  font-size: 0.82rem;
+  font-weight: 780;
+}
+
+.rocket-depot-preview em {
+  color: #9fb4c9;
+  font-size: 0.72rem;
+  font-style: normal;
+  line-height: 1.35;
 }
 
 .tech-tree-overlay {
