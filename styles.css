@@ -1750,6 +1750,10 @@ body:has(#rocketView.active) .topbar {
   background: rgba(48, 35, 16, 0.88);
 }
 
+.rocket-depot-intel-chip.collected {
+  opacity: 0.62;
+}
+
 .rocket-depot-intel-chip img {
   width: 2rem;
   height: 1.28rem;
