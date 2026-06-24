@@ -411,7 +411,11 @@ function rocketTarget(name, lon, lat, difficulty) {
   return { name, lon, lat, ...worldPoint(lon, lat), difficulty };
 }
 
-function rocketLocationTarget(name, lon, lat, { category = "World Location", targetBonus = 3200, imageLabel = "", difficulty = 5 } = {}) {
+function commonsImageUrl(filename, width = 720) {
+  return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(filename)}?width=${width}`;
+}
+
+function rocketLocationTarget(name, lon, lat, { category = "World Location", targetBonus = 3200, imageLabel = "", imageUrl = "", difficulty = 5 } = {}) {
   return {
     name,
     lon,
@@ -421,40 +425,41 @@ function rocketLocationTarget(name, lon, lat, { category = "World Location", tar
     category,
     targetType: "location",
     targetBonus,
-    imageLabel: imageLabel || name
+    imageLabel: imageLabel || name,
+    imageUrl
   };
 }
 
 const rocketLocationTargets = [
-  rocketLocationTarget("Carthaginian Carthage", 10.32, 36.85, { category: "Ancient Civilization", targetBonus: 5200, imageLabel: "CARTHAGE" }),
-  rocketLocationTarget("Ancient Egypt North - Giza", 31.13, 29.98, { category: "Ancient Civilization", targetBonus: 4700, imageLabel: "GIZA" }),
-  rocketLocationTarget("Ancient Egypt South - Thebes", 32.64, 25.69, { category: "Ancient Civilization", targetBonus: 5200, imageLabel: "THEBES" }),
-  rocketLocationTarget("Olympian Gods - Mount Olympus", 22.36, 40.08, { category: "Mythic Location", targetBonus: 5600, imageLabel: "OLYMPUS" }),
-  rocketLocationTarget("Macedonia - Pella", 22.52, 40.76, { category: "Ancient Kingdom", targetBonus: 5000, imageLabel: "PELLA" }),
-  rocketLocationTarget("Alexander the Great - Alexandria", 29.91, 31.2, { category: "Historic Figure", targetBonus: 5200, imageLabel: "ALEXANDRIA" }),
-  rocketLocationTarget("Assyrian Nineveh", 43.13, 36.36, { category: "Ancient Civilization", targetBonus: 6000, imageLabel: "NINEVEH" }),
-  rocketLocationTarget("Inca Machu Picchu", -72.55, -13.16, { category: "Ancient Civilization", targetBonus: 6200, imageLabel: "INCA" }),
-  rocketLocationTarget("Maya Tikal", -89.62, 17.22, { category: "Ancient Civilization", targetBonus: 6200, imageLabel: "MAYA" }),
-  rocketLocationTarget("Thai Empire - Ayutthaya", 100.56, 14.36, { category: "Historic Kingdom", targetBonus: 5400, imageLabel: "AYUTTHAYA" }),
-  rocketLocationTarget("Zhou Dynasty - Haojing", 108.78, 34.2, { category: "Ancient Dynasty", targetBonus: 6000, imageLabel: "ZHOU" }),
-  rocketLocationTarget("Shang Dynasty - Anyang", 114.35, 36.1, { category: "Ancient Dynasty", targetBonus: 6000, imageLabel: "SHANG" }),
-  rocketLocationTarget("Shakespeare - Stratford-upon-Avon", -1.71, 52.19, { category: "Cultural Figure", targetBonus: 5200, imageLabel: "SHAKESPEARE" }),
-  rocketLocationTarget("Cleopatra - Alexandria", 29.91, 31.2, { category: "Historic Figure", targetBonus: 5600, imageLabel: "CLEOPATRA" }),
-  rocketLocationTarget("Julius Caesar - Rome", 12.49, 41.89, { category: "Historic Figure", targetBonus: 5400, imageLabel: "CAESAR" }),
-  rocketLocationTarget("Joan of Arc - Orleans", 1.91, 47.9, { category: "Historic Figure", targetBonus: 5400, imageLabel: "JOAN OF ARC" }),
-  rocketLocationTarget("Napoleon - Ajaccio", 8.74, 41.92, { category: "Historic Figure", targetBonus: 5300, imageLabel: "NAPOLEON" }),
-  rocketLocationTarget("Albert Einstein - Ulm", 9.99, 48.4, { category: "Cultural Figure", targetBonus: 5200, imageLabel: "EINSTEIN" }),
-  rocketLocationTarget("Athena - Athens", 23.73, 37.98, { category: "Mythic Character", targetBonus: 5600, imageLabel: "ATHENA" }),
-  rocketLocationTarget("Hercules - Thebes", 23.32, 38.32, { category: "Mythic Character", targetBonus: 5600, imageLabel: "HERCULES" }),
-  rocketLocationTarget("King Arthur - Tintagel", -4.75, 50.66, { category: "Legendary Figure", targetBonus: 5700, imageLabel: "ARTHUR" }),
-  rocketLocationTarget("Civil War Richmond", -77.44, 37.54, { category: "Historic City", targetBonus: 4200, imageLabel: "RICHMOND" }),
-  rocketLocationTarget("Pirate Havana", -82.37, 23.11, { category: "Pirate Port", targetBonus: 5000, imageLabel: "HAVANA" }),
-  rocketLocationTarget("Seattle", -122.33, 47.61, { category: "City", targetBonus: 3000, imageLabel: "SEATTLE" }),
-  rocketLocationTarget("Scotland Flag - Edinburgh", -3.19, 55.95, { category: "Region Flag", targetBonus: 3600, imageLabel: "SCOTLAND" }),
-  rocketLocationTarget("Wales Flag - Cardiff", -3.18, 51.48, { category: "Region Flag", targetBonus: 3600, imageLabel: "WALES" }),
-  rocketLocationTarget("Catalonia Flag - Barcelona", 2.17, 41.39, { category: "Region Flag", targetBonus: 3800, imageLabel: "CATALONIA" }),
-  rocketLocationTarget("Quebec Flag - Quebec City", -71.21, 46.81, { category: "Region Flag", targetBonus: 3600, imageLabel: "QUEBEC" }),
-  rocketLocationTarget("Bavaria Flag - Munich", 11.58, 48.14, { category: "Region Flag", targetBonus: 3600, imageLabel: "BAVARIA" }),
+  rocketLocationTarget("Carthaginian Carthage", 10.32, 36.85, { category: "Ancient Civilization", targetBonus: 5200, imageLabel: "CARTHAGE", imageUrl: commonsImageUrl("Carthage ruins.jpg") }),
+  rocketLocationTarget("Ancient Egypt North - Giza", 31.13, 29.98, { category: "Ancient Civilization", targetBonus: 4700, imageLabel: "GIZA", imageUrl: commonsImageUrl("All Gizah Pyramids.jpg") }),
+  rocketLocationTarget("Ancient Egypt South - Thebes", 32.64, 25.69, { category: "Ancient Civilization", targetBonus: 5200, imageLabel: "THEBES", imageUrl: commonsImageUrl("Luxor Temple R04.jpg") }),
+  rocketLocationTarget("Olympian Gods - Mount Olympus", 22.36, 40.08, { category: "Mythic Location", targetBonus: 5600, imageLabel: "OLYMPUS", imageUrl: commonsImageUrl("Mount Olympus from Litochoro.jpg") }),
+  rocketLocationTarget("Macedonia - Pella", 22.52, 40.76, { category: "Ancient Kingdom", targetBonus: 5000, imageLabel: "PELLA", imageUrl: commonsImageUrl("Lion hunt mosaic from Pella.jpg") }),
+  rocketLocationTarget("Alexander the Great - Alexandria", 29.91, 31.2, { category: "Historic Figure", targetBonus: 5200, imageLabel: "ALEXANDRIA", imageUrl: commonsImageUrl("Alexander the Great mosaic.jpg") }),
+  rocketLocationTarget("Assyrian Nineveh", 43.13, 36.36, { category: "Ancient Civilization", targetBonus: 6000, imageLabel: "NINEVEH", imageUrl: commonsImageUrl("Nineveh - Mashki Gate.jpg") }),
+  rocketLocationTarget("Inca Machu Picchu", -72.55, -13.16, { category: "Ancient Civilization", targetBonus: 6200, imageLabel: "INCA", imageUrl: commonsImageUrl("Machu Picchu, Peru.jpg") }),
+  rocketLocationTarget("Maya Tikal", -89.62, 17.22, { category: "Ancient Civilization", targetBonus: 6200, imageLabel: "MAYA", imageUrl: commonsImageUrl("Tikal Temple1 2006 08 11.JPG") }),
+  rocketLocationTarget("Thai Empire - Ayutthaya", 100.56, 14.36, { category: "Historic Kingdom", targetBonus: 5400, imageLabel: "AYUTTHAYA", imageUrl: commonsImageUrl("Wat Mahathat Ayutthaya.jpg") }),
+  rocketLocationTarget("Zhou Dynasty - Haojing", 108.78, 34.2, { category: "Ancient Dynasty", targetBonus: 6000, imageLabel: "ZHOU", imageUrl: commonsImageUrl("Early Western Zhou Bronze Gui 01.jpg") }),
+  rocketLocationTarget("Shang Dynasty - Anyang", 114.35, 36.1, { category: "Ancient Dynasty", targetBonus: 6000, imageLabel: "SHANG", imageUrl: commonsImageUrl("Oracle bones pit.JPG") }),
+  rocketLocationTarget("Shakespeare - Stratford-upon-Avon", -1.71, 52.19, { category: "Cultural Figure", targetBonus: 5200, imageLabel: "SHAKESPEARE", imageUrl: commonsImageUrl("Shakespeare.jpg") }),
+  rocketLocationTarget("Cleopatra - Alexandria", 29.91, 31.2, { category: "Historic Figure", targetBonus: 5600, imageLabel: "CLEOPATRA", imageUrl: commonsImageUrl("Kleopatra-VII.-Altes-Museum-Berlin1.jpg") }),
+  rocketLocationTarget("Julius Caesar - Rome", 12.49, 41.89, { category: "Historic Figure", targetBonus: 5400, imageLabel: "CAESAR", imageUrl: commonsImageUrl("Gaius Iulius Caesar (Vatican Museum).jpg") }),
+  rocketLocationTarget("Joan of Arc - Orleans", 1.91, 47.9, { category: "Historic Figure", targetBonus: 5400, imageLabel: "JOAN OF ARC", imageUrl: commonsImageUrl("Joan of Arc miniature graded.jpg") }),
+  rocketLocationTarget("Napoleon - Ajaccio", 8.74, 41.92, { category: "Historic Figure", targetBonus: 5300, imageLabel: "NAPOLEON", imageUrl: commonsImageUrl("Jacques-Louis David - The Emperor Napoleon in His Study at the Tuileries - Google Art Project.jpg") }),
+  rocketLocationTarget("Albert Einstein - Ulm", 9.99, 48.4, { category: "Cultural Figure", targetBonus: 5200, imageLabel: "EINSTEIN", imageUrl: commonsImageUrl("Albert Einstein Head.jpg") }),
+  rocketLocationTarget("Athena - Athens", 23.73, 37.98, { category: "Mythic Character", targetBonus: 5600, imageLabel: "ATHENA", imageUrl: commonsImageUrl("NAMA Athéna Varvakeion.jpg") }),
+  rocketLocationTarget("Hercules - Thebes", 23.32, 38.32, { category: "Mythic Character", targetBonus: 5600, imageLabel: "HERCULES", imageUrl: commonsImageUrl("Herakles Farnese MAN Napoli Inv6001 n01.jpg") }),
+  rocketLocationTarget("King Arthur - Tintagel", -4.75, 50.66, { category: "Legendary Figure", targetBonus: 5700, imageLabel: "ARTHUR", imageUrl: commonsImageUrl("Charles Ernest Butler - King Arthur.jpg") }),
+  rocketLocationTarget("Civil War Richmond", -77.44, 37.54, { category: "Historic City", targetBonus: 4200, imageLabel: "RICHMOND", imageUrl: commonsImageUrl("Ruins of Richmond, Virginia at end of Civil War, 1865.jpg") }),
+  rocketLocationTarget("Pirate Havana", -82.37, 23.11, { category: "Pirate Port", targetBonus: 5000, imageLabel: "HAVANA", imageUrl: commonsImageUrl("Castillo del Morro - Havana, Cuba.jpg") }),
+  rocketLocationTarget("Seattle", -122.33, 47.61, { category: "City", targetBonus: 3000, imageLabel: "SEATTLE", imageUrl: commonsImageUrl("Kerry Park view of Seattle, Mt Rainier (28356722347).jpg") }),
+  rocketLocationTarget("Scotland Flag - Edinburgh", -3.19, 55.95, { category: "Region Flag", targetBonus: 3600, imageLabel: "SCOTLAND", imageUrl: commonsImageUrl("Flag of Scotland.svg") }),
+  rocketLocationTarget("Wales Flag - Cardiff", -3.18, 51.48, { category: "Region Flag", targetBonus: 3600, imageLabel: "WALES", imageUrl: commonsImageUrl("Flag of Wales.svg") }),
+  rocketLocationTarget("Catalonia Flag - Barcelona", 2.17, 41.39, { category: "Region Flag", targetBonus: 3800, imageLabel: "CATALONIA", imageUrl: commonsImageUrl("Flag of Catalonia.svg") }),
+  rocketLocationTarget("Quebec Flag - Quebec City", -71.21, 46.81, { category: "Region Flag", targetBonus: 3600, imageLabel: "QUEBEC", imageUrl: commonsImageUrl("Flag of Quebec.svg") }),
+  rocketLocationTarget("Bavaria Flag - Munich", 11.58, 48.14, { category: "Region Flag", targetBonus: 3600, imageLabel: "BAVARIA", imageUrl: commonsImageUrl("Flag of Bavaria (lozengy).svg") }),
   ...[
     ["Alabama", "Montgomery", -86.3, 32.38], ["Alaska", "Juneau", -134.42, 58.3],
     ["Arizona", "Phoenix", -112.07, 33.45], ["Arkansas", "Little Rock", -92.29, 34.75],
@@ -484,7 +489,8 @@ const rocketLocationTargets = [
   ].map(([state, capital, lon, lat]) => rocketLocationTarget(`${state} State Capital - ${capital}`, lon, lat, {
     category: "US State Flag / Capital",
     targetBonus: 2600,
-    imageLabel: state.toUpperCase()
+    imageLabel: state.toUpperCase(),
+    imageUrl: commonsImageUrl(`Flag of ${state}.svg`)
   }))
 ];
 
@@ -3007,22 +3013,8 @@ function updateRocketTargetCard(show) {
     const category = rocketState.target.category || "Country";
     els.rocketTargetMiniValue.textContent = `${category} | Worth ${formatScore(value)} + timer bonus`;
   }
-  const flagUrl = getRocketTargetFlagUrl(rocketState.target);
-  if (flagUrl) {
-    els.rocketTargetFlag.src = flagUrl;
-    els.rocketTargetFlag.alt = `${rocketState.target.name} briefing image`;
-    if (els.rocketTargetMiniFlag) {
-      els.rocketTargetMiniFlag.src = flagUrl;
-      els.rocketTargetMiniFlag.alt = `${rocketState.target.name} briefing image`;
-    }
-  } else {
-    els.rocketTargetFlag.removeAttribute("src");
-    els.rocketTargetFlag.alt = "";
-    if (els.rocketTargetMiniFlag) {
-      els.rocketTargetMiniFlag.removeAttribute("src");
-      els.rocketTargetMiniFlag.alt = "";
-    }
-  }
+  setRocketPreviewImage(els.rocketTargetFlag, rocketState.target, `${rocketState.target.name} briefing image`);
+  setRocketPreviewImage(els.rocketTargetMiniFlag, rocketState.target, `${rocketState.target.name} briefing image`);
 }
 
 function updateRocketTargetCardVisibility(now = performance.now()) {
@@ -3045,6 +3037,23 @@ function getRocketTargetFlagUrl(target = {}) {
   const code = target.code || flags.find((flag) => flag.name === target.name)?.code;
   if (code) return getFlagUrl(code);
   return target.targetType === "location" ? makeRocketTargetImage(target) : "";
+}
+
+function setRocketPreviewImage(image, target = {}, alt = "") {
+  if (!image) return;
+  const imageUrl = getRocketTargetFlagUrl(target);
+  image.onerror = null;
+  if (imageUrl) {
+    image.src = imageUrl;
+    image.alt = alt || `${target.name || "Target"} preview image`;
+    image.onerror = () => {
+      image.onerror = null;
+      image.src = makeRocketTargetImage(target);
+    };
+  } else {
+    image.removeAttribute("src");
+    image.alt = "";
+  }
 }
 
 function getRocketDepotPreviewTarget(name = "") {
@@ -3109,6 +3118,7 @@ function makeRocketDepots() {
     .filter((item) => {
       const itemAlias = rocketCountryAliases[item.name] || item.name;
       return !blockedRocketCountries.has(item.name)
+        && item.targetType !== "location"
         && (item.lat === undefined || item.lat > -58)
         && item.name !== targetName
         && itemAlias !== targetAlias;
@@ -3252,8 +3262,7 @@ function renderRocketDepotIntel() {
     const imageUrl = getRocketTargetFlagUrl(target);
     if (imageUrl) {
       const image = document.createElement("img");
-      image.src = imageUrl;
-      image.alt = `${name} depot flag`;
+      setRocketPreviewImage(image, target, `${name} depot flag`);
       item.append(image);
     }
     const label = document.createElement("span");
@@ -6837,6 +6846,8 @@ function showRocketDepotPreview(trigger, event = null) {
   if (!trigger) return;
   const preview = ensureRocketDepotPreview();
   preview.innerHTML = rocketDepotPreviewHtml(trigger);
+  const country = trigger?.dataset?.depotCountry || trigger?.textContent?.trim() || "Fuel depot";
+  setRocketPreviewImage(preview.querySelector("img"), getRocketDepotPreviewTarget(country), `${country} depot preview`);
   preview.hidden = false;
   if (event) positionRocketDepotPreview(preview, event);
 }
