@@ -300,6 +300,19 @@ function cleanRankPoints(value) {
   return Math.max(0, Math.min(1000000000, Math.round(Number(value) || 0)));
 }
 
+function rocketRunHasRenderableDetails(run = {}) {
+  const logs = Array.isArray(run.logs) ? run.logs : [];
+  const hasMapRoute = logs.some((log) =>
+    (Array.isArray(log?.trace) && log.trace.length > 1)
+    || (Number(log?.targetX) > 0 && Number(log?.targetY) > 0)
+  );
+  const hasDepotStatus = logs.some((log) =>
+    (Array.isArray(log?.landings) && log.landings.length > 0)
+    || (Array.isArray(log?.depotMarkers) && log.depotMarkers.length > 0)
+  );
+  return hasMapRoute && hasDepotStatus;
+}
+
 function estimateRankPointsFromHistory(candidate = {}) {
   const flagPoints = (candidate.runs || []).reduce((sum, run) => sum + cleanRankPoints(run.score), 0);
   const flyPoints = (candidate.rocketRuns || [])
@@ -899,7 +912,10 @@ function compactStoredRocketTrace(trace = []) {
 }
 
 function compactRocketRunHistory(runs = []) {
-  return (Array.isArray(runs) ? runs : []).slice(0, 40).map((run) => ({
+  return (Array.isArray(runs) ? runs : [])
+    .filter((run) => run.source === "agent-simulation" || rocketRunHasRenderableDetails(run))
+    .slice(0, 40)
+    .map((run) => ({
     ...run,
     logs: Array.isArray(run.logs)
       ? run.logs.map((log) => ({
