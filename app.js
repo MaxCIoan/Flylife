@@ -157,6 +157,7 @@ const els = {
   techTreeOverlay: document.querySelector("#techTreeOverlay"),
   techTreeStatus: document.querySelector("#techTreeStatus"),
   pauseResume: document.querySelector("#pauseResume"),
+  pauseRouteReport: document.querySelector("#pauseRouteReport"),
   pauseEndRound: document.querySelector("#pauseEndRound"),
   pauseEndRun: document.querySelector("#pauseEndRun"),
   pauseScanTarget: document.querySelector("#pauseScanTarget"),
@@ -3912,6 +3913,11 @@ function showRocketMissionPopup({ title, kind, points, speed, altitude, descentD
 function recordRocketRound(success, reason = "route") {
   if (!rocketState || rocketState.roundLogged) return;
   rocketState.roundLogged = true;
+  rocketState.roundLogs.push(buildRocketRoundLogSnapshot(success, reason));
+  saveRocketProgressSnapshot(true);
+}
+
+function buildRocketRoundLogSnapshot(success = false, reason = "route") {
   const landings = [...(rocketState.landingLogs || [])];
   const trace = buildRocketRoundTrace(rocketState.routeTrail || []);
   const visitedDepotCountries = getRocketDepotCountryList(landings);
@@ -3920,7 +3926,7 @@ function recordRocketRound(success, reason = "route") {
     : getRocketDepotCountryList([...(rocketState.depots || []), ...landings]);
   const depotMarkers = buildRocketRoundDepotMarkers(rocketState.roundDepotMarkers || [], landings, depotCountries);
   const bonusMarkers = (rocketState.supplementalIntel || []).map(serializeRocketBonusMarker);
-  rocketState.roundLogs.push({
+  return {
     round: rocketState.round,
     target: rocketState.target?.name || "Unknown",
     flag: getRocketTargetFlagUrl(rocketState.target),
@@ -3939,8 +3945,7 @@ function recordRocketRound(success, reason = "route") {
     depotMarkers,
     bonusMarkers,
     landings
-  });
-  saveRocketProgressSnapshot(true);
+  };
 }
 
 function buildRocketRoundTrace(routeTrail = []) {
@@ -6782,6 +6787,11 @@ function updateRocketTechLabels() {
   if (els.pauseEndRound) {
     els.pauseEndRound.disabled = !rocketState || ["setup", "result", "round-summary"].includes(rocketState.phase);
   }
+  if (els.pauseRouteReport) {
+    const hasLogs = Boolean((rocketState?.roundLogs || []).length);
+    const hasTrace = Boolean((rocketState?.routeTrail || []).length);
+    els.pauseRouteReport.disabled = !rocketState || (!hasLogs && !hasTrace);
+  }
 }
 
 function buyRocketTargetScan() {
@@ -6857,6 +6867,37 @@ function showRocketResult(title, summary, action = "restart") {
   }
   renderRocketResultDetails();
   drawRocketResultMap();
+  els.rocketResultOverlay.hidden = false;
+}
+
+function getRocketPauseReportLogs() {
+  const logs = [...(rocketState?.roundLogs || [])];
+  if (rocketState && !rocketState.roundLogged && !["setup", "result", "round-summary"].includes(rocketState.phase)) {
+    const hasTrace = (rocketState.routeTrail || []).length > 0 || (rocketState.landingLogs || []).length > 0;
+    if (hasTrace) logs.push(buildRocketRoundLogSnapshot(false, "in progress"));
+  }
+  return logs;
+}
+
+function showRocketPauseRouteReport() {
+  if (!els.rocketResultOverlay || !rocketState) return;
+  const logs = getRocketPauseReportLogs();
+  if (!logs.length) {
+    els.rocketMessage.textContent = "No route trace recorded yet.";
+    return;
+  }
+  rocketState.resultAction = "close-report";
+  if (els.rocketResultTitle) els.rocketResultTitle.textContent = "Route Report";
+  if (els.rocketResultSummary) {
+    const reached = logs.filter((log) => log.success).length;
+    const objectiveCount = logs.reduce((total, log) => total + getRocketRoundObjectiveCount(log), 0);
+    const objectiveTotal = logs.reduce((total, log) => total + getRocketRoundObjectiveTotal(log), 0);
+    els.rocketResultSummary.textContent = `${reached}/${logs.length} routes reached. Route locations ${objectiveCount}${objectiveTotal ? ` / ${objectiveTotal}` : ""}.`;
+  }
+  if (els.rocketResultRestart) els.rocketResultRestart.textContent = "Back to Pause";
+  renderRocketResultDetails(logs);
+  drawRocketResultMap(logs);
+  if (els.techTreeOverlay) els.techTreeOverlay.hidden = true;
   els.rocketResultOverlay.hidden = false;
 }
 
@@ -6992,6 +7033,14 @@ function getRocketRoundObjectiveTotal(log = {}) {
   return getRocketRoundDepotTotal(log) + getRocketRoundBonusTotal(log);
 }
 
+function getRocketObjectiveMarkersForLog(log = {}) {
+  const depotMarkers = getRocketDepotMarkersForLog(log)
+    .map((marker, index) => ({ ...marker, objectiveKind: "depot", objectiveIndex: index, objectiveLabel: `D${index + 1}` }));
+  const bonusMarkers = getRocketBonusMarkersForLog(log)
+    .map((marker, index) => ({ ...marker, objectiveKind: "bonus", objectiveIndex: index, objectiveLabel: `B${index + 1}` }));
+  return depotMarkers.concat(bonusMarkers);
+}
+
 function getRocketDepotMarkersForLog(log = {}) {
   const markers = Array.isArray(log.depotMarkers) && log.depotMarkers.length
     ? log.depotMarkers
@@ -7004,9 +7053,7 @@ function getRocketDepotMarkersForLog(log = {}) {
 }
 
 function rocketDepotStatusHtml(log = {}, selectedIndex = null) {
-  const depotMarkers = getRocketDepotMarkersForLog(log).map((marker, index) => ({ ...marker, objectiveKind: "depot", objectiveIndex: index }));
-  const bonusMarkers = getRocketBonusMarkersForLog(log).map((marker, index) => ({ ...marker, objectiveKind: "bonus", objectiveIndex: index }));
-  const markers = depotMarkers.concat(bonusMarkers);
+  const markers = getRocketObjectiveMarkersForLog(log);
   if (!markers.length) return "";
   const dots = markers.map((marker, index) => {
     const isBonus = marker.objectiveKind === "bonus";
@@ -7023,7 +7070,7 @@ function rocketDepotStatusHtml(log = {}, selectedIndex = null) {
     const imageUrl = getRocketTargetFlagUrl(target);
     const image = imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(objectiveName || "Objective")} preview">` : "";
     const status = isBonus ? marker.status === "hit" ? "Collected bonus location" : "Missed bonus location" : rocketDepotStatusLabel(marker);
-    const dotText = isBonus ? `B${marker.objectiveIndex + 1}` : `D${marker.objectiveIndex + 1}`;
+    const dotText = marker.objectiveLabel || (isBonus ? `B${marker.objectiveIndex + 1}` : `D${marker.objectiveIndex + 1}`);
     return `<button type="button" class="rocket-depot-dot ${marker.status}${selected} ${isBonus ? "bonus" : ""}" data-depot-preview data-depot-index="${index}" data-depot-country="${escapeHtml(objectiveName || "")}" data-depot-status="${escapeHtml(status)}" title="${escapeHtml(label)}">${image}<span>${dotText}</span></button>`;
   }).join("");
   return `<span class="rocket-depot-status" aria-label="Route location results">${dots}</span>`;
@@ -7244,7 +7291,7 @@ function setupRocketRouteInspector(root, run) {
       const dot = event.target.closest?.("[data-depot-index]");
       if (!dot || selected === "all") return;
       selectedDepot = Number(dot.dataset.depotIndex);
-      const marker = getRocketDepotMarkersForLog(logs[selected])[selectedDepot];
+      const marker = getRocketObjectiveMarkersForLog(logs[selected])[selectedDepot];
       if (marker && Number.isFinite(Number(marker.x)) && Number.isFinite(Number(marker.y))) {
         view = makeRocketLogView(mapW, mapH, {
           zoom: Math.max(3.1, view.zoom || 1),
@@ -7288,10 +7335,10 @@ function setupRocketRouteInspector(root, run) {
       return;
     }
     if (selected !== "all") {
-      const depotIndex = pickRocketDepotFromCanvas(canvas, logs[selected], mapW, mapH, event, view);
-      if (depotIndex != null) {
-        selectedDepot = depotIndex;
-        const marker = getRocketDepotMarkersForLog(logs[selected])[selectedDepot];
+      const objectiveIndex = pickRocketObjectiveFromCanvas(canvas, logs[selected], mapW, mapH, event, view);
+      if (objectiveIndex != null) {
+        selectedDepot = objectiveIndex;
+        const marker = getRocketObjectiveMarkersForLog(logs[selected])[selectedDepot];
         if (marker) {
           view = makeRocketLogView(mapW, mapH, {
             zoom: Math.max(3.1, view.zoom || 1),
@@ -7344,10 +7391,10 @@ function setupRocketRouteInspector(root, run) {
       return;
     }
     if (selected !== "all") {
-      const depotIndex = pickRocketDepotFromCanvas(canvas, logs[selected], mapW, mapH, event, view, 18);
-      if (depotIndex != null) {
-        const marker = getRocketDepotMarkersForLog(logs[selected])[depotIndex];
-        hover.innerHTML = rocketDepotHoverHtml(marker, depotIndex);
+      const objectiveIndex = pickRocketObjectiveFromCanvas(canvas, logs[selected], mapW, mapH, event, view, 18);
+      if (objectiveIndex != null) {
+        const marker = getRocketObjectiveMarkersForLog(logs[selected])[objectiveIndex];
+        hover.innerHTML = rocketDepotHoverHtml(marker, objectiveIndex);
         positionRocketRouteHover(canvas, hover, event);
         hover.hidden = false;
         return;
@@ -7556,8 +7603,17 @@ function rocketDepotStatusLabel(marker = {}) {
 }
 
 function rocketDepotDetailHtml(marker = {}, index = 0) {
+  if (marker.objectiveKind === "bonus") {
+    const parts = [
+      marker.objectiveLabel || `B${Number(marker.objectiveIndex || 0) + 1}`,
+      marker.name || "Bonus location",
+      marker.category || "Historical / geological / social",
+      marker.status === "hit" ? "Collected" : "Missed"
+    ];
+    return parts.map(escapeHtml).join(" | ");
+  }
   const label = rocketDepotStatusLabel(marker);
-  const parts = [`Depot ${index + 1}`, marker.country || "Unknown country", label];
+  const parts = [marker.objectiveLabel || `D${index + 1}`, marker.country || "Unknown country", label];
   if (marker.status !== "missed") {
     parts.push(`TP +${marker.techEarned || (marker.status === "basic" ? 3 : 5)}`);
     if (Number(marker.points || 0) > 0) parts.push(`Score +${formatScore(marker.points)}`);
@@ -7566,8 +7622,15 @@ function rocketDepotDetailHtml(marker = {}, index = 0) {
 }
 
 function rocketDepotHoverHtml(marker = {}, index = 0) {
+  if (marker.objectiveKind === "bonus") {
+    return `
+      <strong>${escapeHtml(`${marker.objectiveLabel || `B${Number(marker.objectiveIndex || 0) + 1}`}: ${marker.name || "Bonus location"}`)}</strong>
+      <span>${escapeHtml(marker.category || "Historical / geological / social")}</span>
+      <span>${marker.status === "hit" ? "Collected" : "Not collected"}</span>
+    `;
+  }
   return `
-    <strong>${escapeHtml(`Depot ${index + 1}: ${marker.country || "Unknown"}`)}</strong>
+    <strong>${escapeHtml(`${marker.objectiveLabel || `D${index + 1}`}: ${marker.country || "Unknown"}`)}</strong>
     <span>${escapeHtml(rocketDepotStatusLabel(marker))}</span>
     <span>${marker.status !== "missed" ? `TP +${marker.techEarned || (marker.status === "basic" ? 3 : 5)}${Number(marker.points || 0) > 0 ? ` | Score +${formatScore(marker.points)}` : ""}` : "Not collected"}</span>
   `;
@@ -7595,7 +7658,7 @@ function renderRocketRouteMeta(meta, logs, selected, selectedDepot = null) {
   if (!log) return;
   const objectiveCount = getRocketRoundObjectiveCount(log);
   const objectiveTotal = getRocketRoundObjectiveTotal(log);
-  const selectedMarker = Number.isInteger(selectedDepot) ? getRocketDepotMarkersForLog(log)[selectedDepot] : null;
+  const selectedMarker = Number.isInteger(selectedDepot) ? getRocketObjectiveMarkersForLog(log)[selectedDepot] : null;
   meta.innerHTML = `
     <strong>Round ${log.round}: ${rocketLogFlagHtml(log)}${escapeHtml(log.target || "Unknown")}</strong>
     <span class="${log.success ? "round-good" : "round-bad"}">${log.success ? "Reached" : "Missed"} | ${escapeHtml(log.reason || "route")} | ${Math.max(0, log.time || 0).toFixed(1)}s left</span>
@@ -7618,14 +7681,14 @@ function pickRocketRouteFromCanvas(canvas, logs, mapW, mapH, event, view = null)
   return best.distance <= 24 ? best : { index: null, distance: Infinity, progress: 0 };
 }
 
-function pickRocketDepotFromCanvas(canvas, log, mapW, mapH, event, view = null, radius = 16) {
+function pickRocketObjectiveFromCanvas(canvas, log, mapW, mapH, event, view = null, radius = 16) {
   if (!log) return null;
   const rect = canvas.getBoundingClientRect();
   const x = (event.clientX - rect.left) * (canvas.width / rect.width);
   const y = (event.clientY - rect.top) * (canvas.height / rect.height);
   const viewport = getRocketLogViewport(canvas, mapW, mapH, view);
   let best = { index: null, distance: Infinity };
-  getRocketDepotMarkersForLog(log).forEach((marker, index) => {
+  getRocketObjectiveMarkersForLog(log).forEach((marker, index) => {
     if (!Number.isFinite(Number(marker.x)) || !Number.isFinite(Number(marker.y))) return;
     const point = rocketProjectLogPoint(marker, viewport);
     const distance = Math.hypot(point.x - x, point.y - y);
@@ -7742,7 +7805,7 @@ function drawRocketLogMap(canvas, logs, mapW, mapH, selected = "all", view = nul
     }
     if (selected === "all" || isSelected) {
       drawRocketLogDepotStatusMarkers(ctx, log, viewport, isSelected ? selectedDepot : null);
-      drawRocketLogBonusStatusMarkers(ctx, log, viewport);
+      drawRocketLogBonusStatusMarkers(ctx, log, viewport, isSelected ? selectedDepot : null);
     }
     ctx.globalAlpha = 1;
   });
@@ -7795,9 +7858,10 @@ function drawRocketLogDepotStatusMarkers(ctx, log, viewport, selectedDepot = nul
   ctx.restore();
 }
 
-function drawRocketLogBonusStatusMarkers(ctx, log, viewport) {
+function drawRocketLogBonusStatusMarkers(ctx, log, viewport, selectedDepot = null) {
   const markers = getRocketBonusMarkersForLog(log).filter((marker) => Number.isFinite(Number(marker.x)) && Number.isFinite(Number(marker.y)));
   if (!markers.length) return;
+  const depotCount = getRocketDepotMarkersForLog(log).length;
   ctx.save();
   ctx.font = "900 9px system-ui";
   ctx.textAlign = "center";
@@ -7806,9 +7870,10 @@ function drawRocketLogBonusStatusMarkers(ctx, log, viewport) {
     const point = rocketProjectLogPoint(marker, viewport);
     if (point.x < -18 || point.y < -18 || point.x > viewport.scaleX * (viewport.maxX - viewport.minX) + 18 || point.y > viewport.scaleY * (viewport.maxY - viewport.minY) + 18) return;
     const color = marker.status === "hit" ? "#ffc55a" : "#7b5260";
+    const selected = selectedDepot === depotCount + index;
     ctx.fillStyle = "rgba(10, 11, 18, .82)";
     ctx.strokeStyle = color;
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = selected ? 4 : 2.5;
     ctx.beginPath();
     ctx.moveTo(point.x, point.y - 12);
     ctx.lineTo(point.x + 10, point.y + 5);
@@ -7817,6 +7882,13 @@ function drawRocketLogBonusStatusMarkers(ctx, log, viewport) {
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+    if (selected) {
+      ctx.strokeStyle = "rgba(255,255,255,.72)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 17, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     ctx.fillStyle = color;
     ctx.fillText(`B${index + 1}`, point.x, point.y + 3);
   });
@@ -8438,6 +8510,12 @@ document.addEventListener("click", (event) => {
   }
 });
 els.rocketResultRestart?.addEventListener("click", () => {
+  if (rocketState?.resultAction === "close-report") {
+    if (els.rocketResultOverlay) els.rocketResultOverlay.hidden = true;
+    rocketState.resultAction = "restart";
+    openRocketPause();
+    return;
+  }
   if (rocketState?.resultAction === "next-round") {
     if (els.rocketResultOverlay) els.rocketResultOverlay.hidden = true;
     nextRocketRound(false);
@@ -8454,6 +8532,10 @@ els.techTreeClose?.addEventListener("click", closeRocketPause);
 els.pauseResume?.addEventListener("click", () => {
   markRocketActivity();
   closeRocketPause();
+});
+els.pauseRouteReport?.addEventListener("click", () => {
+  markRocketActivity();
+  showRocketPauseRouteReport();
 });
 els.pauseEndRound?.addEventListener("click", () => {
   markRocketActivity();
