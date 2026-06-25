@@ -68,7 +68,10 @@ export default async (request) => {
          from fly_runs
          where status = 'completed'
            and tampered = false
-           and lower(display_name) not in ('guest', 'anonymous', 'player', 'codexprobe', 'codexpartialprobe')
+           and lower(display_name) not like 'guest%'
+           and lower(display_name) not like 'anonymous%'
+           and lower(display_name) not like 'player%'
+           and lower(display_name) not in ('codexprobe', 'codexpartialprobe')
        ) ranked
        where rank_for_player = 1
        order by "finalScore" desc, "elapsedMs" asc, "finishedAt" asc

@@ -49,7 +49,7 @@ export function cleanDisplayName(value) {
 
 export function isGuestDisplayName(value) {
   const name = cleanDisplayName(value).toLowerCase();
-  return !name || name === "guest" || name === "player" || name === "anonymous";
+  return !name || name.startsWith("guest") || name.startsWith("player") || name.startsWith("anonymous");
 }
 
 export function cleanPlayerId(value) {

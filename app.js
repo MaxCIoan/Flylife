@@ -342,7 +342,7 @@ function cleanRankPoints(value) {
 
 function isGuestDisplayName(value) {
   const name = String(value || "").trim().toLowerCase();
-  return !name || ["guest", "player", "anonymous"].includes(name);
+  return !name || name.startsWith("guest") || name.startsWith("player") || name.startsWith("anonymous");
 }
 
 function hasNamedProfile() {
