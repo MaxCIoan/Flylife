@@ -77,7 +77,7 @@ export default async (request) => {
        ) ranked
        where rank_for_player = 1
        order by "finalScore" desc, "elapsedMs" asc, "finishedAt" asc
-       limit 20`
+        limit 20`,
       [PUBLIC_SCORE_RESET_AT]
     );
     const leaders = rows.map((leader) => ({
