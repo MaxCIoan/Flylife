@@ -223,6 +223,7 @@ const ROCKET_STATIC_CACHE_SNAP = 768;
 const ROCKET_IMAGERY_TILE_SIZE = 512;
 const ROCKET_IMAGERY_CACHE_MAX = 104;
 const ROCKET_IMAGERY_MAX_LOADS = 4;
+const ROCKET_LIVE_IMAGERY_TILES_ENABLED = false;
 const ROCKET_ATLAS_TILE_VERSION = "20260620itch1";
 const ROCKET_FIXED_CAMERA_ZOOM = 1.85;
 const ROCKET_IMAGERY_PRELOAD_PAD = 1;
@@ -247,7 +248,7 @@ rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260620itch1";
 rocketMiniMapImage.addEventListener("load", () => { rocketMiniMapCache = null; });
 const rocketReportAtlasImage = new Image();
 rocketReportAtlasImage.decoding = "async";
-rocketReportAtlasImage.src = "assets/blue-marble-report-atlas.jpg?v=20260625report1";
+let rocketReportAtlasRequested = false;
 let rocketCountryOverlayEnabled = false;
 
 let officialFlyLeaders = [];
@@ -4658,7 +4659,7 @@ function drawRocketSetupBackground(ctx, rect) {
 }
 
 function drawRocketMap(ctx, rect, camX, camY) {
-  queueRocketImageryPreload(rect, camX, camY);
+  if (ROCKET_LIVE_IMAGERY_TILES_ENABLED) queueRocketImageryPreload(rect, camX, camY);
   const snap = getRocketStaticCacheSnap();
   const pixelScale = getRocketMapCachePixelScale();
   const detailMode = getRocketMapDetailMode();
@@ -4868,10 +4869,42 @@ function getRocketBoundaryPath(line) {
 function drawRocketSatelliteBase(ctx, rect, camX, camY) {
   ctx.fillStyle = "#071827";
   ctx.fillRect(0, 0, rect.width, rect.height);
+  if (!ROCKET_LIVE_IMAGERY_TILES_ENABLED) {
+    drawRocketLightweightWorldBase(ctx, rect, camX, camY);
+    return;
+  }
   drawRocketBlueMarbleTiles(ctx, rect, camX, camY);
 }
 
+function drawRocketLightweightWorldBase(ctx, rect, camX, camY) {
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  if (rocketMiniMapImage.complete && rocketMiniMapImage.naturalWidth > 0) {
+    const sx = camX / rocketState.mapW * rocketMiniMapImage.naturalWidth;
+    const sy = camY / rocketState.mapH * rocketMiniMapImage.naturalHeight;
+    const sw = rect.width / rocketState.mapW * rocketMiniMapImage.naturalWidth;
+    const sh = rect.height / rocketState.mapH * rocketMiniMapImage.naturalHeight;
+    ctx.drawImage(rocketMiniMapImage, sx, sy, sw, sh, 0, 0, rect.width, rect.height);
+    ctx.fillStyle = "rgba(2, 9, 16, .18)";
+    ctx.fillRect(0, 0, rect.width, rect.height);
+  } else {
+    const grad = ctx.createLinearGradient(0, 0, rect.width, rect.height);
+    grad.addColorStop(0, "#092236");
+    grad.addColorStop(0.52, "#0b3145");
+    grad.addColorStop(1, "#061423");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, rect.width, rect.height);
+  }
+  drawRocketPolarEdge(ctx, rect, camY);
+  ctx.restore();
+}
+
 function drawRocketBlueMarbleTiles(ctx, rect, camX, camY) {
+  if (!ROCKET_LIVE_IMAGERY_TILES_ENABLED) {
+    drawRocketLightweightWorldBase(ctx, rect, camX, camY);
+    return;
+  }
   const tileSize = ROCKET_IMAGERY_TILE_SIZE;
   const minTileX = Math.max(0, Math.floor(camX / tileSize));
   const maxTileX = Math.min(Math.ceil(rocketState.mapW / tileSize) - 1, Math.floor((camX + rect.width) / tileSize));
@@ -7579,7 +7612,14 @@ function resizeRocketLogCanvas(canvas) {
   }
 }
 
+function ensureRocketReportAtlasImage() {
+  if (rocketReportAtlasRequested) return;
+  rocketReportAtlasRequested = true;
+  rocketReportAtlasImage.src = "assets/blue-marble-report-atlas.jpg?v=20260625report1";
+}
+
 function drawRocketLogMapBase(ctx, w, h, viewport, mapW, mapH, options = {}) {
+  ensureRocketReportAtlasImage();
   ctx.fillStyle = "#030914";
   ctx.fillRect(0, 0, w, h);
   ctx.imageSmoothingEnabled = true;
