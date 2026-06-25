@@ -122,12 +122,16 @@ export default async (request) => {
     const hasEvents = Array.isArray(session.logs)
       && session.logs.some((log) => (
         Boolean(log?.success)
+        || Boolean(log?.reason)
         || Number(log?.score || 0) > 0
         || Number(log?.techEarned || 0) > 0
         || (Array.isArray(log?.scoreEvents) && log.scoreEvents.length > 0)
         || (Array.isArray(log?.landings) && log.landings.length > 0)
+        || (Array.isArray(log?.depotMarkers) && log.depotMarkers.length > 0)
+        || (Array.isArray(log?.bonusMarkers) && log.bonusMarkers.length > 0)
+        || (Array.isArray(log?.trace) && log.trace.length > 1)
       ));
-    if (result.finalScore <= 0 || !hasEvents) {
+    if (!hasEvents) {
       await query(
         `update fly_runs
          set display_name = $1,
@@ -146,7 +150,7 @@ export default async (request) => {
           finishedAt,
           JSON.stringify(session),
           result.elapsedMs,
-          result.finalScore <= 0 ? "zero score discarded" : "no scoring events discarded",
+          "no run activity recorded",
           body.runId
         ]
       );

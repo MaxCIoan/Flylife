@@ -32,6 +32,7 @@ function compactPayload(payload = {}) {
         ...log,
         trace: compactTrace(log.trace),
         depotMarkers: Array.isArray(log.depotMarkers) ? log.depotMarkers.slice(0, 8) : [],
+        bonusMarkers: Array.isArray(log.bonusMarkers) ? log.bonusMarkers.slice(0, 8) : [],
         landings: Array.isArray(log.landings) ? log.landings.slice(0, 8) : []
       }))
       : []
@@ -67,7 +68,6 @@ export default async (request) => {
          from fly_runs
          where status = 'completed'
            and tampered = false
-           and final_score > 0
            and coalesce(jsonb_array_length(payload->'logs'), 0) > 0
            and lower(display_name) not in ('codexprobe', 'codexpartialprobe')
        ) ranked
