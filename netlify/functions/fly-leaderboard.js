@@ -32,6 +32,7 @@ function compactPayload(payload = {}) {
         ...log,
         trace: compactTrace(log.trace),
         depotMarkers: Array.isArray(log.depotMarkers) ? log.depotMarkers.slice(0, 8) : [],
+        bonusMarkers: Array.isArray(log.bonusMarkers) ? log.bonusMarkers.slice(0, 8) : [],
         landings: Array.isArray(log.landings) ? log.landings.slice(0, 8) : []
       }))
       : []
@@ -44,21 +45,34 @@ export default async (request) => {
 
   try {
     const { rows } = await query(
-      `select run_id as "runId",
-              player_id as "playerId",
-              display_name as "displayName",
-              rounds,
-              coalesce((payload->>'selectedRounds')::int, rounds) as "selectedRounds",
-              coalesce((payload->>'completedRounds')::int, 0) as "completedRounds",
-              coalesce(payload->>'planeClass', '') as "planeClass",
-              final_score as "finalScore",
-              elapsed_ms as "elapsedMs",
-              finished_at as "finishedAt",
-              payload
-       from fly_runs
-       where status = 'completed' and tampered = false and final_score > 0
-         and display_name not in ('CodexProbe', 'CodexPartialProbe')
-       order by final_score desc, elapsed_ms asc, finished_at asc
+      `select *
+       from (
+         select run_id as "runId",
+                player_id as "playerId",
+                display_name as "displayName",
+                rounds,
+                coalesce((payload->>'selectedRounds')::int, rounds) as "selectedRounds",
+                coalesce((payload->>'completedRounds')::int, 0) as "completedRounds",
+                coalesce(payload->>'planeClass', '') as "planeClass",
+                final_score as "finalScore",
+                elapsed_ms as "elapsedMs",
+                finished_at as "finishedAt",
+                payload,
+                row_number() over (
+                  partition by case
+                    when lower(display_name) in ('guest', 'anonymous', 'player') then coalesce(nullif(player_id, ''), run_id)
+                    else lower(display_name)
+                  end
+                  order by final_score desc, elapsed_ms asc, finished_at asc
+                ) as rank_for_player
+         from fly_runs
+         where status = 'completed'
+           and tampered = false
+           and coalesce(jsonb_array_length(payload->'logs'), 0) > 0
+           and lower(display_name) not in ('codexprobe', 'codexpartialprobe')
+       ) ranked
+       where rank_for_player = 1
+       order by "finalScore" desc, "elapsedMs" asc, "finishedAt" asc
        limit 20`
     );
     const leaders = rows.map((leader) => ({

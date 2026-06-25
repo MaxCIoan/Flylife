@@ -307,10 +307,43 @@ function cleanRankPoints(value) {
   return Math.max(0, Math.min(1000000000, Math.round(Number(value) || 0)));
 }
 
+function isGuestDisplayName(value) {
+  const name = String(value || "").trim().toLowerCase();
+  return !name || ["guest", "player", "anonymous"].includes(name);
+}
+
+function hasNamedProfile() {
+  return Boolean(profile?.playerId && !isGuestDisplayName(profile.displayName));
+}
+
+function flagRunHasEvent(run = {}) {
+  return !isGuestDisplayName(run.displayName)
+    && ((Array.isArray(run.correct) && run.correct.length > 0)
+      || (Array.isArray(run.mistakes) && run.mistakes.length > 0));
+}
+
+function rocketRunHasScoringEvent(run = {}) {
+  return !isGuestDisplayName(run.displayName)
+    && Array.isArray(run.logs)
+    && run.logs.some((log) => (
+      Boolean(log?.success)
+      || Boolean(log?.reason)
+      || cleanRankPoints(log?.score) > 0
+      || cleanRankPoints(log?.techEarned) > 0
+      || (Array.isArray(log?.scoreEvents) && log.scoreEvents.length > 0)
+      || (Array.isArray(log?.landings) && log.landings.length > 0)
+      || (Array.isArray(log?.depotMarkers) && log.depotMarkers.length > 0)
+      || (Array.isArray(log?.bonusMarkers) && log.bonusMarkers.length > 0)
+      || (Array.isArray(log?.trace) && log.trace.length > 1)
+    ));
+}
+
 function estimateRankPointsFromHistory(candidate = {}) {
-  const flagPoints = (candidate.runs || []).reduce((sum, run) => sum + cleanRankPoints(run.score), 0);
+  const flagPoints = (candidate.runs || [])
+    .filter(flagRunHasEvent)
+    .reduce((sum, run) => sum + cleanRankPoints(run.score), 0);
   const flyPoints = (candidate.rocketRuns || [])
-    .filter((run) => run.source !== "agent-simulation")
+    .filter((run) => run.source !== "agent-simulation" && rocketRunHasScoringEvent(run))
     .reduce((sum, run) => sum + cleanRankPoints(run.score ?? run.finalScore), 0);
   return cleanRankPoints(flagPoints + flyPoints);
 }
@@ -1917,6 +1950,7 @@ function saveRocketSessionResult(title, summary) {
       ...log,
       trace: (log.trace || []).slice(0, ROCKET_LOG_TRACE_MAX),
       depotMarkers: Array.isArray(log.depotMarkers) ? log.depotMarkers.slice(0, 8) : [],
+      bonusMarkers: Array.isArray(log.bonusMarkers) ? log.bonusMarkers.slice(0, 8) : [],
       landings: (log.landings || []).slice(0, 8)
     }))
   };
@@ -2041,9 +2075,9 @@ function renderTables() {
     flyTable?.append(row);
   });
 
-  const leaderboardEntries = buildOfficialLeaderboardEntries(officialFlyLeaders);
+  const leaderboardEntries = buildLocalLeaderboardEntries(runs, rocketRuns, officialFlyLeaders);
   if (!els.leaderboardTable) return;
-  els.leaderboardTable.innerHTML = leaderboardEntries.length ? "" : `<tr class="table-empty"><td colspan="9">${officialFlyLeadersLoading ? "Loading official Fly scores..." : officialFlyLeadersError ? "Official leaderboard is offline right now." : "No official Fly scores yet."}</td></tr>`;
+  els.leaderboardTable.innerHTML = leaderboardEntries.length ? "" : `<tr class="table-empty"><td colspan="9">${officialFlyLeadersLoading ? "Loading official Fly scores..." : officialFlyLeadersError ? "Official leaderboard is offline right now." : "No runs recorded yet."}</td></tr>`;
   leaderboardEntries.forEach((entry, index) => {
     const row = document.createElement("tr");
     row.className = "clickable-row leaderboard-row";
@@ -2054,16 +2088,16 @@ function renderTables() {
       <td class="score-cell">${formatScore(entry.score)}</td>
       <td>${entry.roundsLabel}</td>
       <td>${entry.reachedLabel}</td>
-      <td>${entry.plane || "Unlisted"}</td>
+      <td>${entry.mode || entry.plane || "Unlisted"}</td>
       <td>${entry.durationLabel}</td>
       <td class="muted-cell">${entry.submittedLabel}</td>
       <td><button class="mini-btn" type="button">View</button></td>
     `;
-    row.addEventListener("click", () => toggleRunDetails(row, entry.run, 9, "official-fly"));
+    row.addEventListener("click", () => toggleRunDetails(row, entry.detailData || entry.run, 9, entry.detailType || "official-fly"));
     row.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        toggleRunDetails(row, entry.run, 9, "official-fly");
+        toggleRunDetails(row, entry.detailData || entry.run, 9, entry.detailType || "official-fly");
       }
     });
     els.leaderboardTable.append(row);
@@ -2076,29 +2110,33 @@ function buildLocalLeaderboardEntries(flagRuns, flyRuns, officialFlyRuns = []) {
     mode: "Speed Flags",
     displayName: player.displayName,
     score: player.bestScore,
-    plane: "",
-    result: `${player.bestRun?.correct?.length || 0} correct, ${player.bestRun?.mistakes?.length || 0} errors`,
-    details: `Penalty ${formatScore(getRunPenalty(player.bestRun))} / ${formatDuration(player.bestRun?.elapsedMs)}`
+    roundsLabel: `${player.bestRun?.rounds || 0}`,
+    reachedLabel: `${player.bestRun?.correct?.length || 0} correct`,
+    durationLabel: formatDuration(player.bestRun?.elapsedMs || 0),
+    submittedLabel: formatLeaderboardDate(player.bestRun?.createdAt),
+    plane: "Speed Flags",
+    detailType: "leaderboard",
+    detailData: player
   }));
   const flyEntries = (flyRuns || []).map((run) => ({
     type: "fly",
     mode: "Local Fly",
     displayName: run.displayName || "Guest",
     score: run.score || 0,
-    plane: escapeHtml(getPlaneClassName(run)),
-    result: `${run.completedRounds || 0}/${run.selectedRounds || run.rounds || 0} reached`,
-    details: `<button class="mini-btn" type="button">Open</button>`,
-    run
+    roundsLabel: `${run.selectedRounds || run.rounds || 0}`,
+    reachedLabel: `${run.completedRounds || 0}/${run.selectedRounds || run.rounds || 0}`,
+    durationLabel: formatDuration(run.elapsedMs || 0),
+    submittedLabel: formatLeaderboardDate(run.createdAt),
+    plane: getPlaneClassName(run),
+    run,
+    detailType: "rocket-run",
+    detailData: run
   }));
-  const officialFlyEntries = (officialFlyRuns || []).map((run) => ({
-    type: "official-fly",
-    mode: "Fly",
-    displayName: run.displayName || "Guest",
-    score: run.finalScore || 0,
-    plane: escapeHtml(run.planeClass || ""),
-    result: `${run.rounds || 0} rounds`,
-    details: `<button class="mini-btn" type="button">View</button>`,
-    run
+  const officialFlyEntries = buildOfficialLeaderboardEntries(officialFlyRuns).map((entry) => ({
+    ...entry,
+    mode: "Official Fly",
+    detailType: "official-fly",
+    detailData: entry.run
   }));
   return [...officialFlyEntries, ...flagEntries, ...flyEntries]
     .sort((a, b) => (b.score || 0) - (a.score || 0) || String(a.mode).localeCompare(String(b.mode)))
@@ -2212,6 +2250,7 @@ function normalizeOfficialFlyRun(run = {}) {
       ...log,
       trace: compactStoredRocketTrace(log.trace),
       depotMarkers: Array.isArray(log.depotMarkers) ? log.depotMarkers.slice(0, 8) : [],
+      bonusMarkers: Array.isArray(log.bonusMarkers) ? log.bonusMarkers.slice(0, 8) : [],
       landings: Array.isArray(log.landings) ? log.landings.slice(0, 8) : []
     }))
   };
@@ -7890,11 +7929,23 @@ function buyRocketTech(kind) {
   }
   const cost = rocketTechUpgradeCost(kind, level);
   if (rocketState.techPoints < cost) {
-    const text = `You do not have the required points. ${rocketTechInfo[kind].title} needs ${cost} TP.`;
+    const missing = Math.max(1, cost - rocketState.techPoints);
+    const text = `${rocketTechInfo[kind].title} needs ${cost} TP. You have ${rocketState.techPoints}; earn ${missing} more TP.`;
+    const node = document.querySelector(`[data-tech="${kind}"]`);
+    const desc = node?.querySelector("small");
     els.rocketMessage.textContent = text;
-    if (els.techTreeStatus) els.techTreeStatus.textContent = text;
+    if (els.techTreeStatus) {
+      const plane = getPlaneClass({ tech: rocketState.tech, telemetry: rocketState.telemetry, score: rocketState.score }).name;
+      els.techTreeStatus.textContent = `${plane} | ${rocketState.techPoints} tech points | ${missing} more needed`;
+    }
+    if (desc) desc.textContent = `Need ${missing} more TP for ${rocketTechInfo[kind].title} level ${level + 1}.`;
+    node?.classList.add("blocked");
+    window.setTimeout(() => {
+      node?.classList.remove("blocked");
+      updateRocketTechLabels();
+    }, 1600);
     animateTechTree("denied");
-    rocketFeedback("Not enough tech points", "#ff3d5a", "error");
+    rocketFeedback(`Need ${missing} more TP`, "#ff3d5a", "error");
     playTone("wrong");
     return;
   }
