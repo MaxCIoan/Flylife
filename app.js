@@ -237,6 +237,7 @@ const ROCKET_ROUTE_TRAIL_MAX = 7200;
 const ROCKET_LOG_TRACE_MAX = 720;
 const ROCKET_LOG_DRAW_TRACE_MAX = 260;
 const ROCKET_LOG_ALL_TRACE_MAX = 120;
+const ROCKET_LOG_MAX_ZOOM = 28;
 const ROCKET_HUD_INTERVAL_MS = 120;
 const ROCKET_NAV_CHECK_INTERVAL = 0.14;
 const ROCKET_TINY_COUNTRY_DOT_MAX = 30;
@@ -7165,14 +7166,14 @@ function setupRocketRouteInspector(root, run) {
     };
     if (!deferCanvas) {
       if (deferredRouteRedraw) {
-        window.clearTimeout(deferredRouteRedraw);
+        window.cancelAnimationFrame(deferredRouteRedraw);
         deferredRouteRedraw = 0;
       }
       draw();
       return;
     }
-    if (deferredRouteRedraw) window.clearTimeout(deferredRouteRedraw);
-    deferredRouteRedraw = window.setTimeout(draw, 34);
+    if (deferredRouteRedraw) window.cancelAnimationFrame(deferredRouteRedraw);
+    deferredRouteRedraw = window.requestAnimationFrame(draw);
   }
 
   function selectRoute(value, options = {}) {
@@ -7251,14 +7252,19 @@ function setupRocketRouteInspector(root, run) {
     focusRocketRouteObjective(Number(row.dataset.routeResultIndex), Number(dot.dataset.depotIndex));
     });
   }
-  canvas.onwheel = (event) => {
+  if (canvas._rocketRouteWheelHandler) {
+    canvas.removeEventListener("wheel", canvas._rocketRouteWheelHandler);
+  }
+  canvas._rocketRouteWheelHandler = (event) => {
     event.preventDefault();
+    event.stopPropagation();
     const point = rocketCanvasEventToMapPoint(canvas, mapW, mapH, event, view);
     const anchor = rocketCanvasEventAnchor(canvas, event);
     const factor = event.deltaY < 0 ? 1.16 : 1 / 1.16;
     view = zoomRocketLogView(view, mapW, mapH, point, factor, anchor);
-    redraw(false);
+    redraw(false, true);
   };
+  canvas.addEventListener("wheel", canvas._rocketRouteWheelHandler, { passive: false });
   canvas.onpointerdown = (event) => {
     if (event.button !== 0) return;
     dragState = {
@@ -7388,7 +7394,7 @@ function makeRocketLogView(mapW, mapH, overrides = {}) {
 }
 
 function normalizeRocketLogView(view, mapW, mapH) {
-  const zoom = Math.max(1, Math.min(8, Number(view?.zoom) || 1));
+  const zoom = Math.max(1, Math.min(ROCKET_LOG_MAX_ZOOM, Number(view?.zoom) || 1));
   const halfW = mapW / zoom / 2;
   const halfH = mapH / zoom / 2;
   return {
@@ -7414,7 +7420,7 @@ function makeRocketRouteView(log = {}, mapW = ROCKET_MAP_W, mapH = ROCKET_MAP_H)
   const maxY = Math.max(...ys);
   const routeW = Math.max(420, maxX - minX);
   const routeH = Math.max(280, maxY - minY);
-  const zoom = Math.max(1, Math.min(8, mapW / (routeW * 1.35), mapH / (routeH * 1.45)));
+  const zoom = Math.max(1, Math.min(ROCKET_LOG_MAX_ZOOM, mapW / (routeW * 1.35), mapH / (routeH * 1.45)));
   return makeRocketLogView(mapW, mapH, {
     zoom,
     cx: (minX + maxX) / 2,
@@ -7424,7 +7430,7 @@ function makeRocketRouteView(log = {}, mapW = ROCKET_MAP_W, mapH = ROCKET_MAP_H)
 
 function zoomRocketLogView(view, mapW, mapH, point, factor = 1.5, anchor = null) {
   const next = normalizeRocketLogView(view, mapW, mapH);
-  const targetZoom = Math.max(1, Math.min(8, next.zoom * factor));
+  const targetZoom = Math.max(1, Math.min(ROCKET_LOG_MAX_ZOOM, next.zoom * factor));
   if (Math.abs(targetZoom - next.zoom) < 0.001) return next;
   const anchorX = Number.isFinite(Number(anchor?.xRatio)) ? Number(anchor.xRatio) : 0.5;
   const anchorY = Number.isFinite(Number(anchor?.yRatio)) ? Number(anchor.yRatio) : 0.5;
@@ -7818,34 +7824,7 @@ function drawRocketLogMapBase(ctx, w, h, viewport, mapW, mapH) {
   const sw = (viewport.maxX - viewport.minX) / mapW * base.width;
   const sh = (viewport.maxY - viewport.minY) / mapH * base.height;
   ctx.drawImage(base, sx, sy, sw, sh, 0, 0, w, h);
-  const tileSize = ROCKET_IMAGERY_TILE_SIZE;
-  const minTileX = Math.max(0, Math.floor(viewport.minX / tileSize));
-  const maxTileX = Math.min(Math.ceil(mapW / tileSize) - 1, Math.floor(viewport.maxX / tileSize));
-  const minTileY = Math.max(0, Math.floor(viewport.minY / tileSize));
-  const maxTileY = Math.min(Math.ceil(mapH / tileSize) - 1, Math.floor(viewport.maxY / tileSize));
-  let visibleTiles = 0;
-  let paintedTiles = 0;
-  for (let ty = minTileY; ty <= maxTileY; ty += 1) {
-    for (let tx = minTileX; tx <= maxTileX; tx += 1) {
-      visibleTiles += 1;
-      const tile = getRocketImageryTile(tx, ty, 760);
-      if (!tile?.image || tile.status !== "loaded") continue;
-      paintedTiles += 1;
-      const worldX = tx * tileSize;
-      const worldY = ty * tileSize;
-      const worldW = Math.min(tileSize, mapW - worldX);
-      const worldH = Math.min(tileSize, mapH - worldY);
-      const dx = (worldX - viewport.minX) * viewport.scaleX;
-      const dy = (worldY - viewport.minY) * viewport.scaleY;
-      const dw = worldW * viewport.scaleX;
-      const dh = worldH * viewport.scaleY;
-      ctx.drawImage(tile.image, dx, dy, dw, dh);
-    }
-  }
-  if (visibleTiles && paintedTiles < visibleTiles) {
-    startRocketImageryPendingLoads();
-  }
-  return { visibleTiles, paintedTiles };
+  return { visibleTiles: 0, paintedTiles: 0 };
 }
 
 function drawRocketLogDepotStatusMarkers(ctx, log, viewport, selectedDepot = null) {
