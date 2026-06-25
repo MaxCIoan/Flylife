@@ -104,6 +104,10 @@ const els = {
   flyRunsTable: document.querySelector("#flyRunsTable"),
   leaderboardTable: document.querySelector("#leaderboardTable"),
   pilotProfileSummary: document.querySelector("#pilotProfileSummary"),
+  publicRunSearch: document.querySelector("#publicRunSearch"),
+  publicRunSearchInput: document.querySelector("#publicRunSearchInput"),
+  publicPlayerCards: document.querySelector("#publicPlayerCards"),
+  publicRunsTable: document.querySelector("#publicRunsTable"),
   privateApiStatus: document.querySelector("#privateApiStatus"),
   rocketStage: document.querySelector("#rocketStage"),
   rocketCanvas: document.querySelector("#rocketCanvas"),
@@ -259,6 +263,12 @@ let officialFlyLeaders = [];
 let officialFlyLeadersLoaded = false;
 let officialFlyLeadersLoading = false;
 let officialFlyLeadersError = false;
+let publicFlyPlayers = [];
+let publicFlyRuns = [];
+let publicFlyRunsLoaded = false;
+let publicFlyRunsLoading = false;
+let publicFlyRunsError = false;
+let publicFlyRunQuery = "";
 const productionFlyApiOrigin = "https://flightrace.netlify.app";
 const isItchContext = /(^|\.)itch\.io$/i.test(window.location.hostname)
   || /itch\.io/i.test(document.referrer || "")
@@ -2145,6 +2155,91 @@ function loadOfficialFlyLeaderboard() {
 function refreshOfficialFlyLeaderboard() {
   officialFlyLeadersLoaded = false;
   if (isViewActive("leaderboard")) loadOfficialFlyLeaderboard();
+  if (isViewActive("players")) loadPublicFlyRuns(publicFlyRunQuery);
+}
+
+function loadPublicFlyRuns(query = publicFlyRunQuery) {
+  const cleanQuery = String(query || "").trim();
+  publicFlyRunQuery = cleanQuery;
+  publicFlyRunsLoaded = true;
+  publicFlyRunsLoading = true;
+  publicFlyRunsError = false;
+  renderPublicRuns();
+  const params = new URLSearchParams({ limit: "60" });
+  if (cleanQuery) params.set("q", cleanQuery);
+  fetch(`${flyApiBase}/api/fly/public-runs?${params.toString()}`)
+    .then((response) => response.ok ? response.json() : Promise.reject(new Error("public fly runs unavailable")))
+    .then((data) => {
+      publicFlyPlayers = Array.isArray(data.players) ? data.players : [];
+      publicFlyRuns = Array.isArray(data.runs) ? data.runs.map(normalizeOfficialFlyRun) : [];
+      publicFlyRunsLoading = false;
+      publicFlyRunsError = false;
+      setPrivateApiStatus(true);
+      renderPublicRuns();
+    })
+    .catch(() => {
+      publicFlyPlayers = [];
+      publicFlyRuns = [];
+      publicFlyRunsLoading = false;
+      publicFlyRunsError = true;
+      setPrivateApiStatus(false);
+      renderPublicRuns();
+    });
+}
+
+function renderPublicRuns() {
+  if (els.publicRunSearchInput && document.activeElement !== els.publicRunSearchInput) {
+    els.publicRunSearchInput.value = publicFlyRunQuery;
+  }
+  if (els.publicPlayerCards) {
+    if (publicFlyRunsLoading) {
+      els.publicPlayerCards.innerHTML = `<section><span>Loading</span><strong>Public runs</strong><small>Fetching database submissions.</small></section>`;
+    } else if (publicFlyRunsError) {
+      els.publicPlayerCards.innerHTML = `<section><span>Offline</span><strong>No public data</strong><small>The public run API is unavailable right now.</small></section>`;
+    } else if (!publicFlyPlayers.length) {
+      els.publicPlayerCards.innerHTML = `<section><span>No Matches</span><strong>${publicFlyRunQuery ? escapeHtml(publicFlyRunQuery) : "Public runs"}</strong><small>Try another player name after more runs are submitted.</small></section>`;
+    } else {
+      els.publicPlayerCards.innerHTML = publicFlyPlayers.slice(0, 8).map((player) => `
+        <button type="button" class="public-player-card" data-public-player="${escapeHtml(player.displayName || "")}">
+          <span>${escapeHtml(player.displayName || "Unknown")}</span>
+          <strong>${formatScore(player.bestScore || 0)}</strong>
+          <small>${player.runs || 0} public runs | total ${formatScore(player.totalScore || 0)}</small>
+        </button>
+      `).join("");
+      els.publicPlayerCards.querySelectorAll("[data-public-player]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const name = button.dataset.publicPlayer || "";
+          if (els.publicRunSearchInput) els.publicRunSearchInput.value = name;
+          loadPublicFlyRuns(name);
+        });
+      });
+    }
+  }
+  if (!els.publicRunsTable) return;
+  els.publicRunsTable.innerHTML = publicFlyRuns.length ? "" : `<tr class="table-empty"><td colspan="8">${publicFlyRunsLoading ? "Loading public Fly runs..." : publicFlyRunsError ? "Public run search is offline right now." : "No public Fly runs found."}</td></tr>`;
+  publicFlyRuns.forEach((run) => {
+    const row = document.createElement("tr");
+    row.className = "clickable-row leaderboard-row";
+    row.tabIndex = 0;
+    row.innerHTML = `
+      <td><span class="leader-name">${escapeHtml(run.displayName || "Guest")}</span></td>
+      <td class="score-cell">${formatScore(run.score || 0)}</td>
+      <td>${run.selectedRounds || run.rounds || 0}</td>
+      <td>${run.completedRounds || 0}/${run.selectedRounds || run.rounds || 0}</td>
+      <td>${escapeHtml(run.planeClass || "Unlisted")}</td>
+      <td>${run.elapsedMs ? formatDuration(run.elapsedMs) : "Unlisted"}</td>
+      <td>${formatLeaderboardDate(run.finishedAt || run.createdAt)}</td>
+      <td><button class="mini-btn" type="button">View</button></td>
+    `;
+    row.addEventListener("click", () => toggleRunDetails(row, run, 8, "official-fly"));
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        toggleRunDetails(row, run, 8, "official-fly");
+      }
+    });
+    els.publicRunsTable.append(row);
+  });
 }
 
 function toggleRunDetails(row, data, columns, type = "run") {
@@ -2792,6 +2887,7 @@ function showView(name, updateHash = true) {
     results: "resultsView",
     runs: "runsView",
     leaderboard: "leaderboardView",
+    players: "playersView",
     pilot: "pilotProfileView",
     shop: "shopView",
     profile: "profileView"
@@ -2831,6 +2927,9 @@ function prepareViewData(name) {
     else loadOfficialFlyLeaderboard();
   } else if (name === "runs") {
     renderTables();
+  } else if (name === "players") {
+    if (publicFlyRunsLoaded) renderPublicRuns();
+    else loadPublicFlyRuns();
   } else if (name === "pilot") {
     renderPilotProfile();
   }
@@ -2846,6 +2945,7 @@ function isViewActive(name) {
     rocket: "rocketView",
     runs: "runsView",
     leaderboard: "leaderboardView",
+    players: "playersView",
     pilot: "pilotProfileView",
     shop: "shopView"
   };
@@ -2855,6 +2955,7 @@ function isViewActive(name) {
 
 function renderTablesIfDataView() {
   if (isViewActive("runs") || isViewActive("leaderboard")) renderTables();
+  if (isViewActive("players")) renderPublicRuns();
   if (isViewActive("pilot")) renderPilotProfile();
 }
 
@@ -8700,6 +8801,10 @@ els.rocketEndRunQuick?.addEventListener("click", () => {
   endRocketRun("Run Saved", "Flight run ended manually and was saved.", "runs");
 });
 els.pauseScanTarget?.addEventListener("click", buyRocketTargetScan);
+els.publicRunSearch?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  loadPublicFlyRuns(els.publicRunSearchInput?.value || "");
+});
 document.querySelectorAll("[data-pause-view]").forEach((button) => {
   button.addEventListener("click", () => {
     const target = button.dataset.pauseView;
@@ -8878,7 +8983,7 @@ if (bootParams.get("simulateAgents") === "1") {
 } else if (initialView === "rocket") {
   showView("rocket", false);
   if (hasNamedProfile() && !restoreRocketProgressSnapshot()) startRocketRun();
-} else if (["runs", "leaderboard", "profile", "results", "shop"].includes(initialView)) {
+} else if (["runs", "leaderboard", "players", "pilot", "profile", "results", "shop"].includes(initialView)) {
   showPreparedView(initialView, false);
 } else {
   showFlagSetup();

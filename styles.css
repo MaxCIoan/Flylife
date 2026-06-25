@@ -111,9 +111,10 @@ body:has(#rocketView.active) .topbar {
 
 .main-nav {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: center;
-  gap: 0.75rem;
+  gap: 0.55rem;
+  min-width: 0;
 }
 
 .nav-btn,
@@ -135,11 +136,11 @@ body:has(#rocketView.active) .topbar {
   align-content: center;
   justify-items: center;
   gap: 0.1rem;
-  flex: 1 1 12.1rem;
-  max-width: 15.8rem;
-  min-width: 11.5rem;
-  min-height: 6.15rem;
-  padding: 0.82rem 1.05rem 0.7rem;
+  flex: 0 1 9.6rem;
+  max-width: 11.2rem;
+  min-width: 7.7rem;
+  min-height: 4.95rem;
+  padding: 0.72rem 0.72rem 0.62rem;
   border-color: rgba(58, 185, 255, 0.38);
   border-radius: 8px;
   color: #f5e7c6;
@@ -202,6 +203,16 @@ body:has(#rocketView.active) .topbar {
   --nav-accent: rgba(77, 206, 180, 0.48);
 }
 
+.nav-btn[data-view="players"] {
+  --nav-sheet-pos: 25% 100%;
+  --nav-accent: rgba(145, 218, 255, 0.48);
+}
+
+.nav-btn[data-view="pilot"] {
+  --nav-sheet-pos: 75% 100%;
+  --nav-accent: rgba(194, 158, 255, 0.48);
+}
+
 .nav-btn[data-view="shop"] {
   --nav-sheet-pos: 50% 100%;
   --nav-accent: rgba(255, 190, 70, 0.52);
@@ -219,6 +230,7 @@ body:has(#rocketView.active) .topbar {
   z-index: 1;
   max-width: 100%;
   text-align: center;
+  white-space: nowrap;
   text-shadow: 0 2px 0 #000, 0 0 0.75rem rgba(6, 18, 32, 0.94), 0 0 1rem rgba(34, 217, 242, 0.22);
 }
 
@@ -233,9 +245,10 @@ body:has(#rocketView.active) .topbar {
 .nav-btn b {
   color: #eaf8ff;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 1.22rem;
+  font-size: clamp(0.78rem, 0.72vw, 1.02rem);
   line-height: 1.02;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .nav-btn small {
@@ -1235,8 +1248,8 @@ body:has(#rocketView.active) .topbar {
 
 .rocket-end-run-button {
   position: absolute;
-  left: 1rem;
-  top: 1rem;
+  right: 1rem;
+  top: 6.2rem;
   z-index: 7;
   display: inline-grid;
   gap: 0;
@@ -1572,6 +1585,79 @@ body:has(#rocketView.active) .topbar {
   max-height: 13rem;
   overflow: auto;
   margin: 1rem 0;
+}
+
+.public-search {
+  display: grid;
+  grid-template-columns: minmax(16rem, 1fr) auto;
+  gap: 0.8rem;
+  align-items: end;
+  margin: 1rem 0 1.1rem;
+}
+
+.public-search label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.public-search input {
+  min-height: 3rem;
+  border: 1px solid rgba(151, 176, 210, 0.24);
+  border-radius: 8px;
+  padding: 0 0.9rem;
+  color: #eef8ff;
+  background: rgba(5, 11, 18, 0.78);
+  font: inherit;
+  font-weight: 800;
+}
+
+.public-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.public-profile-grid section,
+.public-player-card {
+  display: grid;
+  gap: 0.25rem;
+  min-height: 7rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(151, 176, 210, 0.2);
+  border-radius: 8px;
+  color: #eef8ff;
+  background: rgba(5, 11, 18, 0.5);
+  text-align: left;
+}
+
+.public-player-card {
+  cursor: pointer;
+}
+
+.public-player-card:hover {
+  border-color: rgba(34, 217, 242, 0.62);
+  background: rgba(16, 48, 70, 0.72);
+}
+
+.public-profile-grid span {
+  color: var(--gold);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.public-profile-grid strong {
+  font-size: 1.45rem;
+}
+
+.public-profile-grid small {
+  color: var(--muted);
+  line-height: 1.35;
 }
 
 .rocket-result-row {
@@ -2701,6 +2787,7 @@ body:has(#rocketView.active) .topbar {
     grid-column: 1 / -1;
     order: 2;
     justify-content: stretch;
+    flex-wrap: wrap;
   }
 
   .nav-btn {
@@ -2780,6 +2867,7 @@ body:has(#rocketView.active) .topbar {
 
   .main-nav {
     gap: 0.55rem;
+    flex-wrap: wrap;
   }
 
   .nav-btn {
@@ -2795,6 +2883,10 @@ body:has(#rocketView.active) .topbar {
 
   .nav-btn b {
     font-size: 0.98rem;
+  }
+
+  .public-search {
+    grid-template-columns: 1fr;
   }
 
   .nav-btn small {

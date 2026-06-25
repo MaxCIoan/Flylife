@@ -19,6 +19,7 @@
         <button class="nav-btn" data-view="rocket"><b>Fly Game</b></button>
         <button class="nav-btn" data-view="runs"><b>Runs</b></button>
         <button class="nav-btn" data-view="leaderboard"><b>Leaderboard</b></button>
+        <button class="nav-btn" data-view="players"><b>Players</b></button>
         <button class="nav-btn" data-view="pilot"><b>Pilot Profile</b></button>
         <button class="nav-btn" data-view="profile"><b>Settings</b></button>
         <button class="nav-btn" data-view="shop"><b>Shop</b></button>
@@ -337,6 +338,30 @@
         <div class="run-detail-grid leaderboard-detail" id="pilotProfileSummary"></div>
       </section>
 
+      <section class="view data-view" id="playersView" aria-label="Public player runs">
+        <div class="page-heading">
+          <span class="eyebrow">Public Database</span>
+          <h1>Players</h1>
+          <p>Search public Fly submissions by player name, select a run, and open its score card and route map.</p>
+        </div>
+        <form class="public-search" id="publicRunSearch">
+          <label>
+            Player search
+            <input id="publicRunSearchInput" type="search" autocomplete="off" placeholder="Country, pilot name, player id">
+          </label>
+          <button class="primary-btn" type="submit">Search</button>
+        </form>
+        <div class="public-profile-grid" id="publicPlayerCards"></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Player</th><th>Run Score</th><th>Rounds</th><th>Reached</th><th>Plane</th><th>Time</th><th>Submitted</th><th>Details</th></tr>
+            </thead>
+            <tbody id="publicRunsTable"></tbody>
+          </table>
+        </div>
+      </section>
+
       <section class="view data-view shop-view" id="shopView" aria-label="Rogue shop">
         <div class="page-heading">
           <span class="eyebrow">Rogue Team</span>
@@ -480,7 +505,7 @@
     </form>
   </dialog>
 
-  <script src="fly-session-guard.js?v=20260625register1"></script>
-  <script src="app.js?v=20260625register1"></script>
+  <script src="fly-session-guard.js?v=20260625players1"></script>
+  <script src="app.js?v=20260625players1"></script>
 </body>
 </html>
