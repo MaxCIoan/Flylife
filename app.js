@@ -5254,12 +5254,16 @@ function drawRocketLightweightWorldBase(ctx, rect, camX, camY) {
   ctx.save();
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  if (rocketMiniMapImage.complete && rocketMiniMapImage.naturalWidth > 0) {
-    const sx = camX / rocketState.mapW * rocketMiniMapImage.naturalWidth;
-    const sy = camY / rocketState.mapH * rocketMiniMapImage.naturalHeight;
-    const sw = rect.width / rocketState.mapW * rocketMiniMapImage.naturalWidth;
-    const sh = rect.height / rocketState.mapH * rocketMiniMapImage.naturalHeight;
-    ctx.drawImage(rocketMiniMapImage, sx, sy, sw, sh, 0, 0, rect.width, rect.height);
+  ensureRocketReportAtlasImage();
+  const baseImage = rocketReportAtlasImage.complete && rocketReportAtlasImage.naturalWidth > 0
+    ? rocketReportAtlasImage
+    : rocketMiniMapImage;
+  if (baseImage.complete && baseImage.naturalWidth > 0) {
+    const sx = camX / rocketState.mapW * baseImage.naturalWidth;
+    const sy = camY / rocketState.mapH * baseImage.naturalHeight;
+    const sw = rect.width / rocketState.mapW * baseImage.naturalWidth;
+    const sh = rect.height / rocketState.mapH * baseImage.naturalHeight;
+    ctx.drawImage(baseImage, sx, sy, sw, sh, 0, 0, rect.width, rect.height);
     ctx.fillStyle = "rgba(2, 9, 16, .18)";
     ctx.fillRect(0, 0, rect.width, rect.height);
   } else {
