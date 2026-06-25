@@ -2,6 +2,7 @@ import { query } from "../../db/index.js";
 import { emptyResponse, jsonResponse, logError, logMetric } from "./_shared.js";
 
 const FLY_TRACE_POINT_LIMIT = 720;
+const PUBLIC_SCORE_RESET_AT = "2026-06-25T20:12:00Z";
 
 function cleanSearch(value) {
   return String(value || "")
@@ -54,21 +55,23 @@ export default async (request) => {
     const url = new URL(request.url);
     const search = cleanSearch(url.searchParams.get("q"));
     const limit = Math.max(1, Math.min(80, Number(url.searchParams.get("limit")) || 40));
-    const runParams = [limit];
-    const playerParams = [Math.min(40, limit)];
+    const runParams = [limit, PUBLIC_SCORE_RESET_AT];
+    const playerParams = [Math.min(40, limit), PUBLIC_SCORE_RESET_AT];
     let runSearchClause = "";
     let playerSearchClause = "";
     if (search) {
       runParams.push(`%${search.toLowerCase()}%`);
       playerParams.push(`%${search.toLowerCase()}%`);
       runSearchClause = `and (lower(display_name) like $${runParams.length} or lower(player_id) like $${runParams.length})`;
-      playerSearchClause = `where lower(display_name) not like 'guest%'
+      playerSearchClause = `where updated_at >= $2::timestamptz
+        and lower(display_name) not like 'guest%'
         and lower(display_name) not like 'anonymous%'
         and lower(display_name) not like 'player%'
         and lower(display_name) not in ('codexprobe', 'codexpartialprobe')
         and (lower(display_name) like $${playerParams.length} or lower(player_id) like $${playerParams.length})`;
     } else {
-      playerSearchClause = `where lower(display_name) not like 'guest%'
+      playerSearchClause = `where updated_at >= $2::timestamptz
+        and lower(display_name) not like 'guest%'
         and lower(display_name) not like 'anonymous%'
         and lower(display_name) not like 'player%'
         and lower(display_name) not in ('codexprobe', 'codexpartialprobe')`;
@@ -89,6 +92,7 @@ export default async (request) => {
        from fly_runs
        where status = 'completed'
          and tampered = false
+         and finished_at >= $2::timestamptz
          and lower(display_name) not like 'guest%'
          and lower(display_name) not like 'anonymous%'
          and lower(display_name) not like 'player%'

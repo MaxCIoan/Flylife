@@ -196,9 +196,9 @@ const els = {
   authDone: document.querySelector("#authDone")
 };
 
-const storeKey = "flagHunterLocalProfile";
-const playerIdKey = "flagHunterPlayerIdV1";
-const rocketResumeKey = "flagHunterRocketProgressV1";
+const storeKey = "flagHunterLocalProfileFinalV1";
+const playerIdKey = "flagHunterPlayerIdFinalV1";
+const rocketResumeKey = "flagHunterRocketProgressFinalV1";
 const runTime = 45;
 const defaultFlagRounds = 10;
 const allowedGameRounds = [10, 15, 20, 50];
