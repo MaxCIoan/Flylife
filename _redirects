@@ -1,4 +1,7 @@
 /api/fly/run/start /.netlify/functions/fly-run-start 200
 /api/fly/run/finish /.netlify/functions/fly-run-finish 200
+/api/fly/run/ping /.netlify/functions/fly-run-ping 200
 /api/fly/leaderboard /.netlify/functions/fly-leaderboard 200
+/api/fly/player /.netlify/functions/fly-player-profile 200
+/api/fly/public-runs /.netlify/functions/fly-public-runs 200
 /* /index.html 200

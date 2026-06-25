@@ -102,7 +102,18 @@ const els = {
   runsTable: document.querySelector("#runsTable"),
   flagRunsTable: document.querySelector("#flagRunsTable"),
   flyRunsTable: document.querySelector("#flyRunsTable"),
+  flagRunCount: document.querySelector("#flagRunCount"),
+  flyRunCount: document.querySelector("#flyRunCount"),
+  runFilterForm: document.querySelector("#runFilterForm"),
+  runSearchInput: document.querySelector("#runSearchInput"),
+  runModeFilter: document.querySelector("#runModeFilter"),
+  runRoundFilter: document.querySelector("#runRoundFilter"),
+  runMinScore: document.querySelector("#runMinScore"),
+  runMaxScore: document.querySelector("#runMaxScore"),
+  runSortFilter: document.querySelector("#runSortFilter"),
+  runFilterReset: document.querySelector("#runFilterReset"),
   leaderboardTable: document.querySelector("#leaderboardTable"),
+  pilotGreeting: document.querySelector("#pilotGreeting"),
   pilotProfileSummary: document.querySelector("#pilotProfileSummary"),
   publicRunSearch: document.querySelector("#publicRunSearch"),
   publicRunSearchInput: document.querySelector("#publicRunSearchInput"),
@@ -268,7 +279,9 @@ let publicFlyRuns = [];
 let publicFlyRunsLoaded = false;
 let publicFlyRunsLoading = false;
 let publicFlyRunsError = false;
+let publicFlyRunsErrorMessage = "";
 let publicFlyRunQuery = "";
+let lastProfileSyncError = "";
 const productionFlyApiOrigin = "https://flightrace.netlify.app";
 const isItchContext = /(^|\.)itch\.io$/i.test(window.location.hostname)
   || /itch\.io/i.test(document.referrer || "")
@@ -1272,6 +1285,7 @@ function scheduleProfileSync(delay = 900) {
 
 async function syncServerProfile() {
   if (!profile?.playerId || !hasNamedProfile()) return null;
+  lastProfileSyncError = "";
   try {
     const response = await fetch(`${flyApiBase}/api/fly/player`, {
       method: "POST",
@@ -1290,6 +1304,7 @@ async function syncServerProfile() {
     window.FlagGuard?.syncProfile?.(profile);
     return data.player || null;
   } catch (error) {
+    lastProfileSyncError = error instanceof Error ? error.message : "profile sync failed";
     console.warn("Player profile sync skipped", error);
     return null;
   }
@@ -1965,15 +1980,82 @@ function renderBreakdown(target, items, meta) {
   });
 }
 
+function getRunFilters() {
+  return {
+    query: String(els.runSearchInput?.value || "").trim().toLowerCase(),
+    mode: els.runModeFilter?.value || "all",
+    rounds: els.runRoundFilter?.value || "all",
+    minScore: Number(els.runMinScore?.value || 0) || 0,
+    maxScore: Number(els.runMaxScore?.value || 0) || 0,
+    sort: els.runSortFilter?.value || "date-desc"
+  };
+}
+
+function getLocalRunScore(run = {}) {
+  return Number(run.score ?? run.finalScore) || 0;
+}
+
+function getLocalRunRounds(run = {}, mode = "fly") {
+  return Number(mode === "flags" ? run.rounds : (run.selectedRounds || run.rounds)) || 0;
+}
+
+function getLocalRunDate(run = {}) {
+  const value = run.createdAt || run.finishedAt || run.startedAt;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? new Date(0) : date;
+}
+
+function localRunMatchesFilters(run = {}, mode = "fly", filters = getRunFilters()) {
+  if (filters.mode !== "all" && filters.mode !== mode) return false;
+  const score = getLocalRunScore(run);
+  if (filters.minScore && score < filters.minScore) return false;
+  if (filters.maxScore && score > filters.maxScore) return false;
+  const rounds = getLocalRunRounds(run, mode);
+  if (filters.rounds !== "all" && rounds !== Number(filters.rounds)) return false;
+  if (!filters.query) return true;
+  const date = getLocalRunDate(run);
+  const haystack = [
+    mode === "flags" ? "speed flags" : "fly",
+    run.displayName,
+    run.planeClass,
+    getPlaneClassName(run),
+    score,
+    rounds,
+    date.toLocaleDateString(),
+    date.toLocaleString(),
+    run.title,
+    run.summary
+  ].join(" ").toLowerCase();
+  return haystack.includes(filters.query);
+}
+
+function compareFilteredRuns(a = {}, b = {}, sort = "date-desc", mode = "fly") {
+  const scoreA = getLocalRunScore(a);
+  const scoreB = getLocalRunScore(b);
+  const dateA = getLocalRunDate(a).getTime();
+  const dateB = getLocalRunDate(b).getTime();
+  const roundsA = getLocalRunRounds(a, mode);
+  const roundsB = getLocalRunRounds(b, mode);
+  if (sort === "date-asc") return dateA - dateB || scoreB - scoreA;
+  if (sort === "score-desc") return scoreB - scoreA || dateB - dateA;
+  if (sort === "score-asc") return scoreA - scoreB || dateB - dateA;
+  if (sort === "rounds-desc") return roundsB - roundsA || scoreB - scoreA || dateB - dateA;
+  if (sort === "rounds-asc") return roundsA - roundsB || scoreB - scoreA || dateB - dateA;
+  return dateB - dateA || scoreB - scoreA;
+}
+
 function renderTables() {
+  const filters = getRunFilters();
   const runs = (profile.runs || [])
-    .slice()
-    .sort(compareFlagRuns);
+    .filter((run) => localRunMatchesFilters(run, "flags", filters))
+    .sort((a, b) => compareFilteredRuns(a, b, filters.sort, "flags"));
   const rocketRuns = (profile.rocketRuns || [])
-    .slice()
-    .sort((a, b) => (b.score || 0) - (a.score || 0) || (b.longestRun || 0) - (a.longestRun || 0) || new Date(b.createdAt) - new Date(a.createdAt));
+    .filter((run) => localRunMatchesFilters(run, "fly", filters))
+    .sort((a, b) => compareFilteredRuns(a, b, filters.sort, "fly"));
   const flagTable = els.flagRunsTable || els.runsTable;
   const flyTable = els.flyRunsTable;
+  const allFlagRuns = profile.runs || [];
+  const allFlyRuns = profile.rocketRuns || [];
 
   if (flagTable) flagTable.innerHTML = runs.length ? "" : `<tr><td colspan="7">No Speed Flags runs yet.</td></tr>`;
   runs.forEach((run) => {
@@ -2013,6 +2095,8 @@ function renderTables() {
     });
     flyTable?.append(row);
   });
+  if (els.flagRunCount) els.flagRunCount.textContent = `${runs.length} / ${allFlagRuns.length} local flag runs`;
+  if (els.flyRunCount) els.flyRunCount.textContent = `${rocketRuns.length} / ${allFlyRuns.length} local Fly runs`;
 
   const leaderboardEntries = buildLocalLeaderboardEntries(runs, rocketRuns, officialFlyLeaders);
   if (!els.leaderboardTable) return;
@@ -2027,7 +2111,7 @@ function renderTables() {
       <td class="score-cell">${formatScore(entry.score)}</td>
       <td>${entry.roundsLabel}</td>
       <td>${entry.reachedLabel}</td>
-      <td>${entry.mode || entry.plane || "Unlisted"}</td>
+      <td>${entry.plane || "Unlisted"}</td>
       <td>${entry.durationLabel}</td>
       <td class="muted-cell">${entry.submittedLabel}</td>
       <td><button class="mini-btn" type="button">View</button></td>
@@ -2044,41 +2128,14 @@ function renderTables() {
 }
 
 function buildLocalLeaderboardEntries(flagRuns, flyRuns, officialFlyRuns = []) {
-  const flagEntries = buildLeaderboardPlayers(flagRuns).map((player) => ({
-    type: "flag",
-    mode: "Speed Flags",
-    displayName: player.displayName,
-    score: player.bestScore,
-    roundsLabel: `${player.bestRun?.rounds || 0}`,
-    reachedLabel: `${player.bestRun?.correct?.length || 0} correct`,
-    durationLabel: formatDuration(player.bestRun?.elapsedMs || 0),
-    submittedLabel: formatLeaderboardDate(player.bestRun?.createdAt),
-    plane: "Speed Flags",
-    detailType: "leaderboard",
-    detailData: player
-  }));
-  const flyEntries = (flyRuns || []).map((run) => ({
-    type: "fly",
-    mode: "Local Fly",
-    displayName: run.displayName || "Guest",
-    score: run.score || 0,
-    roundsLabel: `${run.selectedRounds || run.rounds || 0}`,
-    reachedLabel: `${run.completedRounds || 0}/${run.selectedRounds || run.rounds || 0}`,
-    durationLabel: formatDuration(run.elapsedMs || 0),
-    submittedLabel: formatLeaderboardDate(run.createdAt),
-    plane: getPlaneClassName(run),
-    run,
-    detailType: "rocket-run",
-    detailData: run
-  }));
   const officialFlyEntries = buildOfficialLeaderboardEntries(officialFlyRuns).map((entry) => ({
     ...entry,
     mode: "Official Fly",
     detailType: "official-fly",
     detailData: entry.run
   }));
-  return [...officialFlyEntries, ...flagEntries, ...flyEntries]
-    .sort((a, b) => (b.score || 0) - (a.score || 0) || String(a.mode).localeCompare(String(b.mode)))
+  return officialFlyEntries
+    .sort((a, b) => (b.score || 0) - (a.score || 0) || String(a.displayName).localeCompare(String(b.displayName)))
     .slice(0, 50);
 }
 
@@ -2128,14 +2185,28 @@ function setPrivateApiStatus(isOnline) {
   els.privateApiStatus.classList.add("visible");
 }
 
+async function fetchFlyJson(url, label = "Fly API") {
+  const response = await fetch(url);
+  const contentType = response.headers.get("content-type") || "";
+  const text = await response.text();
+  if (!response.ok) throw new Error(`${label} returned ${response.status}`);
+  if (/text\/html/i.test(contentType) || /^\s*</.test(text)) {
+    throw new Error(`${label} route returned HTML instead of JSON`);
+  }
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(`${label} returned invalid JSON`);
+  }
+}
+
 function loadOfficialFlyLeaderboard() {
   if (officialFlyLeadersLoaded) return;
   officialFlyLeadersLoaded = true;
   officialFlyLeadersLoading = true;
   officialFlyLeadersError = false;
   if (isViewActive("leaderboard")) renderTables();
-  fetch(`${flyApiBase}/api/fly/leaderboard`)
-    .then((response) => response.ok ? response.json() : Promise.reject(new Error("official fly leaderboard unavailable")))
+  fetchFlyJson(`${flyApiBase}/api/fly/leaderboard`, "Official leaderboard")
     .then((data) => {
       officialFlyLeaders = Array.isArray(data.leaders) ? data.leaders.map(normalizeOfficialFlyRun) : [];
       officialFlyLeadersLoading = false;
@@ -2167,21 +2238,22 @@ function loadPublicFlyRuns(query = publicFlyRunQuery) {
   renderPublicRuns();
   const params = new URLSearchParams({ limit: "60" });
   if (cleanQuery) params.set("q", cleanQuery);
-  fetch(`${flyApiBase}/api/fly/public-runs?${params.toString()}`)
-    .then((response) => response.ok ? response.json() : Promise.reject(new Error("public fly runs unavailable")))
+  fetchFlyJson(`${flyApiBase}/api/fly/public-runs?${params.toString()}`, "Public player search")
     .then((data) => {
       publicFlyPlayers = Array.isArray(data.players) ? data.players : [];
       publicFlyRuns = Array.isArray(data.runs) ? data.runs.map(normalizeOfficialFlyRun) : [];
       publicFlyRunsLoading = false;
       publicFlyRunsError = false;
+      publicFlyRunsErrorMessage = "";
       setPrivateApiStatus(true);
       renderPublicRuns();
     })
-    .catch(() => {
+    .catch((error) => {
       publicFlyPlayers = [];
       publicFlyRuns = [];
       publicFlyRunsLoading = false;
       publicFlyRunsError = true;
+      publicFlyRunsErrorMessage = error instanceof Error ? error.message : "Public player search failed";
       setPrivateApiStatus(false);
       renderPublicRuns();
     });
@@ -2195,7 +2267,7 @@ function renderPublicRuns() {
     if (publicFlyRunsLoading) {
       els.publicPlayerCards.innerHTML = `<section><span>Loading</span><strong>Public runs</strong><small>Fetching database submissions.</small></section>`;
     } else if (publicFlyRunsError) {
-      els.publicPlayerCards.innerHTML = `<section><span>Offline</span><strong>No public data</strong><small>The public run API is unavailable right now.</small></section>`;
+      els.publicPlayerCards.innerHTML = `<section><span>API Error</span><strong>Public search unavailable</strong><small>${escapeHtml(publicFlyRunsErrorMessage || "The public run API is unavailable right now.")}</small></section>`;
     } else if (!publicFlyPlayers.length) {
       els.publicPlayerCards.innerHTML = `<section><span>No Matches</span><strong>${publicFlyRunQuery ? escapeHtml(publicFlyRunQuery) : "Public runs"}</strong><small>Try another player name after more runs are submitted.</small></section>`;
     } else {
@@ -2216,7 +2288,7 @@ function renderPublicRuns() {
     }
   }
   if (!els.publicRunsTable) return;
-  els.publicRunsTable.innerHTML = publicFlyRuns.length ? "" : `<tr class="table-empty"><td colspan="8">${publicFlyRunsLoading ? "Loading public Fly runs..." : publicFlyRunsError ? "Public run search is offline right now." : "No public Fly runs found."}</td></tr>`;
+  els.publicRunsTable.innerHTML = publicFlyRuns.length ? "" : `<tr class="table-empty"><td colspan="8">${publicFlyRunsLoading ? "Loading public Fly runs..." : publicFlyRunsError ? escapeHtml(publicFlyRunsErrorMessage || "Public run search is offline right now.") : "No public Fly runs found."}</td></tr>`;
   publicFlyRuns.forEach((run) => {
     const row = document.createElement("tr");
     row.className = "clickable-row leaderboard-row";
@@ -2535,6 +2607,9 @@ function renderProfile() {
 
 function renderPilotProfile() {
   if (!els.pilotProfileSummary) return;
+  if (els.pilotGreeting) {
+    els.pilotGreeting.textContent = `Greetings Captain ${profile.displayName && profile.displayName !== "Guest" ? profile.displayName : "Guest"}`;
+  }
   const flagRuns = Array.isArray(profile.runs) ? profile.runs : [];
   const flyRuns = Array.isArray(profile.rocketRuns)
     ? profile.rocketRuns.filter((run) => run.source !== "agent-simulation")
@@ -8805,6 +8880,19 @@ els.publicRunSearch?.addEventListener("submit", (event) => {
   event.preventDefault();
   loadPublicFlyRuns(els.publicRunSearchInput?.value || "");
 });
+[els.runSearchInput, els.runModeFilter, els.runRoundFilter, els.runMinScore, els.runMaxScore, els.runSortFilter].forEach((control) => {
+  control?.addEventListener("input", renderTables);
+  control?.addEventListener("change", renderTables);
+});
+els.runFilterReset?.addEventListener("click", () => {
+  if (els.runSearchInput) els.runSearchInput.value = "";
+  if (els.runModeFilter) els.runModeFilter.value = "all";
+  if (els.runRoundFilter) els.runRoundFilter.value = "all";
+  if (els.runMinScore) els.runMinScore.value = "";
+  if (els.runMaxScore) els.runMaxScore.value = "";
+  if (els.runSortFilter) els.runSortFilter.value = "date-desc";
+  renderTables();
+});
 document.querySelectorAll("[data-pause-view]").forEach((button) => {
   button.addEventListener("click", () => {
     const target = button.dataset.pauseView;
@@ -8919,14 +9007,21 @@ document.querySelector("#saveName")?.addEventListener("click", (event) => {
   profile.displayNameLocked = true;
   saveProfile();
   renderProfile();
-  showAuthMessage("Congratulations, you are now part of the rogue team. You can practice flags to earn score or go to Fly directly to climb the ranks.", "success");
+  showAuthMessage("Saving pilot name online...", "info");
+  syncServerProfile().then((player) => {
+    if (player) {
+      showAuthMessage("Pilot name saved online. Public Fly runs will use this profile.", "success");
+      window.setTimeout(() => {
+        if (els.authDialog?.open) els.authDialog.close();
+      }, 900);
+    } else {
+      showAuthMessage(`Name saved locally, but online sync failed: ${lastProfileSyncError || "Fly API unavailable"}. Try again before submitting public runs.`, "warn");
+    }
+  });
   els.authDialog.dataset.required = "false";
   if (document.querySelector("#rocketView")?.classList.contains("active") && !rocketState) {
     if (!restoreRocketProgressSnapshot()) startRocketRun();
   }
-  window.setTimeout(() => {
-    if (els.authDialog?.open) els.authDialog.close();
-  }, 1700);
 });
 document.querySelector(".auth-panel")?.addEventListener("submit", (event) => {
   event.preventDefault();

@@ -251,6 +251,13 @@ body:has(#rocketView.active) .topbar {
   text-overflow: ellipsis;
 }
 
+.nav-btn b::first-letter {
+  color: #ffe2a6;
+  font-family: "Old English Text MT", "Blackletter", "UnifrakturMaguntia", Georgia, serif;
+  font-size: 1.42em;
+  text-shadow: 0 2px 0 #000, 0 0 0.7rem rgba(255, 204, 96, 0.55);
+}
+
 .nav-btn small {
   margin-top: 0.25rem;
   color: rgba(255, 232, 183, 0.86);
@@ -1587,6 +1594,37 @@ body:has(#rocketView.active) .topbar {
   margin: 1rem 0;
 }
 
+.run-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1.35fr) repeat(5, minmax(7rem, 1fr)) auto;
+  gap: 0.65rem;
+  align-items: end;
+  margin: 1rem 0 1.15rem;
+}
+
+.run-filter-bar label {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.run-filter-bar input,
+.run-filter-bar select {
+  min-height: 2.75rem;
+  width: 100%;
+  border: 1px solid rgba(151, 176, 210, 0.22);
+  border-radius: 8px;
+  padding: 0 0.75rem;
+  color: #eef8ff;
+  background: rgba(5, 11, 18, 0.78);
+  font: inherit;
+  font-weight: 800;
+}
+
 .public-search {
   display: grid;
   grid-template-columns: minmax(16rem, 1fr) auto;
@@ -1658,6 +1696,12 @@ body:has(#rocketView.active) .topbar {
 .public-profile-grid small {
   color: var(--muted);
   line-height: 1.35;
+}
+
+#pilotProfileView.active,
+#playersView.active,
+#runsView.active {
+  overflow-y: auto;
 }
 
 .rocket-result-row {
@@ -2795,6 +2839,10 @@ body:has(#rocketView.active) .topbar {
     max-width: none;
   }
 
+  .run-filter-bar {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   #playView.active {
     grid-template-columns: 1fr;
   }
@@ -2886,6 +2934,10 @@ body:has(#rocketView.active) .topbar {
   }
 
   .public-search {
+    grid-template-columns: 1fr;
+  }
+
+  .run-filter-bar {
     grid-template-columns: 1fr;
   }
 

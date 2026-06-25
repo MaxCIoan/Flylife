@@ -287,10 +287,49 @@
         <div class="page-heading">
           <span class="eyebrow">Personal History</span>
           <h1>Your Runs</h1>
+          <p>Local runs stay here as searchable history. Public submitted Fly runs are searchable on Players.</p>
         </div>
+        <form class="run-filter-bar" id="runFilterForm">
+          <label>Search
+            <input id="runSearchInput" type="search" autocomplete="off" placeholder="date, player, plane, score">
+          </label>
+          <label>Mode
+            <select id="runModeFilter">
+              <option value="all">All local</option>
+              <option value="flags">Speed Flags</option>
+              <option value="fly">Fly</option>
+            </select>
+          </label>
+          <label>Rounds
+            <select id="runRoundFilter">
+              <option value="all">Any length</option>
+              <option value="10">10</option>
+              <option value="15">15</option>
+              <option value="20">20</option>
+              <option value="50">50</option>
+            </select>
+          </label>
+          <label>Min score
+            <input id="runMinScore" type="number" min="0" step="1000" placeholder="0">
+          </label>
+          <label>Max score
+            <input id="runMaxScore" type="number" min="0" step="1000" placeholder="Any">
+          </label>
+          <label>Sort
+            <select id="runSortFilter">
+              <option value="date-desc">Newest</option>
+              <option value="date-asc">Oldest</option>
+              <option value="score-desc">Highest score</option>
+              <option value="score-asc">Lowest score</option>
+              <option value="rounds-desc">Longest length</option>
+              <option value="rounds-asc">Shortest length</option>
+            </select>
+          </label>
+          <button class="secondary-btn" id="runFilterReset" type="button">Reset</button>
+        </form>
         <div class="run-section-heading">
           <h2>Flag Game</h2>
-          <span>Sorted by highest score</span>
+          <span id="flagRunCount">Filtered local history</span>
         </div>
         <div class="table-wrap">
           <table>
@@ -302,7 +341,7 @@
         </div>
         <div class="run-section-heading">
           <h2>Fly</h2>
-          <span>Sorted by highest score</span>
+          <span id="flyRunCount">Filtered local history</span>
         </div>
         <div class="table-wrap">
           <table>
@@ -317,7 +356,7 @@
       <section class="view data-view" id="leaderboardView" aria-label="Leaderboard">
         <div class="page-heading">
           <h1>Leaderboard</h1>
-          <p>Leaderboard ranks single submitted run scores. Official Fly rows are public; Local Fly and Speed Flags rows are only stored in this browser. Career totals are on Pilot Profile.</p>
+          <p>Leaderboard ranks official public Fly submissions only. Local Fly and Speed Flags history moved to Runs. Career totals are on Pilot Profile.</p>
         </div>
         <div class="table-wrap">
           <table>
@@ -332,7 +371,7 @@
       <section class="view data-view" id="pilotProfileView" aria-label="Pilot profile">
         <div class="page-heading">
           <span class="eyebrow">Career Profile</span>
-          <h1>Pilot Profile</h1>
+          <h1 id="pilotGreeting">Greetings Captain</h1>
           <p>This page separates total career performance from the leaderboard, which stays focused on single-run scores.</p>
         </div>
         <div class="run-detail-grid leaderboard-detail" id="pilotProfileSummary"></div>
