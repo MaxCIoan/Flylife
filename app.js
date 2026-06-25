@@ -6873,7 +6873,7 @@ function showRocketResult(title, summary, action = "restart") {
   els.rocketResultTitle.textContent = title;
   els.rocketResultSummary.textContent = summary;
   if (els.rocketResultRestart) {
-    els.rocketResultRestart.textContent = action === "setup" ? "Edit Flight Setup" : "Start New Flight";
+    els.rocketResultRestart.textContent = action === "setup" ? "Edit Flight Setup" : action === "runs" ? "View Runs" : "Start New Flight";
   }
   renderRocketResultDetails();
   drawRocketResultMap();
@@ -8622,6 +8622,11 @@ els.rocketResultRestart?.addEventListener("click", () => {
     startRocketRun();
     return;
   }
+  if (rocketState?.resultAction === "runs") {
+    if (els.rocketResultOverlay) els.rocketResultOverlay.hidden = true;
+    showPreparedView("runs");
+    return;
+  }
   startRocketRun();
 });
 els.rocketTutorialNext?.addEventListener("click", continueRocketTutorial);
@@ -8640,11 +8645,11 @@ els.pauseEndRound?.addEventListener("click", () => {
 });
 els.pauseEndRun?.addEventListener("click", () => {
   markRocketActivity();
-  endRocketRun("Run Ended", "Flight run ended from pause menu.", "setup");
+  endRocketRun("Run Saved", "Flight run ended from pause menu and was saved.", "runs");
 });
 els.rocketEndRunQuick?.addEventListener("click", () => {
   markRocketActivity();
-  endRocketRun("Run Ended", "Flight run ended manually.", "setup");
+  endRocketRun("Run Saved", "Flight run ended manually and was saved.", "runs");
 });
 els.pauseScanTarget?.addEventListener("click", buyRocketTargetScan);
 document.querySelectorAll("[data-pause-view]").forEach((button) => {
