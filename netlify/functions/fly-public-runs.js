@@ -62,10 +62,16 @@ export default async (request) => {
       runParams.push(`%${search.toLowerCase()}%`);
       playerParams.push(`%${search.toLowerCase()}%`);
       runSearchClause = `and (lower(display_name) like $${runParams.length} or lower(player_id) like $${runParams.length})`;
-      playerSearchClause = `where lower(display_name) not in ('guest', 'anonymous', 'player', 'codexprobe', 'codexpartialprobe')
+      playerSearchClause = `where lower(display_name) not like 'guest%'
+        and lower(display_name) not like 'anonymous%'
+        and lower(display_name) not like 'player%'
+        and lower(display_name) not in ('codexprobe', 'codexpartialprobe')
         and (lower(display_name) like $${playerParams.length} or lower(player_id) like $${playerParams.length})`;
     } else {
-      playerSearchClause = "where lower(display_name) not in ('guest', 'anonymous', 'player', 'codexprobe', 'codexpartialprobe')";
+      playerSearchClause = `where lower(display_name) not like 'guest%'
+        and lower(display_name) not like 'anonymous%'
+        and lower(display_name) not like 'player%'
+        and lower(display_name) not in ('codexprobe', 'codexpartialprobe')`;
     }
     const [{ rows }, { rows: playerRows }] = await Promise.all([
       query(
@@ -83,7 +89,10 @@ export default async (request) => {
        from fly_runs
        where status = 'completed'
          and tampered = false
-         and lower(display_name) not in ('guest', 'anonymous', 'player', 'codexprobe', 'codexpartialprobe')
+         and lower(display_name) not like 'guest%'
+         and lower(display_name) not like 'anonymous%'
+         and lower(display_name) not like 'player%'
+         and lower(display_name) not in ('codexprobe', 'codexpartialprobe')
          ${runSearchClause}
        order by finished_at desc, final_score desc
        limit $1`,
