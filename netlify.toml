@@ -25,6 +25,11 @@
   to = "/.netlify/functions/fly-player-profile"
   status = 200
 
+[[redirects]]
+  from = "/api/fly/public-runs"
+  to = "/.netlify/functions/fly-public-runs"
+  status = 200
+
 [[headers]]
   for = "/*.json"
   [headers.values]
