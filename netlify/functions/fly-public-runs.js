@@ -56,28 +56,12 @@ export default async (request) => {
     const search = cleanSearch(url.searchParams.get("q"));
     const limit = Math.max(1, Math.min(80, Number(url.searchParams.get("limit")) || 40));
     const runParams = [limit, PUBLIC_SCORE_RESET_AT];
-    const playerParams = [Math.min(40, limit), PUBLIC_SCORE_RESET_AT];
     let runSearchClause = "";
-    let playerSearchClause = "";
     if (search) {
       runParams.push(`%${search.toLowerCase()}%`);
-      playerParams.push(`%${search.toLowerCase()}%`);
       runSearchClause = `and (lower(display_name) like $${runParams.length} or lower(player_id) like $${runParams.length})`;
-      playerSearchClause = `where updated_at >= $2::timestamptz
-        and lower(display_name) not like 'guest%'
-        and lower(display_name) not like 'anonymous%'
-        and lower(display_name) not like 'player%'
-        and lower(display_name) not in ('codexprobe', 'codexpartialprobe')
-        and (lower(display_name) like $${playerParams.length} or lower(player_id) like $${playerParams.length})`;
-    } else {
-      playerSearchClause = `where updated_at >= $2::timestamptz
-        and lower(display_name) not like 'guest%'
-        and lower(display_name) not like 'anonymous%'
-        and lower(display_name) not like 'player%'
-        and lower(display_name) not in ('codexprobe', 'codexpartialprobe')`;
     }
-    const [{ rows }, { rows: playerRows }] = await Promise.all([
-      query(
+    const { rows } = await query(
       `select run_id as "runId",
               player_id as "playerId",
               display_name as "displayName",
@@ -100,39 +84,13 @@ export default async (request) => {
          ${runSearchClause}
        order by finished_at desc, final_score desc
        limit $1`,
-        runParams
-      ),
-      query(
-        `select player_id as "playerId",
-                display_name as "displayName",
-                rank_points as "rankPoints",
-                profile_payload as "profile",
-                updated_at as "updatedAt"
-         from fly_players
-         ${playerSearchClause}
-         order by updated_at desc
-         limit $1`,
-        playerParams
-      )
-    ]);
+      runParams
+    );
     const runs = rows.map((run) => ({
       ...run,
       payload: compactPayload(run.payload)
     }));
     const players = new Map();
-    playerRows.forEach((player) => {
-      const key = String(player.displayName || player.playerId || "").toLowerCase();
-      players.set(key, {
-        playerId: player.playerId,
-        displayName: player.displayName,
-        rankPoints: Number(player.rankPoints) || 0,
-        profile: player.profile || {},
-        runs: 0,
-        bestScore: 0,
-        totalScore: 0,
-        latestFinishedAt: player.updatedAt
-      });
-    });
     runs.forEach((run) => {
       const key = String(run.displayName || run.playerId || "").toLowerCase();
       const current = players.get(key) || {
