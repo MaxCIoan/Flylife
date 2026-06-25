@@ -7331,23 +7331,32 @@ function setupRocketRouteInspector(root, run) {
   let dragState = null;
   let suppressNextClick = false;
   let deferredRouteRedraw = 0;
+  let settledRouteRedraw = 0;
 
-  function redraw(updateMeta = true, deferCanvas = false) {
+  function redraw(updateMeta = true, deferCanvas = false, drawOptions = {}) {
     if (updateMeta) renderRocketRouteMeta(meta, logs, selected, selectedDepot);
     const draw = () => {
       deferredRouteRedraw = 0;
-      drawRocketLogMap(canvas, logs, mapW, mapH, selected, view, selectedDepot);
+      drawRocketLogMap(canvas, logs, mapW, mapH, selected, view, selectedDepot, drawOptions);
     };
     if (!deferCanvas) {
       if (deferredRouteRedraw) {
-        window.clearTimeout(deferredRouteRedraw);
+        window.cancelAnimationFrame(deferredRouteRedraw);
         deferredRouteRedraw = 0;
       }
       draw();
       return;
     }
-    if (deferredRouteRedraw) window.clearTimeout(deferredRouteRedraw);
-    deferredRouteRedraw = window.setTimeout(draw, 34);
+    if (deferredRouteRedraw) window.cancelAnimationFrame(deferredRouteRedraw);
+    deferredRouteRedraw = window.requestAnimationFrame(draw);
+  }
+
+  function scheduleSettledRedraw() {
+    if (settledRouteRedraw) window.clearTimeout(settledRouteRedraw);
+    settledRouteRedraw = window.setTimeout(() => {
+      settledRouteRedraw = 0;
+      redraw(false);
+    }, 140);
   }
 
   function selectRoute(value, options = {}) {
@@ -7432,7 +7441,8 @@ function setupRocketRouteInspector(root, run) {
     const anchor = rocketCanvasEventAnchor(canvas, event);
     const factor = event.deltaY < 0 ? 1.16 : 1 / 1.16;
     view = zoomRocketLogView(view, mapW, mapH, point, factor, anchor);
-    redraw(false);
+    redraw(false, true, { skipDetailTiles: true });
+    scheduleSettledRedraw();
   };
   canvas.onpointerdown = (event) => {
     if (event.button !== 0) return;
@@ -7507,7 +7517,8 @@ function setupRocketRouteInspector(root, run) {
         dragState.lastX = event.clientX;
         dragState.lastY = event.clientY;
         hover.hidden = true;
-        redraw(false);
+        redraw(false, true, { skipDetailTiles: true });
+        scheduleSettledRedraw();
       }
       return;
     }
@@ -7880,15 +7891,15 @@ function pointToSegmentDistance(px, py, ax, ay, bx, by) {
   return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
 }
 
-function drawRocketLogMap(canvas, logs, mapW, mapH, selected = "all", view = null, selectedDepot = null) {
+function drawRocketLogMap(canvas, logs, mapW, mapH, selected = "all", view = null, selectedDepot = null, options = {}) {
   resizeRocketLogCanvas(canvas);
   const ctx = canvas.getContext("2d");
   const w = canvas.width;
   const h = canvas.height;
   const viewport = getRocketLogViewport(canvas, mapW, mapH, view);
   ctx.clearRect(0, 0, w, h);
-  const baseStatus = drawRocketLogMapBase(ctx, w, h, viewport, mapW, mapH);
-  if (baseStatus.visibleTiles && baseStatus.paintedTiles < baseStatus.visibleTiles && !rocketLogMapRedrawTimer) {
+  const baseStatus = drawRocketLogMapBase(ctx, w, h, viewport, mapW, mapH, options);
+  if (!options.skipDetailTiles && baseStatus.visibleTiles && baseStatus.paintedTiles < baseStatus.visibleTiles && !rocketLogMapRedrawTimer) {
     rocketLogMapRedrawTimer = window.setTimeout(() => {
       rocketLogMapRedrawTimer = 0;
       if (canvas.isConnected) drawRocketLogMap(canvas, logs, mapW, mapH, selected, view, selectedDepot);
@@ -7984,7 +7995,7 @@ function resizeRocketLogCanvas(canvas) {
   }
 }
 
-function drawRocketLogMapBase(ctx, w, h, viewport, mapW, mapH) {
+function drawRocketLogMapBase(ctx, w, h, viewport, mapW, mapH, options = {}) {
   ctx.fillStyle = "#030914";
   ctx.fillRect(0, 0, w, h);
   ctx.imageSmoothingEnabled = true;
@@ -7996,6 +8007,9 @@ function drawRocketLogMapBase(ctx, w, h, viewport, mapW, mapH) {
     const sw = (viewport.maxX - viewport.minX) / mapW * rocketReportAtlasImage.naturalWidth;
     const sh = (viewport.maxY - viewport.minY) / mapH * rocketReportAtlasImage.naturalHeight;
     ctx.drawImage(rocketReportAtlasImage, sx, sy, sw, sh, 0, 0, w, h);
+  }
+  if (options.skipDetailTiles) {
+    return { visibleTiles: 1, paintedTiles: atlasReady ? 1 : 0 };
   }
   const tileSize = ROCKET_IMAGERY_TILE_SIZE;
   const minTileX = Math.max(0, Math.floor(viewport.minX / tileSize));
