@@ -237,6 +237,7 @@ const ROCKET_ROUTE_TRAIL_MAX = 7200;
 const ROCKET_LOG_TRACE_MAX = 720;
 const ROCKET_LOG_DRAW_TRACE_MAX = 260;
 const ROCKET_LOG_ALL_TRACE_MAX = 120;
+const ROCKET_LOG_MAX_ZOOM = 28;
 const ROCKET_HUD_INTERVAL_MS = 120;
 const ROCKET_NAV_CHECK_INTERVAL = 0.14;
 const ROCKET_TINY_COUNTRY_DOT_MAX = 30;
@@ -244,6 +245,9 @@ const ROCKET_BLUE_MAP_W = 5760;
 const ROCKET_BLUE_MAP_H = 2880;
 rocketMiniMapImage.src = "assets/world-political-minimap.png?v=20260620itch1";
 rocketMiniMapImage.addEventListener("load", () => { rocketMiniMapCache = null; });
+const rocketReportAtlasImage = new Image();
+rocketReportAtlasImage.decoding = "async";
+rocketReportAtlasImage.src = "assets/blue-marble-report-atlas.jpg?v=20260625report1";
 let rocketCountryOverlayEnabled = false;
 
 let officialFlyLeaders = [];
@@ -6958,7 +6962,7 @@ function setupRocketRouteInspector(root, run) {
     const marker = getRocketObjectiveMarkersForLog(logs[selected])[selectedDepot];
     if (marker && Number.isFinite(Number(marker.x)) && Number.isFinite(Number(marker.y))) {
       view = makeRocketLogView(mapW, mapH, {
-        zoom: Math.max(options.zoom || 3.1, view.zoom || 1),
+        zoom: Math.max(options.zoom || 7.5, view.zoom || 1),
         cx: Number(marker.x),
         cy: Number(marker.y)
       });
@@ -7143,7 +7147,7 @@ function makeRocketLogView(mapW, mapH, overrides = {}) {
 }
 
 function normalizeRocketLogView(view, mapW, mapH) {
-  const zoom = Math.max(1, Math.min(8, Number(view?.zoom) || 1));
+  const zoom = Math.max(1, Math.min(ROCKET_LOG_MAX_ZOOM, Number(view?.zoom) || 1));
   const halfW = mapW / zoom / 2;
   const halfH = mapH / zoom / 2;
   return {
@@ -7169,7 +7173,7 @@ function makeRocketRouteView(log = {}, mapW = ROCKET_MAP_W, mapH = ROCKET_MAP_H)
   const maxY = Math.max(...ys);
   const routeW = Math.max(420, maxX - minX);
   const routeH = Math.max(280, maxY - minY);
-  const zoom = Math.max(1, Math.min(8, mapW / (routeW * 1.35), mapH / (routeH * 1.45)));
+  const zoom = Math.max(1, Math.min(ROCKET_LOG_MAX_ZOOM, mapW / (routeW * 1.15), mapH / (routeH * 1.2)));
   return makeRocketLogView(mapW, mapH, {
     zoom,
     cx: (minX + maxX) / 2,
@@ -7179,7 +7183,7 @@ function makeRocketRouteView(log = {}, mapW = ROCKET_MAP_W, mapH = ROCKET_MAP_H)
 
 function zoomRocketLogView(view, mapW, mapH, point, factor = 1.5, anchor = null) {
   const next = normalizeRocketLogView(view, mapW, mapH);
-  const targetZoom = Math.max(1, Math.min(8, next.zoom * factor));
+  const targetZoom = Math.max(1, Math.min(ROCKET_LOG_MAX_ZOOM, next.zoom * factor));
   if (Math.abs(targetZoom - next.zoom) < 0.001) return next;
   const anchorX = Number.isFinite(Number(anchor?.xRatio)) ? Number(anchor.xRatio) : 0.5;
   const anchorY = Number.isFinite(Number(anchor?.yRatio)) ? Number(anchor.yRatio) : 0.5;
@@ -7565,14 +7569,18 @@ function resizeRocketLogCanvas(canvas) {
 }
 
 function drawRocketLogMapBase(ctx, w, h, viewport, mapW, mapH) {
-  const base = getRocketBlueWorldMapBase(ROCKET_BLUE_MAP_W, ROCKET_BLUE_MAP_H, mapW, mapH);
+  ctx.fillStyle = "#030914";
+  ctx.fillRect(0, 0, w, h);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  const sx = viewport.minX / mapW * base.width;
-  const sy = viewport.minY / mapH * base.height;
-  const sw = (viewport.maxX - viewport.minX) / mapW * base.width;
-  const sh = (viewport.maxY - viewport.minY) / mapH * base.height;
-  ctx.drawImage(base, sx, sy, sw, sh, 0, 0, w, h);
+  const atlasReady = rocketReportAtlasImage.complete && rocketReportAtlasImage.naturalWidth > 0;
+  if (atlasReady) {
+    const sx = viewport.minX / mapW * rocketReportAtlasImage.naturalWidth;
+    const sy = viewport.minY / mapH * rocketReportAtlasImage.naturalHeight;
+    const sw = (viewport.maxX - viewport.minX) / mapW * rocketReportAtlasImage.naturalWidth;
+    const sh = (viewport.maxY - viewport.minY) / mapH * rocketReportAtlasImage.naturalHeight;
+    ctx.drawImage(rocketReportAtlasImage, sx, sy, sw, sh, 0, 0, w, h);
+  }
   const tileSize = ROCKET_IMAGERY_TILE_SIZE;
   const minTileX = Math.max(0, Math.floor(viewport.minX / tileSize));
   const maxTileX = Math.min(Math.ceil(mapW / tileSize) - 1, Math.floor(viewport.maxX / tileSize));
@@ -7600,7 +7608,7 @@ function drawRocketLogMapBase(ctx, w, h, viewport, mapW, mapH) {
   if (visibleTiles && paintedTiles < visibleTiles) {
     startRocketImageryPendingLoads();
   }
-  return { visibleTiles, paintedTiles };
+  return { visibleTiles: visibleTiles + 1, paintedTiles: paintedTiles + (atlasReady ? 1 : 0) };
 }
 
 function drawRocketLogDepotStatusMarkers(ctx, log, viewport, selectedDepot = null) {
