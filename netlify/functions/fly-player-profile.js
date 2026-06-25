@@ -1,5 +1,5 @@
 import { query } from "../../db/index.js";
-import { cleanDisplayName, cleanPlayerId, cleanRankPoints, emptyResponse, jsonResponse, readRequestJson } from "./_shared.js";
+import { cleanDisplayName, cleanPlayerId, cleanRankPoints, emptyResponse, isGuestDisplayName, jsonResponse, logError, logMetric, readRequestJson } from "./_shared.js";
 
 function playerFromRow(row) {
   if (!row) return null;
@@ -47,6 +47,7 @@ async function readPlayer(playerId) {
 
 async function writePlayer({ playerId, displayName, rankPoints, profile }) {
   const requestedName = cleanDisplayName(displayName);
+  if (isGuestDisplayName(requestedName)) throw new Error("display name is required");
   const shouldLockName = requestedName !== "Guest";
   const payload = compactProfilePayload(profile);
   const { rows } = await query(
@@ -79,23 +80,31 @@ export default async (request) => {
     if (request.method === "GET") {
       const url = new URL(request.url);
       const playerId = cleanPlayerId(url.searchParams.get("playerId"));
-      return jsonResponse(200, { player: await readPlayer(playerId) });
+      const player = await readPlayer(playerId);
+      logMetric("fly-player-profile", "read player", { playerId });
+      return jsonResponse(200, { player });
     }
 
     if (request.method === "POST") {
       const body = await readRequestJson(request);
+      if (isGuestDisplayName(body.displayName)) {
+        const playerId = cleanPlayerId(body.playerId);
+        logMetric("fly-player-profile", "rejected guest profile write", { playerId });
+        return jsonResponse(400, { error: "display name is required" });
+      }
       const player = await writePlayer({
         playerId: cleanPlayerId(body.playerId),
         displayName: body.displayName,
         rankPoints: body.rankPoints,
         profile: body.profile
       });
+      logMetric("fly-player-profile", "wrote player", { playerId: player.playerId, displayName: player.displayName });
       return jsonResponse(200, { player });
     }
 
     return jsonResponse(405, { error: "method not allowed" });
   } catch (error) {
-    console.error("fly-player-profile failed", error);
+    logError("fly-player-profile", "failed", error);
     return jsonResponse(500, { error: error instanceof Error ? error.message : "fly player profile failed" });
   }
 };

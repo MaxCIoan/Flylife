@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "20260613b";
+  const VERSION = "20260621apiorigin2";
   const PROFILE_KEY = "flagHunterLocalProfile";
   const TRUST_KEY = "flagHunterTrustedProfileV1";
   const ROCKET_ROUNDS_KEY = "flagHunterRocketRounds";
@@ -12,12 +12,12 @@
   const MAX_SCORE_PER_ROUND = 80000;
   const MIN_MS_PER_ROUND = 2500;
   const SALT = "flag-hunter-fly-guard-20260609";
-  const PRODUCTION_API_ORIGIN = "https://flylifeforlife.netlify.app";
+  const PRODUCTION_API_ORIGIN = "https://flightrace.netlify.app";
 
   let tampered = false;
   let tamperReason = null;
   let runStartedAt = 0;
-  let serverRun = readJsonSafe(sessionStorage.getItem(SERVER_RUN_KEY));
+  let serverRun = readJsonSafe(localStorage.getItem(SERVER_RUN_KEY)) || readJsonSafe(sessionStorage.getItem(SERVER_RUN_KEY));
   let serverRunPromise = null;
 
   function getFlyApiBase() {
@@ -26,7 +26,8 @@
       || /itch\.io/i.test(document.referrer || "")
       || new URLSearchParams(window.location.search).has("itchStatus");
     const localContext = ["", "localhost", "127.0.0.1", "::1"].includes(hostname);
-    return (itchContext || localContext) && !/flylifeforlife\.netlify\.app$/i.test(hostname) ? PRODUCTION_API_ORIGIN : "";
+    const netlifyContext = /\.netlify\.app$/i.test(hostname);
+    return localContext || (itchContext && !netlifyContext) ? PRODUCTION_API_ORIGIN : "";
   }
 
   function readJsonSafe(value) {
@@ -204,6 +205,7 @@
         localStorage.removeItem(TRUST_KEY);
         localStorage.removeItem(ROCKET_ROUNDS_KEY);
         sessionStorage.removeItem(SERVER_RUN_KEY);
+        localStorage.removeItem(SERVER_RUN_KEY);
         location.href = "index.html#rocket";
         location.reload();
       });
@@ -299,10 +301,12 @@
     serverRun = null;
     serverRunPromise = null;
     sessionStorage.removeItem(SERVER_RUN_KEY);
+    localStorage.removeItem(SERVER_RUN_KEY);
     if (tampered || !ALLOWED_ROUNDS.includes(Number(rounds))) return;
     serverRunPromise = postJson(`${getFlyApiBase()}/api/fly/run/start`, { playerId, displayName, rounds })
       .then((run) => {
         serverRun = run;
+        localStorage.setItem(SERVER_RUN_KEY, JSON.stringify(run));
         sessionStorage.setItem(SERVER_RUN_KEY, JSON.stringify(run));
         return run;
       })
@@ -312,15 +316,64 @@
       });
   }
 
+  async function getRunCredentials() {
+    return serverRun
+      || readJsonSafe(localStorage.getItem(SERVER_RUN_KEY))
+      || readJsonSafe(sessionStorage.getItem(SERVER_RUN_KEY))
+      || await serverRunPromise;
+  }
+
+  async function pingRun(activity = {}) {
+    const credentials = await getRunCredentials();
+    if (!credentials?.runId || !credentials?.token) return null;
+    return postJson(`${getFlyApiBase()}/api/fly/run/ping`, {
+      runId: credentials.runId,
+      token: credentials.token,
+      activity
+    }).catch((error) => {
+      console.warn("Official fly heartbeat skipped", error);
+      return null;
+    });
+  }
+
+  async function discardRun(reason = "discarded") {
+    const credentials = await getRunCredentials();
+    if (!credentials?.runId || !credentials?.token) return null;
+    const rounds = Number(credentials.rounds) || ALLOWED_ROUNDS[0];
+    return postJson(`${getFlyApiBase()}/api/fly/run/finish`, {
+      runId: credentials.runId,
+      token: credentials.token,
+      playerId: credentials.playerId,
+      displayName: credentials.displayName,
+      session: {
+        playerId: credentials.playerId,
+        displayName: credentials.displayName,
+        rounds,
+        selectedRounds: rounds,
+        completedRounds: 0,
+        longestRun: 0,
+        score: 0,
+        logs: [],
+        discardedReason: reason
+      }
+    }).then((result) => {
+      sessionStorage.removeItem(SERVER_RUN_KEY);
+      localStorage.removeItem(SERVER_RUN_KEY);
+      serverRun = null;
+      return result;
+    }).catch((error) => {
+      console.warn("Official fly run was not discarded", error);
+      return null;
+    });
+  }
+
   async function finishRun(session) {
     const reason = validateRocketSession(session);
     if (reason) {
       console.warn("Official fly run was not submitted", reason);
       return null;
     }
-    const credentials = serverRun
-      || readJsonSafe(sessionStorage.getItem(SERVER_RUN_KEY))
-      || await serverRunPromise;
+    const credentials = await getRunCredentials();
     if (!credentials?.runId || !credentials?.token) return null;
     return postJson(`${getFlyApiBase()}/api/fly/run/finish`, {
       runId: credentials.runId,
@@ -331,6 +384,7 @@
     })
       .then((result) => {
         sessionStorage.removeItem(SERVER_RUN_KEY);
+        localStorage.removeItem(SERVER_RUN_KEY);
         serverRun = null;
         return result;
       })
@@ -346,6 +400,8 @@
     checkStoredProfile,
     syncProfile,
     startRun,
+    pingRun,
+    discardRun,
     finishRun,
     isTampered: () => tampered,
     getTamperReason: () => tamperReason,

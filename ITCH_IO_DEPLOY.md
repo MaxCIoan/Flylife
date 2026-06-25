@@ -8,13 +8,13 @@ npm run package:itch
 
 Upload one of these files from `dist-itch/`:
 
-- `flylife-itch-full.zip`: full static game hosted by itch.io. Leaderboards and official Fly submissions still use the Netlify production API automatically.
+- `flylife-itch-full.zip`: full static game hosted by itch.io. Leaderboards and official Fly submissions still use the FlightRace Netlify API automatically.
 - `flylife-itch-launcher.zip`: tiny package that opens the live Netlify game. Use this if you want itch.io to be a portal page only.
 
 For an unstable/branch Netlify URL, build the launcher like this:
 
 ```powershell
-$env:FLYLIFE_ITCH_URL="https://your-branch-deploy-url.netlify.app/?itchStatus=1"
+$env:FLYLIFE_ITCH_URL="https://flightrace.netlify.app/?itchStatus=1#play"
 npm run package:itch
 ```
 
@@ -29,4 +29,4 @@ Recommended itch.io settings:
 - Enable scrollbars: on only if itch is embedding the full static ZIP in a small frame
 - Orientation: landscape
 
-No itch.io environment variables are required. Netlify still owns the official leaderboard API.
+No itch.io environment variables are required. FlightRace Netlify still owns the official leaderboard API.

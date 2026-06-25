@@ -1,5 +1,5 @@
 import { query } from "../../db/index.js";
-import { emptyResponse, jsonResponse } from "./_shared.js";
+import { emptyResponse, jsonResponse, logError, logMetric } from "./_shared.js";
 
 const FLY_TRACE_POINT_LIMIT = 720;
 
@@ -78,10 +78,10 @@ export default async (request) => {
       ...leader,
       payload: compactPayload(leader.payload)
     }));
-
+    logMetric("fly-leaderboard", "loaded leaders", { count: leaders.length });
     return jsonResponse(200, { leaders });
   } catch (error) {
-    console.error("fly-leaderboard failed", error);
+    logError("fly-leaderboard", "failed", error);
     return jsonResponse(500, { error: error instanceof Error ? error.message : "fly leaderboard failed" });
   }
 };

@@ -6,7 +6,7 @@ $fullDir = Join-Path $dist "flylife-itch-full"
 $launcherDir = Join-Path $dist "flylife-itch-launcher"
 $fullZip = Join-Path $dist "flylife-itch-full.zip"
 $launcherZip = Join-Path $dist "flylife-itch-launcher.zip"
-$launchUrl = if ($env:FLYLIFE_ITCH_URL) { $env:FLYLIFE_ITCH_URL } else { "https://flylifeforlife.netlify.app/?itchStatus=1" }
+$launchUrl = if ($env:FLYLIFE_ITCH_URL) { $env:FLYLIFE_ITCH_URL } else { "https://flightrace.netlify.app/?itchStatus=1#play" }
 
 if (Test-Path $dist) {
   Remove-Item -LiteralPath $dist -Recurse -Force

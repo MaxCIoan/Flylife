@@ -69,10 +69,10 @@ button {
 
 .topbar {
   display: grid;
-  grid-template-columns: auto minmax(20rem, 1fr) auto auto;
+  grid-template-columns: auto minmax(42rem, 1fr) auto auto;
   align-items: center;
-  gap: 1.5rem;
-  padding: 1.25rem 1.6rem;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
   border-bottom: 1px solid var(--line);
   background: rgba(4, 10, 17, 0.78);
   backdrop-filter: blur(18px);
@@ -269,7 +269,16 @@ body:has(#rocketView.active) .topbar {
 }
 
 .nav-btn.active {
-  box-shadow: inset 0 -2px 0 var(--purple);
+  box-shadow:
+    inset 0 0 0 1px rgba(177, 234, 255, 0.34),
+    inset 0 0 0 4px rgba(5, 22, 38, 0.46),
+    0 0.85rem 1.7rem rgba(0, 0, 0, 0.38),
+    0 0 1.2rem var(--nav-accent, rgba(236, 181, 91, 0.18));
+}
+
+.nav-btn:hover::before,
+.nav-btn.active::before {
+  opacity: 1;
 }
 
 .profile-chip {
@@ -294,9 +303,39 @@ body:has(#rocketView.active) .topbar {
 }
 
 .menu-button {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
   width: 3rem;
   height: 3rem;
-  font-size: 1.5rem;
+  border-color: rgba(58, 185, 255, 0.42);
+  color: #eaf8ff;
+  background: rgba(6, 18, 30, 0.86);
+  font-size: 1.35rem;
+  font-weight: 900;
+  box-shadow:
+    inset 0 0 0 1px rgba(159, 225, 255, 0.16),
+    0 0.9rem 1.8rem rgba(0, 0, 0, 0.28);
+  text-shadow: 0 2px 0 #000, 0 0 0.85rem rgba(34, 217, 242, 0.42);
+}
+
+.menu-button::before {
+  content: "";
+  position: absolute;
+  inset: 0.18rem;
+  z-index: -1;
+  border: 1px solid rgba(159, 225, 255, 0.2);
+  border-radius: 5px;
+  background-image:
+    linear-gradient(135deg, rgba(24, 195, 255, 0.48), rgba(87, 93, 255, 0.32)),
+    linear-gradient(180deg, rgba(2, 10, 20, 0.08), rgba(0, 6, 16, 0.72)),
+    url("assets/ui/nav-card-sheet.jpg");
+  background-blend-mode: color, multiply, normal;
+  background-size: 100% 100%, 100% 100%, 300% 200%;
+  background-position: center, center, 100% 100%;
+  filter: saturate(0.96) contrast(1.08) brightness(0.74);
 }
 
 .view {
@@ -318,10 +357,17 @@ body:has(#rocketView.active) .topbar {
 .activity-card,
 .results-panel,
 .table-wrap {
-  border: 1px solid var(--line);
+  position: relative;
+  border: 1px solid rgba(76, 177, 255, 0.2);
   border-radius: var(--radius);
-  background: linear-gradient(180deg, rgba(17, 28, 44, 0.9), rgba(7, 15, 25, 0.9));
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.26);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(34, 217, 242, 0.13), transparent 13rem),
+    radial-gradient(circle at 100% 8%, rgba(106, 168, 255, 0.1), transparent 15rem),
+    linear-gradient(180deg, rgba(15, 33, 54, 0.94), rgba(5, 13, 23, 0.94));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.035),
+    0 18px 60px rgba(0, 0, 0, 0.3),
+    0 0 2rem rgba(25, 195, 255, 0.035);
 }
 
 .side-panel {
@@ -341,7 +387,9 @@ body:has(#rocketView.active) .topbar {
 }
 
 .table-wrap thead {
-  background: rgba(6, 18, 30, 0.88);
+  background:
+    linear-gradient(90deg, rgba(34, 217, 242, 0.12), transparent 52%),
+    rgba(6, 18, 30, 0.92);
 }
 
 .table-wrap th,
@@ -1330,7 +1378,7 @@ body:has(#rocketView.active) .topbar {
 
 .rocket-setup-links {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.55rem;
   width: 100%;
   padding-top: 0.35rem;
@@ -2490,6 +2538,29 @@ body:has(#rocketView.active) .topbar {
   background: rgba(5, 11, 18, 0.54);
 }
 
+.auth-dialog[data-required="true"] .close-btn {
+  display: none;
+}
+
+.auth-message {
+  min-height: 1.2rem;
+  font-weight: 850;
+}
+
+.auth-message[data-tone="success"] {
+  color: #93ffad;
+}
+
+.auth-message[data-tone="warn"] {
+  color: #ffd33d;
+}
+
+.auth-actions .secondary-btn:not([hidden]) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .auth-panel button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
@@ -2530,6 +2601,20 @@ body:has(#rocketView.active) .topbar {
 .page-heading {
   width: min(76rem, 100%);
   margin: 0 auto 1rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid rgba(76, 177, 255, 0.18);
+  border-radius: var(--radius);
+  background:
+    radial-gradient(circle at 10% 0%, rgba(34, 217, 242, 0.16), transparent 12rem),
+    linear-gradient(135deg, rgba(14, 38, 63, 0.9), rgba(5, 12, 21, 0.92));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.035),
+    0 1rem 2.6rem rgba(0, 0, 0, 0.22);
+}
+
+.page-heading h1 {
+  color: #f0fbff;
+  text-shadow: 0 0 1rem rgba(34, 217, 242, 0.16);
 }
 
 .run-section-heading {
@@ -2539,6 +2624,7 @@ body:has(#rocketView.active) .topbar {
   gap: 1rem;
   width: min(76rem, 100%);
   margin: 1.2rem auto 0.55rem;
+  padding: 0 0.15rem;
 }
 
 .run-section-heading h2 {
@@ -2561,10 +2647,14 @@ body:has(#rocketView.active) .topbar {
 
 .manual-hero,
 .manual-card {
-  border: 1px solid var(--line);
+  border: 1px solid rgba(76, 177, 255, 0.18);
   border-radius: var(--radius);
-  background: linear-gradient(180deg, rgba(17, 28, 44, 0.94), rgba(7, 15, 25, 0.94));
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.26);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(34, 217, 242, 0.12), transparent 13rem),
+    linear-gradient(180deg, rgba(15, 33, 54, 0.94), rgba(5, 13, 23, 0.94));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.035),
+    0 18px 60px rgba(0, 0, 0, 0.26);
 }
 
 .manual-hero {
@@ -2575,6 +2665,8 @@ body:has(#rocketView.active) .topbar {
 .manual-hero h1,
 .manual-card h2 {
   margin: 0.25rem 0 0.6rem;
+  color: #f0fbff;
+  text-shadow: 0 0 0.9rem rgba(34, 217, 242, 0.12);
 }
 
 .manual-hero p,
@@ -2635,7 +2727,9 @@ body:has(#rocketView.active) .topbar {
 }
 
 .settings-card select,
-.settings-card input[type="file"] {
+.settings-card input[type="file"],
+.settings-card input[type="password"],
+.settings-card input[type="text"] {
   min-height: 2.8rem;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius);
@@ -2697,7 +2791,8 @@ body:has(#rocketView.active) .topbar {
   }
 
   .nav-btn {
-    flex: 1;
+    flex: 1 1 calc(33.333% - 0.75rem);
+    max-width: none;
   }
 
   #playView.active {
