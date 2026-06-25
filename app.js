@@ -2238,7 +2238,7 @@ function loadPublicFlyRuns(query = publicFlyRunQuery) {
   renderPublicRuns();
   const params = new URLSearchParams({ limit: "60" });
   if (cleanQuery) params.set("q", cleanQuery);
-  fetchFlyJson(`${flyApiBase}/api/fly/public-runs?${params.toString()}`, "Public player search")
+  fetchFlyJson(`${flyApiBase}/.netlify/functions/fly-public-runs?${params.toString()}`, "Public player search")
     .then((data) => {
       publicFlyPlayers = Array.isArray(data.players) ? data.players : [];
       publicFlyRuns = Array.isArray(data.runs) ? data.runs.map(normalizeOfficialFlyRun) : [];
