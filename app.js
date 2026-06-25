@@ -103,6 +103,7 @@ const els = {
   flagRunsTable: document.querySelector("#flagRunsTable"),
   flyRunsTable: document.querySelector("#flyRunsTable"),
   leaderboardTable: document.querySelector("#leaderboardTable"),
+  pilotProfileSummary: document.querySelector("#pilotProfileSummary"),
   privateApiStatus: document.querySelector("#privateApiStatus"),
   rocketStage: document.querySelector("#rocketStage"),
   rocketCanvas: document.querySelector("#rocketCanvas"),
@@ -325,34 +326,11 @@ function hasNamedProfile() {
   return Boolean(profile?.playerId && !isGuestDisplayName(profile.displayName));
 }
 
-function flagRunHasEvent(run = {}) {
-  return !isGuestDisplayName(run.displayName)
-    && ((Array.isArray(run.correct) && run.correct.length > 0)
-      || (Array.isArray(run.mistakes) && run.mistakes.length > 0));
-}
-
-function rocketRunHasScoringEvent(run = {}) {
-  return !isGuestDisplayName(run.displayName)
-    && Array.isArray(run.logs)
-    && run.logs.some((log) => (
-      Boolean(log?.success)
-      || Boolean(log?.reason)
-      || cleanRankPoints(log?.score) > 0
-      || cleanRankPoints(log?.techEarned) > 0
-      || (Array.isArray(log?.scoreEvents) && log.scoreEvents.length > 0)
-      || (Array.isArray(log?.landings) && log.landings.length > 0)
-      || (Array.isArray(log?.depotMarkers) && log.depotMarkers.length > 0)
-      || (Array.isArray(log?.bonusMarkers) && log.bonusMarkers.length > 0)
-      || (Array.isArray(log?.trace) && log.trace.length > 1)
-    ));
-}
-
 function estimateRankPointsFromHistory(candidate = {}) {
   const flagPoints = (candidate.runs || [])
-    .filter(flagRunHasEvent)
     .reduce((sum, run) => sum + cleanRankPoints(run.score), 0);
   const flyPoints = (candidate.rocketRuns || [])
-    .filter((run) => run.source !== "agent-simulation" && rocketRunHasScoringEvent(run))
+    .filter((run) => run.source !== "agent-simulation")
     .reduce((sum, run) => sum + cleanRankPoints(run.score ?? run.finalScore), 0);
   return cleanRankPoints(flagPoints + flyPoints);
 }
@@ -1197,7 +1175,6 @@ function compactStoredRocketTrace(trace = []) {
 
 function compactRocketRunHistory(runs = []) {
   return (Array.isArray(runs) ? runs : [])
-    .filter((run) => run.source === "agent-simulation" || rocketRunHasScoringEvent(run))
     .slice(0, 40)
     .map((run) => ({
     ...run,
@@ -1226,7 +1203,7 @@ function loadProfile() {
     const merged = { ...fallback, ...(loaded && typeof loaded === "object" ? loaded : {}) };
     merged.playerId = String(merged.playerId || fallback.playerId);
     localStorage.setItem(playerIdKey, merged.playerId);
-    merged.runs = Array.isArray(merged.runs) ? merged.runs.filter(flagRunHasEvent).slice(0, 50) : [];
+    merged.runs = Array.isArray(merged.runs) ? merged.runs.slice(0, 50) : [];
     merged.rocketRuns = compactRocketRunHistory(merged.rocketRuns);
     merged.displayName = String(merged.displayName || "Guest").slice(0, 32);
     merged.displayNameLocked = Boolean(merged.displayNameLocked);
@@ -1849,13 +1826,6 @@ function endRun() {
     maxCombo: state.maxCombo,
     levelReached: Math.min(4, 1 + Math.floor(state.maxCombo / 4))
   };
-  if (!flagRunHasEvent(run)) {
-    renderResult(run);
-    renderProfile();
-    renderTables();
-    showView("results");
-    return;
-  }
   addRankPoints(run.score);
   profile.runs = [run, ...(profile.runs || [])].slice(0, 50);
   saveProfile();
@@ -1899,12 +1869,6 @@ function saveRocketSessionResult(title, summary) {
   };
   rocketState.sessionSaved = true;
   clearRocketProgressSnapshot();
-  if (!rocketRunHasScoringEvent(session)) {
-    window.FlagGuard?.finishRun?.(session).then(() => showSaveHud("Empty run discarded"));
-    showSaveHud("Empty run discarded");
-    renderTablesIfDataView();
-    return session;
-  }
   window.FlagGuard?.finishRun?.(session).then((officialResult) => {
     if (!officialResult) {
       session.officialResult = { localOnly: true, at: new Date().toISOString() };
@@ -1915,10 +1879,9 @@ function saveRocketSessionResult(title, summary) {
     }
     session.officialResult = officialResult;
     if (officialResult.discarded) {
-      profile.rocketRuns = (profile.rocketRuns || []).filter((run) => run.id !== session.id);
-      profile.rankPoints = estimateRankPointsFromHistory(profile);
+      session.officialResult = { ...officialResult, keptLocal: true };
       saveProfile();
-      showSaveHud("Official run discarded");
+      showSaveHud("Local saved - official discarded");
       renderTablesIfDataView();
       return;
     }
@@ -2472,6 +2435,86 @@ function renderProfile() {
   if (els.displayNameInput) els.displayNameInput.value = profile.displayName === "Guest" ? "" : profile.displayName;
   syncProfileControls();
   renderRankLists();
+  renderPilotProfile();
+}
+
+function renderPilotProfile() {
+  if (!els.pilotProfileSummary) return;
+  const flagRuns = Array.isArray(profile.runs) ? profile.runs : [];
+  const flyRuns = Array.isArray(profile.rocketRuns)
+    ? profile.rocketRuns.filter((run) => run.source !== "agent-simulation")
+    : [];
+  const flagScoreTotal = flagRuns.reduce((sum, run) => sum + (Number(run.score) || 0), 0);
+  const flyScoreTotal = flyRuns.reduce((sum, run) => sum + (Number(run.score) || 0), 0);
+  const totalScore = flagScoreTotal + flyScoreTotal;
+  const bestFlag = Math.max(0, ...flagRuns.map((run) => Number(run.score) || 0));
+  const bestFly = Math.max(0, ...flyRuns.map((run) => Number(run.score) || 0));
+  const flagCorrect = flagRuns.reduce((sum, run) => sum + ((run.correct || []).length || 0), 0);
+  const flagMistakes = flagRuns.reduce((sum, run) => sum + ((run.mistakes || []).length || 0), 0);
+  const flagAttempts = flagCorrect + flagMistakes;
+  const flyReached = flyRuns.reduce((sum, run) => sum + (Number(run.completedRounds) || 0), 0);
+  const flyTargetRounds = flyRuns.reduce((sum, run) => sum + (Number(run.selectedRounds || run.rounds) || 0), 0);
+  const flyMissed = Math.max(0, flyTargetRounds - flyReached);
+  const bonusHits = flyRuns.reduce((sum, run) => sum + (run.logs || []).reduce((logSum, log) => (
+    logSum + (log.bonusMarkers || []).filter((marker) => marker.status && marker.status !== "missed").length
+  ), 0), 0);
+  const depotHits = flyRuns.reduce((sum, run) => sum + (run.logs || []).reduce((logSum, log) => (
+    logSum + (log.depotMarkers || []).filter((marker) => marker.status && marker.status !== "missed").length
+  ), 0), 0);
+  const latestEntries = [
+    ...flagRuns.map((run) => ({ mode: "Speed Flags", score: Number(run.score) || 0, createdAt: run.createdAt })),
+    ...flyRuns.map((run) => ({ mode: "Fly", score: Number(run.score) || 0, createdAt: run.createdAt }))
+  ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const latest = latestEntries[0];
+  const accuracy = flagAttempts ? Math.round((flagCorrect / flagAttempts) * 100) : 0;
+  const rank = getRank(getRankPoints());
+  els.pilotProfileSummary.innerHTML = `
+    <section class="player-face-card">
+      <span>Visibility</span>
+      <strong>${escapeHtml(profile.displayName || "Guest")}</strong>
+      <small>Official Fly leaderboard rows are public. Local rows and Speed Flags history stay on this browser.</small>
+    </section>
+    <section>
+      <span>Career Score</span>
+      <strong>${formatScore(totalScore)}</strong>
+      <small>${formatScore(flagScoreTotal)} flags + ${formatScore(flyScoreTotal)} fly</small>
+    </section>
+    <section>
+      <span>Rank Points</span>
+      <strong>${formatScore(getRankPoints())}</strong>
+      <small>${escapeHtml(rank.name)} profile progress</small>
+    </section>
+    <section>
+      <span>Best Runs</span>
+      <strong>${formatScore(Math.max(bestFlag, bestFly))}</strong>
+      <small>Flags ${formatScore(bestFlag)} | Fly ${formatScore(bestFly)}</small>
+    </section>
+    <section>
+      <span>Runs Recorded</span>
+      <strong>${flagRuns.length + flyRuns.length}</strong>
+      <small>${flagRuns.length} Speed Flags | ${flyRuns.length} Fly</small>
+    </section>
+    <section>
+      <span>Flag Accuracy</span>
+      <strong>${accuracy}%</strong>
+      <small>${flagCorrect} correct | ${flagMistakes} mistakes</small>
+    </section>
+    <section>
+      <span>Fly Routes</span>
+      <strong>${flyReached}/${flyTargetRounds}</strong>
+      <small>${flyMissed} missed or unfinished route targets</small>
+    </section>
+    <section>
+      <span>Collected Pins</span>
+      <strong>${depotHits + bonusHits}</strong>
+      <small>${depotHits} fuel depots | ${bonusHits} historical/bonus</small>
+    </section>
+    <section>
+      <span>Latest Run</span>
+      <strong>${latest ? formatScore(latest.score) : "No runs"}</strong>
+      <small>${latest ? `${escapeHtml(latest.mode)} on ${formatLeaderboardDate(latest.createdAt)}` : "Finish any run to record it."}</small>
+    </section>
+  `;
 }
 
 function getBestRun() {
@@ -2749,6 +2792,7 @@ function showView(name, updateHash = true) {
     results: "resultsView",
     runs: "runsView",
     leaderboard: "leaderboardView",
+    pilot: "pilotProfileView",
     shop: "shopView",
     profile: "profileView"
   };
@@ -2787,6 +2831,8 @@ function prepareViewData(name) {
     else loadOfficialFlyLeaderboard();
   } else if (name === "runs") {
     renderTables();
+  } else if (name === "pilot") {
+    renderPilotProfile();
   }
 }
 
@@ -2800,6 +2846,7 @@ function isViewActive(name) {
     rocket: "rocketView",
     runs: "runsView",
     leaderboard: "leaderboardView",
+    pilot: "pilotProfileView",
     shop: "shopView"
   };
   const id = viewMap[name];
@@ -2808,6 +2855,7 @@ function isViewActive(name) {
 
 function renderTablesIfDataView() {
   if (isViewActive("runs") || isViewActive("leaderboard")) renderTables();
+  if (isViewActive("pilot")) renderPilotProfile();
 }
 
 function showAuthMessage(message = "", tone = "info") {

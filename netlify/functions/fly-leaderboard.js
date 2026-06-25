@@ -68,7 +68,6 @@ export default async (request) => {
          from fly_runs
          where status = 'completed'
            and tampered = false
-           and coalesce(jsonb_array_length(payload->'logs'), 0) > 0
            and lower(display_name) not in ('codexprobe', 'codexpartialprobe')
        ) ranked
        where rank_for_player = 1
