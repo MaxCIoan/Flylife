@@ -2,6 +2,7 @@ import { query } from "../../db/index.js";
 import { emptyResponse, jsonResponse, logError, logMetric } from "./_shared.js";
 
 const FLY_TRACE_POINT_LIMIT = 720;
+const PUBLIC_SCORE_RESET_AT = "2026-06-25T20:12:00Z";
 
 function compactTrace(trace = []) {
   const points = (Array.isArray(trace) ? trace : [])
@@ -68,6 +69,7 @@ export default async (request) => {
          from fly_runs
          where status = 'completed'
            and tampered = false
+           and finished_at >= $1::timestamptz
            and lower(display_name) not like 'guest%'
            and lower(display_name) not like 'anonymous%'
            and lower(display_name) not like 'player%'
@@ -76,6 +78,7 @@ export default async (request) => {
        where rank_for_player = 1
        order by "finalScore" desc, "elapsedMs" asc, "finishedAt" asc
        limit 20`
+      [PUBLIC_SCORE_RESET_AT]
     );
     const leaders = rows.map((leader) => ({
       ...leader,
