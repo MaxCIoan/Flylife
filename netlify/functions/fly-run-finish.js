@@ -68,45 +68,6 @@ export default async (request) => {
       finishedMs: finishedAt.getTime(),
       session
     });
-    const hasEvents = Array.isArray(session.logs)
-      && session.logs.some((log) => (
-        Boolean(log?.success)
-        || Boolean(log?.reason)
-        || Number(log?.score || 0) > 0
-        || Number(log?.techEarned || 0) > 0
-        || (Array.isArray(log?.scoreEvents) && log.scoreEvents.length > 0)
-        || (Array.isArray(log?.landings) && log.landings.length > 0)
-        || (Array.isArray(log?.depotMarkers) && log.depotMarkers.length > 0)
-        || (Array.isArray(log?.bonusMarkers) && log.bonusMarkers.length > 0)
-        || (Array.isArray(log?.trace) && log.trace.length > 1)
-      ));
-    if (!hasEvents) {
-      await query(
-        `update fly_runs
-         set display_name = $1,
-             player_id = $2,
-             finished_at = $3,
-             status = 'discarded',
-             payload = $4::jsonb,
-             final_score = 0,
-             elapsed_ms = $5,
-             tampered = false,
-             tamper_reason = $6
-         where run_id = $7`,
-        [
-          playerName,
-          playerId,
-          finishedAt,
-          JSON.stringify(session),
-          result.elapsedMs,
-          "no run activity recorded",
-          body.runId
-        ]
-      );
-      logMetric("fly-run-finish", "discarded empty run", { runId: body.runId, playerId, finalScore: result.finalScore, hasEvents });
-      return jsonResponse(200, { ...result, discarded: true, player: players[0] ? { playerId, ...players[0] } : null });
-    }
-
     await query(
       `update fly_runs
        set display_name = $1,
